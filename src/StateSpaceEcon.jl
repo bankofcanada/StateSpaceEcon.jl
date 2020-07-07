@@ -1,5 +1,15 @@
+"""
+    StateSpaceEcon
+
+A package for Macroeconomic modelling.
+
+"""
 module StateSpaceEcon
 
-greet() = print("Hello World!")
+using ModelBaseEcon
+using ModelBaseEcon.OptionsMod
+using ModelBaseEcon.Timer
+
+include("SteadyStateSolver.jl")
 
 end # module
