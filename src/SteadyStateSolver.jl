@@ -12,7 +12,7 @@ using DiffResults
 
 using ModelBaseEcon
 
-include("1dsolvers.jl")
-
+include("steadystate/1dsolvers.jl")
+include("steadystate/presolve.jl")
 
 end # module
