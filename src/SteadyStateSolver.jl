@@ -14,5 +14,8 @@ using ModelBaseEcon
 
 include("steadystate/1dsolvers.jl")
 include("steadystate/presolve.jl")
+include("steadystate/initial.jl")
+include("steadystate/global.jl")
+include("steadystate/solverdata.jl")
 
 end # module
