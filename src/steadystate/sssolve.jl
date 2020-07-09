@@ -92,13 +92,11 @@ function sssolve!(model::Model;
 
         # try updating the auxiliary variables
         if any(sd.solve_var[length(model.variables) * 2 + 1:end])
-            @warn "Implement aux stuff!"
-            #=
             try
                 global_SS_R!(r0, xx, sd)
                 n1 = sum(abs2, r0)
                 ssvals[sd.solve_var] .= xx
-                ssvals .= update_aux_ss(ssvals, model)
+                ssvals .= update_auxvars_ss(ssvals, model)
                 global_SS_R!(r0, ssvals[sd.solve_var], sd)
                 n2 = sum(abs2, r0)
                 if n2 < n1
@@ -109,7 +107,6 @@ function sssolve!(model::Model;
                 end
             catch
             end
-            =#
         end
 
         nx = norm(dx, Inf)
