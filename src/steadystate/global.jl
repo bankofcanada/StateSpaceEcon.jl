@@ -1,10 +1,15 @@
 
 
-function inadmissible_error(eqind, eqn, point)
+function inadmissible_error(eqind, eqn, point, val)
     vars = tuple(eqn.vsyms...)
     args = tuple((eval(Expr(:(=), sym, val)) for (sym, val) in zip(eqn.vsyms, point[eqn.vinds]))...)
-    @error "Inadmissible point in equation $eqind: $eqn" vars args rr
-    error("Inadmissible point in equation $eqind: $eqn")
+    if typeof(val) <: AbstractArray
+        @error "Singular gradient in equation $eqind: $eqn" vars args val
+        error("Singular gradient in equation $eqind: $eqn")
+    else
+        @error "Inadmissible point in equation $eqind: $eqn" vars args val
+        error("Inadmissible point in equation $eqind: $eqn")
+    end
 end
 
 
@@ -22,7 +27,7 @@ function global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Floa
     for (eqind, eqn) in enumerate(eqns)
         rr = try eqn.eval_resid(point[eqn.vinds]) catch; NaN64 end
         if isnan(rr) || isinf(rr)
-            inadmissible_error(eqind, eqn, point)
+            inadmissible_error(eqind, eqn, point, rr)
             # vars = tuple(eqn.vsyms...)
             # args = tuple((eval(Expr(:(=), sym, val)) for (sym, val) in zip(eqn.vsyms, point[eqn.vinds]))...)
             # @error "Inadmissible point in equation $eqind: $eqn" vars args rr
@@ -39,7 +44,7 @@ end
 
 When a model is given, we compute the residual of the entire steady state system.
 """
-@inline global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64}, model::Model) = global_SS_R!(resid, point, model.sstate.alleqns)
+@inline global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64}, model::Model) = global_SS_R!(resid, point, ModelBaseEcon.alleqns(model.sstate))
 @assert precompile(global_SS_R!, (Vector{Float64}, Vector{Float64}, Model))
 
 
@@ -63,19 +68,19 @@ function global_SS_RJ(point::AbstractVector{Float64}, eqns::EqnIter) where EqnIt
     for (eqind, eqn) in enumerate(eqns)
         rr, jj = try eqn.eval_RJ(point[eqn.vinds]) catch; NaN64, fill(NaN64, size(eqn.vinds)) end
         if isnan(rr) || isinf(rr) || any(@. isnan(jj) | isinf(jj))
-            inadmissible_error(eqind, eqn, point)
+            inadmissible_error(eqind, eqn, point, rr)
             # args = tuple((eval(Expr(:(=), sym, val)) for (sym, val) in zip(eqn.vsyms, point[eqn.vinds]))...)
             # vars = tuple(eqn.vsyms...)
             # @error "Inadmissible point in equation $eqind: $eqn" vars args rr
             # error("Inadmissible point in equation $eqind: $eqn")
         end
-        # if any(@. isnan(jj) | isinf(jj))
-        #     inadmissible_error()
+        if any(@. isnan(jj) | isinf(jj))
+            inadmissible_error(eqind, eqn, point, jj)
         #     args = tuple((eval(Expr(:(=), sym, val)) for (sym, val) in zip(eqn.vsyms, point[eqn.vinds]))...)
         #     vars = tuple(eqn.vsyms...)
         #     @error "Singular gradient in equation $eqind: $eqn" vars args rr
         #     error("Singular gradient in equation $eqind: $eqn")
-        # end
+        end
         R[eqind] = rr
         J[eqind,eqn.vinds] .= jj
     end
@@ -88,5 +93,5 @@ end
 
 When a model is given, we compute the residual of the entire steady state system.
 """
-@inline global_SS_RJ(point::Vector{Float64}, model::Model) = global_SS_RJ(point, model.sstate.alleqns)
+@inline global_SS_RJ(point::Vector{Float64}, model::Model) = global_SS_RJ(point, ModelBaseEcon.alleqns(model.sstate))
 @assert precompile(global_SS_RJ, (Vector{Float64}, Model))

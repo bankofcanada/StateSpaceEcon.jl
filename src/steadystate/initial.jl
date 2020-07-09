@@ -18,18 +18,18 @@ function _do_update_aux_presolve!(model::Model; verbose::Bool)
     # because it might set the values of aux variable differently and so
     # the presolve would be done on a different line parallel to the presolve-variable coordinate.
     @warn "update_aux_ss not implemented"
-#-
+#=
     aux_vals = update_aux_ss(ss.values, model)
     ss.values[ .! ss.mask ] = aux_vals[ .! ss.mask ]
--#
+=#
     old_solved = -1
     solved = sum(ss.mask)
     while old_solved < solved
         presolve_sstate!(model; verbose = verbose)
-        #-
+        #=
         aux_vals .= update_aux_ss(ss.values, model)
         ss.values[ .! ss.mask ] = aux_vals[ .! ss.mask ]
-        -#
+        =#
         old_solved = solved
         solved = sum(ss.mask)
     end

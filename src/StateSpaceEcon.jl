@@ -11,5 +11,6 @@ using ModelBaseEcon.OptionsMod
 using ModelBaseEcon.Timer
 
 include("SteadyStateSolver.jl")
+using .SteadyStateSolver
 
 end # module

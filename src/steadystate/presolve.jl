@@ -40,10 +40,11 @@ function presolve_sstate!(model::Model, mask::AbstractVector{Bool}, values::Abst
     else
         error("Unknown 1d solver $(_1dsolver)")
     end
+    local alleqns = ModelBaseEcon.alleqns(model.sstate)
     while true
         # Keep looping for as long as we keep updating values
         updated = false
-        for (eqind, sseqn) ∈ enumerate(model.sstate.alleqns)
+        for (eqind, sseqn) ∈ enumerate(alleqns)
             unsolved = .! mask[sseqn.vinds]
             if sum(unsolved) == 1
                 # There is exactly one variable in this equation that's not solved yet. 
