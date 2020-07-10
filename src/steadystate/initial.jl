@@ -29,7 +29,7 @@ function update_auxvars_ss(point::Vector{Float64}, model::Model)
         shift = model.options.shift
         pt1 = [ones(ntimes) shift .+ trange] * reshape(point, 2, :)
         pt1 = [pt1[:,1:nvars] zeros(ntimes, nshks)]
-        pt1 = ModelBaseEcon.update_auxvars(model, pt1)
+        pt1 = ModelBaseEcon.update_auxvars(pt1, model)
         for i = 1:nauxs
             result[2 * (nvars + i)] = (pt1[time0, nvars + nshks + i] - pt0[time0, nvars + nshks + i]) / shift
         end
@@ -90,7 +90,7 @@ function clear_sstate!(model::Model; lvl = 0.1, slp = 0.0, verbose = model.optio
     ss.values[foo + 1:2:end] .= 0.0
     ss.values[2:2:end] .= slp  # default initial guess for slope
     ss.mask[:] .= false
-    return _do_update_aux_presolve!(model; verbose = verbose)
+    return _do_update_auxvars_presolve!(model; verbose = verbose)
 end
 export clear_sstate!
 @assert precompile(clear_sstate!, (Model,))

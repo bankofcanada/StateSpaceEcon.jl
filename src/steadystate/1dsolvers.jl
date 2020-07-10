@@ -6,6 +6,17 @@ This file contains a couple of solvers used in SteadyStateSolver.
 The functions here solve a problem where a multivariate function is
 solved in a single coordinate, keeping the other coordinates fixed.
 We have 1d- Newton and a variant of the bisection method.
+
+### Important note: 
+These functions are used in pre-solving the steady state. 
+They have a peculiar feature that they fail if the first derivative is zero.
+Normally, if the residual is zero, that would be a solution regardless of
+the first derivative. However, in the context of presolving the steady state
+we have to consider that the first derivative might be zero because the variable
+actually cancels out of the equation. In that case, any value would
+result in zero residual, but we can't consider that to be a solution.
+For this reason, the implementations in this file deliberately fail
+if the derivative is zero, even if the residual is zero.
 """
 
 # This line intentionally left blank
@@ -122,6 +133,11 @@ function bisect!(F::Function, vals::AbstractVector{T}, ind::Int64, deriv::T; max
     #######################################################################
     # The problem is to find two points that bracket the solution, i.e. such 
     # that f(x0) and f(x1) have opposite signs. 
+    
+    # With the sign of f0 and the known derivative at x0 we can search for x1 
+    # in the direction in which the function approaches zero.)
+    # if the derivative is zero at the initial point, that's an argument error
+    abs(deriv) < 1e-10 && return false
 
     # First point - that's easy
     x0 = vals[ind]
@@ -129,10 +145,6 @@ function bisect!(F::Function, vals::AbstractVector{T}, ind::Int64, deriv::T; max
     # is x0 the solution? 
     abs(f0) < tol && return true
 
-    # With the sign of f0 and the known derivative at x0 we can search for x1 
-    # in the direction in which the function approaches zero.)
-    # if the derivative is zero at the initial point, that's an argument error
-    abs(deriv) < 1e-10 && return false
     # Try a line search in the Newton direction
     step = -f0 / deriv
     x1 = x0 + step

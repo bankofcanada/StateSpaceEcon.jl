@@ -58,14 +58,18 @@ function presolve_sstate!(model::Model, mask::AbstractVector{Bool}, values::Abst
                     if abs(vals[ind]) < 1e-10
                         vals[ind] = 0.0
                     end
-                    verbose && @info "Presolved $eqind $sseqn for $sym = $(vals[ind])"
+                    if verbose
+                        pt_info = NamedTuple{tuple(sseqn.vsyms...)}(vals)
+                        @info "Presolved $eqind: $sseqn for $sym = $(vals[ind])" pt_info
+                    end
                     mask[sseqn.vinds[ind]] = true
                     updated = true
                 else
                     vals[ind] = foo
-                    vsyms = tuple(sseqn.vsyms...)
-                    vvals = tuple(vals...)
-                    verbose && @info "Failed to presolve $eqind $sseqn for $sym" vsyms vvals
+                    if verbose
+                        pt_info = NamedTuple{tuple(sseqn.vsyms...)}(vals)
+                        @info "Failed to presolve $eqind: $sseqn for $sym" pt_info
+                    end
                 end
             end
         end

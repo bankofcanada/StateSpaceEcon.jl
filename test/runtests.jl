@@ -1,6 +1,6 @@
 using StateSpaceEcon
-using Test
 
+using Test
 
 @testset "1dsolvers" begin
     # f(x) = (x-2)*(x-3) = a x^2 + b x + c with vals = [a, x, b, c]
@@ -25,3 +25,11 @@ using Test
         @test vals ≈ [1.0, 3.0, -5.0, 6.0] atol = 1e3 * eps()
     end
 end
+
+using ModelBaseEcon
+@using_example M1
+@using_example M2
+@using_example M6
+@using_example M7
+
+include("sstests.jl")
