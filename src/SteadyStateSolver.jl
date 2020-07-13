@@ -1,7 +1,8 @@
 """
     SteadyStateSolver
 
-A module that is part of StateSpaceEcon package. Contains methods for finding a steady state of a model.
+A module that is part of StateSpaceEcon package.
+Contains methods for finding a steady state of a model.
 """
 module SteadyStateSolver
 
@@ -24,3 +25,9 @@ include("steadystate/diagnose.jl")
 include("steadystate/sssolve.jl")
 
 end # module
+
+using .SteadyStateSolver
+export clear_sstate!
+export initial_sstate!
+export check_sstate
+export sssolve!
