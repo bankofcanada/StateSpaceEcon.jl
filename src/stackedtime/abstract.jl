@@ -28,6 +28,7 @@ To implement a derived class, one must specialize the following methods for the 
   * `assign_exog_data!(x, exog, sd)` - this function applies the exogenous constraints as per the plan and the given exogenous data.
   * `assign_final_condition!(x, exog, sd, ::Val{T})` where T is one of the FCType constants. This method applies the given type of final condition. If T is fcgiven, the values of the final confitions are taken from exog.
   * `assign_update_step(x, lambda, dx, sd)` - this method must implement x = x + lambda * dx
+  * `set_plan!(sd, model, plan)` - update the solver data to reflect the given simulation plan.
 """
 abstract type AbstractSolverData end
 
@@ -72,3 +73,11 @@ Assign the iterative update. Equivalent to `x = x + lambda * dx`.
 @inline assign_update_step!(x::AbstractArray{Float64}, lambda::Float64, Δx::AbstractArray{Float64}, ::AbstractSolverData) = BLAS.axpy!(lambda, Δx, x)  # axpy!(a,x,y) <=> y .= a .* x .+ y
 
 
+"""
+    set_plan!(sd, model, plan)
+
+Update the solver data structure for the given simulation plan.
+The `model` must be the same instance that was used to create `sd`. Typically, the plan should span the same range as
+the one used when `sd` was created, although it might have different exogenous/endogenous assignments.
+"""
+set_plan!(sd::AbstractSolverData, m::Model, p::Plan) = error("Not implemented for $(typeof(sd)).")

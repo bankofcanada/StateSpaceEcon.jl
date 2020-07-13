@@ -15,7 +15,8 @@ using Printf
 
 using ModelBaseEcon
 
-include("dynamic/abstract.jl")
+include("stackedtime/abstract.jl")
+include("stackedtime/solverdata.jl")
 
 end # module
 
