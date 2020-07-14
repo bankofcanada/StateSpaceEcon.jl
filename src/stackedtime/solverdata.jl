@@ -50,12 +50,13 @@ end
 """
     set_plan!(sd::StackedTimeSolverData, model, plan; changed=false)
 
-Implementation for the Stacked Time algorithm.
-Plan must have the same range as the original plan.
+Implementation for the Stacked Time algorithm. Plan must have the same range as
+the original plan.
 
 By default the data structure is updated only if an actual change in the plan is
-detected. Setting the `changed` flag to `true` forces the update even if the plan
-seems unchanged. This necessary only in rare circumstances.
+detected. Setting the `changed` flag to `true` forces the update even if the
+plan seems unchanged. This necessary only in rare circumstances.
+
 """
 function set_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = false)
     if sd.NT != length(p.range)
@@ -113,11 +114,9 @@ end
 """
     make_BI(J, II)
 
-Prepares the `BI` array for the solver data.
-Called from the constructor of `StackedTimeSolverData`.
+Prepares the `BI` array for the solver data. Called from the constructor of
+`StackedTimeSolverData`.
 
-!!! note
-    Internal function, not meant to be called directly by the user.
 """
 function make_BI(JMAT::SparseMatrixCSC{Float64,Int64}, II::AbstractVector{<:AbstractVector{Int64}})
     # Computes the set of indexes in JMAT.nzval corresponding to blocks of equations in II
@@ -144,11 +143,11 @@ function make_BI(JMAT::SparseMatrixCSC{Float64,Int64}, II::AbstractVector{<:Abst
 end
 
 """
-    SimulationSolverData(model, plan, fctype)
+    StackedTimeSolverData(model, plan, fctype)
 
 
 """
-function SimulationSolverData(m::Model, p::Plan, fctype::FCType)
+function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
 
     # NOTE: we do not verify the steady state, just make sure it's been assigned
     if fctype ∈ (fclevel, fcslope) && !issssolved(m)
@@ -166,14 +165,14 @@ function SimulationSolverData(m::Model, p::Plan, fctype::FCType)
     # @assert NTIC+NTSIM+NTFC == NT
     # @assert isempty((collect(init)∩collect(sim))∪(collect(init)∩collect(sim))∪(collect(sim)∩collect(term)))
 
-    unknowns = vcat(m.variables, m.shocks, m.auxvars)
+    unknowns = allvars(m)
     nunknowns = length(unknowns)
 
-    nvars = length(m.variables)
-    nshks = length(m.shocks)
-    nauxs = length(m.auxvars)
+    nvars = nvariables(m)
+    nshks = nshocks(m)
+    nauxs = nauxvars(m)
 
-    equations = m.alleqns
+    equations = alleqns(m)
     nequations = length(equations)
 
     # LinearIndices used for indexing the columns of the global matrix
@@ -241,6 +240,8 @@ function SimulationSolverData(m::Model, p::Plan, fctype::FCType)
     #     # for the shocks we set the t-1 coefficient to 0.0 (value = 0)
     #     @timer JFCMAT.nzval[BIFC[end][NTFC*nvars*2+1:2:NTFC*(nvars+nshks)*2]] .= 0.0
     # end
+    ##############
+    ##############
 
     # 
     exog_mask::Vector{Bool} = falses(nunknowns * NT)
@@ -255,10 +256,90 @@ function SimulationSolverData(m::Model, p::Plan, fctype::FCType)
     # The solve_mask is redundant. We pre-compute and store it for speed
     solve_mask = .!(fc_mask .| exog_mask)
 
-    g = SimulationSolverData(NT, nvars, nshks, nunknowns, fctype, TT, II, JJ, BI, JMAT, 
+    sd = StackedTimeSolverData(NT, nvars, nshks, nunknowns, fctype, TT, II, JJ, BI, JMAT, 
                              sparse([], [], Float64[], NTFC * nunknowns, size(JMAT, 1)), 
                              m.sstate.values, m.evaldata, exog_mask, fc_mask, solve_mask, 
                              [nothing])
 
-    return set_plan!(g, m, p; changed = true)
+    return set_plan!(sd, m, p; changed = true)
+end
+
+@inline function assign_exog_data!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
+    # @assert size(x,1) == size(exog,1) == sd.NT
+    x[sd.exog_mask] = exog[sd.exog_mask]
+    assign_final_condition!(x, exog, sd, Val(sd.FC))
+    return x
+end
+
+@inline function assign_final_condition!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcgiven})
+    x[sd.TT[end],:] = exog[sd.TT[end],:]
+    return x
+end
+
+@inline function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fclevel})
+    LVLV = @view sd.SSV[1:2:(2 * sd.NV)]
+    LVLA = @view sd.SSV[2 * sd.NV + 1:2:end]
+    for t in sd.TT[end]
+        x[t,1:sd.NV] = LVLV
+        x[t,sd.NV + 1:sd.NV + sd.NS] .= 0.0 # slopes are always 0 in final conditions using steady state
+        x[t,sd.NV + sd.NS + 1:end] = LVLA
+    end
+    return x
+end
+
+@inline function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcslope})
+    LVLV = @view sd.SSV[1:2:(2 * sd.NV)]
+    SLPV = @view sd.SSV[2:2:(2 * sd.NV)]
+    LVLA = @view sd.SSV[2 * sd.NV + 1:2:end]
+    SLPA = @view sd.SSV[2 * sd.NV + 2:2:end]
+    for t in sd.TT[end]
+        x[t,1:sd.NV] = x[t - 1,1:sd.NV] .+ SLPV 
+        x[t,sd.NV + 1:sd.NV + sd.NS] .= 0.0  # slopes are always 0 in final conditions using steady state
+        x[t,sd.NV + sd.NS + 1:end] = x[t - 1,sd.NV + sd.NS + 1:end] .+ SLPA
+    end
+    return x
+end
+
+function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData) 
+    nunknowns = sd.NU
+    point = reshape(point, sd.NT, nunknowns)
+    exog_data = reshape(exog_data, sd.NT, nunknowns)
+    JAC = sd.J
+    RES = Vector{Float64}(undef, size(JAC, 1))
+    # Model equations @ [1] to [end-1]
+    haveJ = isa(sd.evaldata, LinearizedModelEvaluationData) && !any(isnan.(JAC.nzval))
+    haveLU = sd.luJ[1] !== nothing
+    if haveJ
+        # update only RES
+        @timer "globalRJ/evalR!" for i = 1:length(sd.BI)
+            eval_R!(view(RES, sd.II[i]), point[sd.TT[i],:], sd.evaldata)
+        end
+    else
+        # update both RES and JAC
+        @timer "globalRJ/evalRJ" for i = 1:length(sd.BI)
+            R, J = eval_RJ(point[sd.TT[i],:], sd.evaldata)
+            RES[sd.II[i]] .= R
+            JAC.nzval[sd.BI[i]] .= J.nzval
+        end
+        haveLU = false
+    end
+    if !haveLU
+        if sd.FC == fcslope
+            JJ = JAC[:, sd.solve_mask] - JAC[:, sd.fc_mask] * sd.CiSc
+        else
+            JJ = JAC[:, sd.solve_mask]
+        end
+        # compute lu decomposition of the active part of J and cache it.
+        @timer "LU decomposition" sd.luJ[1] = lu(JJ)
+    end
+    return RES, sd.luJ[1]
+end
+
+function assign_update_step!(x::AbstractArray{Float64}, λ::Float64, Δx::AbstractArray{Float64}, sd::StackedTimeSolverData)
+    x[sd.solve_mask] .+= λ .* Δx
+    if sd.FC == fcslope
+        x[sd.fc_mask] .-= λ .* (sd.CiSc * Δx)
+        # assign_final_condition!(x, zeros(0,0), sd, Val(fcslope))
+    end
+    return x
 end

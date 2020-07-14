@@ -17,6 +17,7 @@ using ModelBaseEcon
 
 include("stackedtime/abstract.jl")
 include("stackedtime/solverdata.jl")
+include("stackedtime/simulate.jl")
 
 end # module
 
