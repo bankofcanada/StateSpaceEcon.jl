@@ -1,6 +1,4 @@
 
-using ModelBaseEcon.AbstractModelEvaluationData
-
 export StackedTimeSolverData
 """
     StackedTimeSolverData <: AbstractSolverData
@@ -35,7 +33,7 @@ struct StackedTimeSolverData <: AbstractSolverData
     "The steady state data, used for FC ∈ (fclevel, fcslope)."
     SSV::AbstractVector{Float64}
     "The `evaldata` from the model, used to evaluate RJ and R!"
-    evaldata::AbstractModelEvaluationData
+    evaldata::ModelBaseEcon.AbstractModelEvaluationData
     "Keep track of which variables are set by exogenous constraints."
     exog_mask::Vector{Bool}
     "Keep track of which variables are set by final conditions."
@@ -74,7 +72,7 @@ function set_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = false
     unknowns = m.allvars
     foo = falses(sd.NU)
     for t in sim
-        s = p.exogenous[t]
+        s = p[t]
         si = indexin(s, unknowns)
         fill!(foo, false)
         foo[si] .= true
@@ -165,14 +163,14 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
     # @assert NTIC+NTSIM+NTFC == NT
     # @assert isempty((collect(init)∩collect(sim))∪(collect(init)∩collect(sim))∪(collect(sim)∩collect(term)))
 
-    unknowns = allvars(m)
+    unknowns = ModelBaseEcon.allvars(m)
     nunknowns = length(unknowns)
 
-    nvars = nvariables(m)
-    nshks = nshocks(m)
-    nauxs = nauxvars(m)
+    nvars = ModelBaseEcon.nvariables(m)
+    nshks = ModelBaseEcon.nshocks(m)
+    nauxs = ModelBaseEcon.nauxvars(m)
 
-    equations = alleqns(m)
+    equations = ModelBaseEcon.alleqns(m)
     nequations = length(equations)
 
     # LinearIndices used for indexing the columns of the global matrix
@@ -208,7 +206,7 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
 
     # BI holds the indexes in JMAT.nzval for each block of equations
     # @timer JMAT.nzval .= 1:nnz(JMAT)  # encode nnz entries with their index
-    # @timer BI = [JMAT[ii,:].nzval for ii in II]  # re-distribute the nnz indexes accorting to II
+    # @timer BI = [JMAT[ii,:].nzval for ii in II]  # re-distribute the nnz indexes according to II
     BI = make_BI(JMAT, II)  # same as the two lines above, but faster
 
     # We also need the times of the final conditions
@@ -300,6 +298,16 @@ end
     return x
 end
 
+function global_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
+    point = reshape(point, sd.NT, sd.NU)
+    exog_data = reshape(point, sd.NT, sd.NU)
+    @timer "global_R!" begin
+        for (ii, tt) in zip(sd.II, sd.TT)
+            eval_R!(view(res, ii), point[tt,:], sd.evaldata)
+        end
+    end
+end
+
 function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData) 
     nunknowns = sd.NU
     point = reshape(point, sd.NT, nunknowns)
@@ -307,7 +315,7 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
     JAC = sd.J
     RES = Vector{Float64}(undef, size(JAC, 1))
     # Model equations @ [1] to [end-1]
-    haveJ = isa(sd.evaldata, LinearizedModelEvaluationData) && !any(isnan.(JAC.nzval))
+    haveJ = isa(sd.evaldata, ModelBaseEcon.LinearizedModelEvaluationData) && !any(isnan.(JAC.nzval))
     haveLU = sd.luJ[1] !== nothing
     if haveJ
         # update only RES
