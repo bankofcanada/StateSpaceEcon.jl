@@ -29,7 +29,11 @@ end
 using ModelBaseEcon
 @using_example M1
 @using_example M2
+@using_example M3
+@using_example M3nl
 @using_example M6
 @using_example M7
+@using_example M7A
 
 include("sstests.jl")
+include("simtests.jl")
