@@ -12,5 +12,7 @@ using ModelBaseEcon.Timer
 
 include("SteadyStateSolver.jl")
 include("Plans.jl")
+include("StackedTimeSolver.jl")
+include("misc.jl")
 
 end # module

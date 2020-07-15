@@ -1,11 +1,11 @@
 """
-    DynamicSolver
+    StackedTimeSolver
 
 A module that is part of StateSpaceEcon package.
 Contains methods for solving the dynamic system of equations
 for the model and running simulations.
 """
-module DynamicSolver
+module StackedTimeSolver
 
 using SparseArrays
 using LinearAlgebra
@@ -15,11 +15,14 @@ using Printf
 
 using ModelBaseEcon
 
+using ..Plans
+
 include("stackedtime/abstract.jl")
 include("stackedtime/solverdata.jl")
 include("stackedtime/simulate.jl")
 
 end # module
 
-using .DynamicSolver
+using .StackedTimeSolver
 export FCType, fcgiven, fclevel, fcslope
+export simulate

@@ -40,7 +40,7 @@ function sim_nr!(x::AbstractArray{Float64}, sd::AbstractSolverData,
 end
 
 
-
+export simulate
 """
     simulate(model, plan, data; <options>)
 
@@ -70,16 +70,16 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     end
     exog_data = hcat(exog_data, zeros(size(exog_data, 1), nauxs))
     if !isempty(initial_guess)
-        x = @timer update_aux(m, initial_guess)
+        x = @timer ModelBaseEcon.update_auxvars(initial_guess, m)
     else
-        x = @timer update_aux(m, exog_data)
+        x = @timer ModelBaseEcon.update_auxvars(exog_data, m)
     end
     if linearize
         org_med = m.evaldata
         linearize!(m; deviation = deviation)
     end
     if anticipate
-        @timer gdata = SimulationSolverData(m, p, fctype)
+        @timer gdata = StackedTimeSolverData(m, p, fctype)
         @timer assign_exog_data!(x, exog_data, gdata)
         @timer sim_nr!(x, gdata, maxiter, tol, verbose, sparse_solver)
     else # unanticipated shocks
@@ -104,7 +104,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                     continue
                 end
                 pt.exogenous[t0] = p.exogenous[t]
-                @timer gdata = SimulationSolverData(m, pt, fctype)
+                @timer gdata = StackedTimeSolverData(m, pt, fctype)
                 exog_inds = indexin(pt.exogenous[t0], m.allvars)
                 x[t,exog_inds] = exog_data[t,exog_inds]
                 # @timer assign_exog_data!(x[pt.range,:], exog_data[pt.range,:], gdata)
@@ -130,7 +130,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 # and only the first period is imposed
                 psim = Plan(m, t:T)
                 psim.exogenous[t0] = copy(p.exogenous[t])
-                sdata = SimulationSolverData(m, psim, fctype)
+                sdata = StackedTimeSolverData(m, psim, fctype)
                 xx = view(x, psim.range, :)
                 assign_exog_data!(xx, exog_data[psim.range, :], sdata)
                 sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver)
@@ -139,7 +139,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
             shocks = Set(m.shocks)
             last_t::Int64 = t0
             psim = Plan(m, 0:expectation_horizon - 1)
-            sdata = SimulationSolverData(m, psim, fcslope)
+            sdata = StackedTimeSolverData(m, psim, fcslope)
             for t in Iterators.drop(sim, 1)
                 # we need to run a simulation if a variable is exogenous, or if a shock value is not zero
                 # these intermediate simulations are always with fcslope, 
@@ -171,7 +171,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 if (last_t + expectation_horizon < T) || (fctype != fcslope)
                     psim = Plan(m, last_t + 1:T)
                     # there are no unanticipated shocks in this simulation
-                    sdata = SimulationSolverData(m, psim, fctype)
+                    sdata = StackedTimeSolverData(m, psim, fctype)
                     # the initial conditions and the exogenous data are already in x
                     # we only need the final conditions
                     xx = view(x, psim.range, :)
