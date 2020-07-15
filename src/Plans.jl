@@ -34,10 +34,10 @@ using ModelBaseEcon
 # exported from this module that are also exported from StateSpaceEcon
 export Plan,
     exogenize!, endogenize!, exog_endo!, endo_exog!, autoexogenize!,
-    zeroarray, zerodict, steadystatearray, steadystatedict
+    zeroarray, zerodict, steadystatearray, steadystatedict, zerodata, steadystatedata
 
 # exported from this module, but meant for internal use in StateSpaceEcon
-export plansum, makeexogenizedata
+export plansum
 
 
 """
@@ -48,8 +48,8 @@ the time range of the simulation and which variables/shocks are exogenous at
 each period.
 
 """
-struct Plan{T} <: AbstractVector{Vector{Symbol}}
-    range::AbstractRange{T}
+struct Plan{T <: MIT} <: AbstractVector{Vector{Symbol}}
+    range::AbstractUnitRange{T}
     varsshks::NamedTuple
     exogenous::BitArray{2}
 end
@@ -62,13 +62,16 @@ range of the plan is augmented to include periods before and after the given
 range, over which initial and final conditions will be applied.
 
 """
-function Plan(model::Model, range::AbstractRange)
+function Plan(model::Model, range::AbstractUnitRange)
+    if !(eltype(range) <: MIT)
+        range = UnitRange{MIT{Unit}}(range)
+    end
     range = (first(range) - model.maxlag):(last(range) + model.maxlead)
     nvars = ModelBaseEcon.nvariables(model)
     nshks = ModelBaseEcon.nshocks(model)
     vs_names = tuple(ModelBaseEcon.variables(model)..., ModelBaseEcon.shocks(model)...)
     varsshks = NamedTuple{vs_names}(1:(nvars + nshks))
-    return Plan{eltype(range)}(range, varsshks, BitArray(var ≤ nvars for _ in range, var = 1:(nvars + nshks)))
+    return Plan{eltype(range)}(range, varsshks, BitArray(var > nvars for _ in range, var = 1:(nvars + nshks)))
 end
 
 #######################################
@@ -79,7 +82,8 @@ Base.axes(p::Plan) = (p.range,)
 Base.length(p::Plan) = length(p.range)
 Base.IndexStyle(::Plan) = IndexLinear()
 
-function Base.getindex(p::Plan{T}, idx::T) where T 
+Base.getindex(p::Plan{MIT{Unit}}, idx::Int) = p[ii(idx)]
+function Base.getindex(p::Plan{T}, idx::T) where T <: MIT
     # error("")
     if first(p.range) ≤ idx ≤ last(p.range)
         vals = view(p.exogenous, idx - first(p.range) + 1, :)
@@ -89,13 +93,15 @@ function Base.getindex(p::Plan{T}, idx::T) where T
     end
 end
 
-function Base.getindex(p::Plan{T}, rng::AbstractRange{T}) where T
+Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}) = p[UnitRange{MIT{Unit}}(rng)]
+function Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}) where T <: MIT
     rng.start < p.range.start && throw(BoundsError(p, rng.start))
     rng.stop > p.range.stop && throw(BoundsError(p, rng.stop))
     return Plan{T}(rng, p.varsshks, p.exogenous[1 - p.range.start .+ rng, :])
 end
 
-function Base.getindex(p::Plan{T}, rng::AbstractRange{T}, m::Model) where T
+Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}, m::Model) = p[UnitRange{MIT{Unit}}(rng), m]
+function Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}, m::Model) where T <: MIT
     rng = (rng.start - m.maxlag):(rng.stop + m.maxlead)
     return p[rng]
 end
@@ -143,7 +149,7 @@ Modify the status of the given variable(s) on the given date(s). If `value` is
 `true` then variables become exogenous, otherwise they become endogenous.
 
 """
-function setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::AbstractRange{T}) where T
+function setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::AbstractUnitRange{T}) where T <: MIT
     firstindex(p) ≤ first(date) && last(date) ≤ lastindex(p) || throw(BoundsError(p, date))
     idx1 = 1 - firstindex(p) .+ date
     for v in vars
@@ -155,8 +161,10 @@ function setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::Abstr
     end
     return p
 end
-setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::T) where T = setplanvalue!(p, val, vars, date:date)
-setplanvalue!(p::Plan, val::Bool, vars::Array{Symbol,1}, dates) = (foreach(d->setplanvalue!(p, val, vars, d), dates); p)
+setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::Array{Symbol,1}, date::AbstractUnitRange{Int}) = setplanvalue!(p, val, vars, UnitRange{MIT{Unit}}(date))
+setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::Array{Symbol,1}, date::Integer) = setplanvalue!(p, val, vars, ii(date):ii(date))
+setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::T) where T <: MIT = setplanvalue!(p, val, vars, date:date)
+setplanvalue!(p::Plan, val::Bool, vars::Array{Symbol,1}, date) = (foreach(d->setplanvalue!(p, val, vars, d), date); p)
 
 
 """
@@ -168,10 +176,10 @@ be a moment in time (same type as the plan), or a range or an iterable or a
 container.
 
 """
-exogenize!(p::Plan{T}, var::Symbol, date::Union{T,AbstractRange{T}}) where T = setplanvalue!(p, true, [var,], date)
-exogenize!(p::Plan{T}, var::AbstractString, date::Union{T,AbstractRange{T}}) where T = setplanvalue!(p, true, [Symbol(var),], date)
-exogenize!(p::Plan{T}, vars::Vector{<:AbstractString}, date::Union{T,AbstractRange{T}}) where T = setplanvalue!(p, true, map(Symbol, vars), date)
-exogenize!(p::Plan{T}, vars::Vector{Symbol}, date::Union{T,AbstractRange{T}}) where T = setplanvalue!(p, true, vars, date)
+exogenize!(p::Plan, var::Symbol, date) = setplanvalue!(p, true, [var,], date)
+exogenize!(p::Plan, var::AbstractString, date) = setplanvalue!(p, true, [Symbol(var),], date)
+exogenize!(p::Plan, vars::Vector{<:AbstractString}, date) = setplanvalue!(p, true, map(Symbol, vars), date)
+exogenize!(p::Plan, vars::Vector{Symbol}, date) = setplanvalue!(p, true, vars, date)
 
 
 """
@@ -183,10 +191,10 @@ given dates. `vars` can be a `Symbol` or a `String` or a `Vector` of such.
 iterable or a container.
 
 """
-endogenize!(p::Plan{T}, var::Symbol, date::Union{T,AbstractRange{T}}) where T = setplanvalue!(p, false, [var,], date)
-endogenize!(p::Plan{T}, var::AbstractString, date::Union{T,AbstractRange{T}}) where T = setplanvalue!(p, false, [Symbol(var),], date)
-endogenize!(p::Plan{T}, vars::Vector{<:AbstractString}, date::Union{T,AbstractRange{T}}) where T = setplanvalue!(p, false, map(Symbol, vars), date)
-endogenize!(p::Plan{T}, vars::Vector{Symbol}, date::Union{T,AbstractRange{T}}) where T = setplanvalue!(p, false, vars, date)
+endogenize!(p::Plan, var::Symbol, date) = setplanvalue!(p, false, [var,], date)
+endogenize!(p::Plan, var::AbstractString, date) = setplanvalue!(p, false, [Symbol(var),], date)
+endogenize!(p::Plan, vars::Vector{<:AbstractString}, date) = setplanvalue!(p, false, map(Symbol, vars), date)
+endogenize!(p::Plan, vars::Vector{Symbol}, date) = setplanvalue!(p, false, vars, date)
 
 
 """
@@ -229,7 +237,7 @@ container.
 function autoexogenize!(p::Plan, m::Model, date)
     auto_vars = collect(keys(m.autoexogenize))
     auto_shks = collect(values(m.autoexogenize))
-    endo_exog!(p, auto_vars, auto_shks, date)
+    exog_endo!(p, auto_vars, auto_shks, date)
 end
 
 #######################################
@@ -244,11 +252,12 @@ with the given plan or over the given range. If a range is given, the data is pr
 default plan. This means that appropriate number of periods are added before and
 after the range to account for initial and final conditions.
 
-See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref), [`steadystatedict`](@ref)
+See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
+[`steadystatedict`](@ref)
 
 """
 zeroarray(::Model, p::Plan) = zeros(Float64, size(p.exogenous))
-zeroarray(m::Model, rng::AbstractRange) = zeroarray(m, Plan(m, rng))
+zeroarray(m::Model, rng::AbstractUnitRange) = zeroarray(m, Plan(m, rng))
 
 """
     zerodict(model, plan)
@@ -260,11 +269,29 @@ range. If a range is given rather than a plan, the data is prepared for the
 default plan over that range. This means that appropriate number of periods are
 added before and after the range to account for initial and final conditions.
 
-See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref), [`steadystatedict`](@ref)
+See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
+[`steadystatedict`](@ref)
 
 """
 zerodict(::Model, p::Plan) = Dict(string(v) => Series(p.range, 0.0) for v in keys(p.varsshks))
-zerodict(m::Model, rng::AbstractRange) = zerodict(m, Plan(m, rng))
+zerodict(m::Model, rng::AbstractUnitRange) = zerodict(m, Plan(m, rng))
+
+"""
+    zerodata(model, plan)
+    zerodata(model, range)
+
+Create a `NamedTuple` containing a Series of the appropriate range for each
+variable in the model for a simulation with the given plan or over the given
+range. If a range is given rather than a plan, the data is prepared for the
+default plan over that range. This means that appropriate number of periods are
+added before and after the range to account for initial and final conditions.
+
+See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
+[`steadystatedict`](@ref)
+
+"""
+zerodata(::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((Series(p.range,0.0) for _ in p.varsshks)...,))
+zerodata(m::Model, rng::AbstractUnitRange) = zerodata(m, Plan(m, rng))
 
 """
     steadystatearray(model, plan)
@@ -276,10 +303,11 @@ steady state level of each variable. If a range is given rather than a plan, it
 is augmented with periods before and after the given range in order to
 accommodate initial and final conditions.
 
-See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref), [`steadystatedict`](@ref)
+See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
+[`steadystatedict`](@ref)
 
 """
-steadystatearray(m::Model, rng::AbstractRange) = steadystatearray(m, Plan(m, rng))
+steadystatearray(m::Model, rng::AbstractUnitRange) = steadystatearray(m, Plan(m, rng))
 steadystatearray(m::Model, p::Plan) = Float64[i <= ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0.0 for _ in p.range, (v, i) = pairs(p.varsshks)]
 
 """
@@ -292,11 +320,29 @@ range. The matrix is initialized with the steady state level of each variable.
 If a range is given rather than a plan, it is augmented with periods before and
 after the given range in order to accommodate initial and final conditions.
 
-See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref), [`steadystatedict`](@ref)
+See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
+[`steadystatedict`](@ref)
 
 """
-steadystatedict(m::Model, rng::AbstractRange) = steadystatedict(m, Plan(m, rng))
+steadystatedict(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
 steadystatedict(m::Model, p::Plan) = Dict(string(v) => Series(p.range, i <= ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0.0) for (v, i) in pairs(p.varsshks))
+
+"""
+    steadystatedata(model, plan)
+    steadystatedata(model, range)
+
+Create a dictionary containing a Series of the appropriate range for each
+variable in the model for a simulation with the given plan or over the given
+range. The matrix is initialized with the steady state level of each variable.
+If a range is given rather than a plan, it is augmented with periods before and
+after the given range in order to accommodate initial and final conditions.
+
+See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
+[`steadystatedict`](@ref)
+
+"""
+steadystatedata(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
+steadystatedata(m::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((Series(p.range, i≤ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0) for (v,i) in pairs(p.varsshks))...,))
 
 #######################################
 # The internal interface to simulations code.
@@ -309,24 +355,6 @@ over which initial and final conditions are imposed are not counted in this sum.
 
 """
 plansum(m::Model, p::Plan) = sum(p.exogenous[(1 + m.maxlag):(end - m.maxlead), :])
-
-"""
-    makeexogenizedata(model, plan, t::Int, data)
-
-Extract from the `data` vector the values of the exogenous variables at the
-given time. `data` must be a 1-dimensional vector, i.e. only the row
-corresponding to the given date. `t` must be integer, regardless of the range
-type of the simulation. Value of 1 corresponds to the first period of the plan
-(the plan contains initial conditions, so the first period of the simulation has
-Integer index m.maxlag+1).
-
-"""
-function makeexogenizedata(m::Model, p::Plan, t::Int64, data)
-    names = p[firstindex(p) + t - 1]
-    values = data[p.exogenous[t,:]]
-    return NamedTuple{tuple(names...)}(values)
-end
-
 
 end # module Plans
 
