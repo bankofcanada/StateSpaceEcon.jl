@@ -131,6 +131,9 @@ end
 #############################################################
 # Tests of unanticipated shocks
 
+@info """ Unanticipated shock tests are disabled because the code needs to be
+refactored for the new behaviour of Plan """
+
 #=
 
 @testset "M1.unant" begin
