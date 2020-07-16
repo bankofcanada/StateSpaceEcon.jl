@@ -131,11 +131,6 @@ end
 #############################################################
 # Tests of unanticipated shocks
 
-@info """ Unanticipated shock tests are disabled because the code needs to be
-refactored for the new behaviour of Plan """
-
-#=
-
 @testset "M1.unant" begin
     m = M1.model
     m.α = m.β = 0.5
@@ -291,5 +286,5 @@ end
     end
 end
 
-=# 
+ 
 

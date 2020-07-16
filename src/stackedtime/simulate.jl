@@ -98,19 +98,19 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         if expectation_horizon === nothing
             # the original code, where we always simulate until the end with the true final conditions
             for t in sim
-                pt = Plan(m, t:T)
-                if (t != t0) && (pt.exogenous[t0] == p.exogenous[t]) &&
-                    (maximum(abs, exog_data[t,shkinds]) < tol)
+                exog_inds = p[t, Val(:inds)]
+                psim = Plan(m, t:T)
+                if (t != t0) && (psim[t0, Val(:inds)] == exog_inds) && (maximum(abs, exog_data[t,shkinds]) < tol)
                     continue
                 end
-                pt.exogenous[t0] = p.exogenous[t]
-                @timer gdata = StackedTimeSolverData(m, pt, fctype)
-                exog_inds = indexin(pt.exogenous[t0], m.allvars)
+                setexog!(psim, t0, exog_inds)
+                @timer gdata = StackedTimeSolverData(m, psim, fctype)
                 x[t,exog_inds] = exog_data[t,exog_inds]
-                # @timer assign_exog_data!(x[pt.range,:], exog_data[pt.range,:], gdata)
-                xx = view(x, pt.range, :)
-                assign_final_condition!(xx, exog_data[pt.range,:], gdata, Val(gdata.FC))
-                @timer sim_nr!(view(x, pt.range, :), gdata, maxiter, tol, verbose, sparse_solver)
+                # @timer assign_exog_data!(x[psim.range,:], exog_data[psim.range,:], gdata)
+                sim_range = UnitRange{Int}(psim.range)
+                xx = view(x, sim_range, :)
+                assign_final_condition!(xx, exog_data[sim_range,:], gdata, Val(gdata.FC))
+                @timer sim_nr!(xx, gdata, maxiter, tol, verbose, sparse_solver)
             end
         else
             # the new code, where the first and last simulations use the true 
@@ -128,35 +128,37 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
             let t = t0  
                 # first run is with the full range, the true fctype, 
                 # and only the first period is imposed
+                exog_inds = p[t, Val(:inds)]
                 psim = Plan(m, t:T)
-                psim.exogenous[t0] = copy(p.exogenous[t])
-                sdata = StackedTimeSolverData(m, psim, fctype)
-                xx = view(x, psim.range, :)
-                assign_exog_data!(xx, exog_data[psim.range, :], sdata)
+                setexog!(psim, t0, exog_inds)
+                @timer sdata = StackedTimeSolverData(m, psim, fctype)
+                sim_range = UnitRange{Int}(psim.range)
+                xx = view(x, sim_range, :)
+                assign_exog_data!(xx, exog_data[sim_range,:], sdata)
                 sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver)
             end
             # intermediate simulations
-            shocks = Set(m.shocks)
             last_t::Int64 = t0
             psim = Plan(m, 0:expectation_horizon - 1)
             sdata = StackedTimeSolverData(m, psim, fcslope)
-            for t in Iterators.drop(sim, 1)
+            for t in sim[2:end]
+                exog_inds = p[t, Val(:inds)]
                 # we need to run a simulation if a variable is exogenous, or if a shock value is not zero
                 # these intermediate simulations are always with fcslope, 
                 #       have length equal to expectation_horizon and 
                 #       only the first period is imposed
-                if (p.exogenous[t] == shocks) && (maximum(abs, exog_data[t, shkinds]) <= tol)
+                if (exog_inds == shkinds) && (maximum(abs, exog_data[t, shkinds]) <= tol)
                     continue
                 end
-                psim.exogenous[t0] = copy(p.exogenous[t])
-                set_plan!(sdata, m, psim)
+                setexog!(psim, t0, exog_inds)
+                update_plan!(sdata, m, psim)
                 # note that the range always goes from 0 to expectation_horizon-1, 
                 # so we need to add t in order to get the correct set of rows of x
-                xx = view(x, t .+ psim.range, :)
+                sim_range = t .+ UnitRange(psim.range)
+                xx = view(x, sim_range, :)
                 # The initial conditions are already set
                 # The exogenous values are already set as well, except for the first period
                 # In other words, we only need to impose the first period here
-                @timer exog_inds = indexin(p.exogenous[t], m.allvars)
                 @timer xx[t0, exog_inds] = exog_data[t, exog_inds]
                 # Update the final conditions
                 @timer assign_final_condition!(xx, zeros(0, 0), sdata, Val(fcslope))
@@ -174,8 +176,9 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                     sdata = StackedTimeSolverData(m, psim, fctype)
                     # the initial conditions and the exogenous data are already in x
                     # we only need the final conditions
-                    xx = view(x, psim.range, :)
-                    assign_final_condition!(xx, exog_data[psim.range, :], sdata, Val(fctype))
+                    sim_range = UnitRange(psim.range)
+                    xx = view(x, sim_range, :)
+                    assign_final_condition!(xx, exog_data[sim_range, :], sdata, Val(fctype))
                     @timer sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver)
                 end
             end

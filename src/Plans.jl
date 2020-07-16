@@ -82,24 +82,30 @@ Base.axes(p::Plan) = (p.range,)
 Base.length(p::Plan) = length(p.range)
 Base.IndexStyle(::Plan) = IndexLinear()
 
-Base.getindex(p::Plan{MIT{Unit}}, idx::Int) = p[ii(idx)]
-function Base.getindex(p::Plan{T}, idx::T) where T <: MIT
-    # error("")
-    if first(p.range) ≤ idx ≤ last(p.range)
-        vals = view(p.exogenous, idx - first(p.range) + 1, :)
-        return Symbol[k for (k, v) in pairs(p.varsshks) if vals[v]]
-    else
-        throw(BoundsError(p, idx))
-    end
+@inline _offset(p::Plan{T}, idx::T) where T = 1 - first(p.range) + idx
+@inline _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where T = 1 - first(p.range) .+ idx
+
+## Integer index is taken as is
+Base.getindex(p::Plan, idx::Int) = p[p.range[idx]]
+Base.getindex(p::Plan, idx::AbstractUnitRange{Int}) = p[p.range[idx]]
+Base.getindex(p::Plan, idx::Int, ::Val{:inds}) = findall(p.exogenous[idx,:])
+
+# Index of the frequency type returns the list of exogenous symbols
+Base.getindex(p::Plan{T}, idx::T) where T <: MIT = [keys(p.varsshks)[p[_offset(p,idx),Val(:inds)]]...,]
+function Base.getindex(p::Plan{T}, idx::T, ::Val{:inds}) where T <: MIT
+    first(p.range) ≤ idx ≤ last(p.range) || throw(BoundsError(p, idx))
+    return p[_offset(p, idx), Val(true)]
 end
 
+# A range returns the plan trimmed over that exact range.
 Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}) = p[UnitRange{MIT{Unit}}(rng)]
 function Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}) where T <: MIT
     rng.start < p.range.start && throw(BoundsError(p, rng.start))
     rng.stop > p.range.stop && throw(BoundsError(p, rng.stop))
-    return Plan{T}(rng, p.varsshks, p.exogenous[1 - p.range.start .+ rng, :])
+    return Plan{T}(rng, p.varsshks, p.exogenous[_offset(rng), :])
 end
 
+# A range with a model returns a plan trimmed over that range and extended for initial and final conditions.
 Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}, m::Model) = p[UnitRange{MIT{Unit}}(rng), m]
 function Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}, m::Model) where T <: MIT
     rng = (rng.start - m.maxlag):(rng.stop + m.maxlead)
@@ -107,7 +113,6 @@ function Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}, m::Model) where T 
 end
 
 Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize` and `endogenize` to alter plan.")
-
 
 #######################################
 # Pretty printing
@@ -290,7 +295,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-zerodata(::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((Series(p.range,0.0) for _ in p.varsshks)...,))
+zerodata(::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((Series(p.range, 0.0) for _ in p.varsshks)...,))
 zerodata(m::Model, rng::AbstractUnitRange) = zerodata(m, Plan(m, rng))
 
 """
@@ -342,7 +347,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatedata(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
-steadystatedata(m::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((Series(p.range, i≤ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0) for (v,i) in pairs(p.varsshks))...,))
+steadystatedata(m::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((Series(p.range, i ≤ ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0) for (v, i) in pairs(p.varsshks))...,))
 
 #######################################
 # The internal interface to simulations code.
@@ -355,6 +360,20 @@ over which initial and final conditions are imposed are not counted in this sum.
 
 """
 plansum(m::Model, p::Plan) = sum(p.exogenous[(1 + m.maxlag):(end - m.maxlead), :])
+
+export setexog!
+"""
+    setexog!(plan, t, vinds)
+
+Modify the plan at time t such that `vinds` are exogenous and the rest are
+endogenous.
+
+"""
+function setexog!(p::Plan, tt::Int, vinds)
+    p.exogenous[tt, :] .= false
+    p.exogenous[tt, vinds] .= true
+end
+setexog!(p::Plan{T}, tt::T, vinds) where T <: MIT = setexog!(p, _offset(p, tt), vinds)
 
 end # module Plans
 

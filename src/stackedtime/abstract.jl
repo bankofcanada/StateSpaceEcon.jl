@@ -38,7 +38,7 @@ To implement a derived class, one must specialize the following methods for the
     T is fcgiven, the values of the final conditions are taken from exog.
   * `assign_update_step(x, lambda, dx, sd)` - this method must implement x = x +
     lambda * dx
-  * `set_plan!(sd, model, plan)` - update the solver data to reflect the given
+  * `update_plan!(sd, model, plan)` - update the solver data to reflect the given
     simulation plan.
 
 """
@@ -98,7 +98,7 @@ function assign_update_step! end
 export assign_update_step!
 
 """
-    set_plan!(sd, model, plan)
+    update_plan!(sd, model, plan)
 
 Update the solver data structure for the given simulation plan. The `model` must
 be the same instance that was used to create `sd`. Typically, the plan should
@@ -106,5 +106,5 @@ span the same range as the one used when `sd` was created, although it might
 have different exogenous/endogenous assignments.
 
 """
-set_plan!(sd::AbstractSolverData, m::Model, p::Plan) = error("Not implemented for $(typeof(sd)).")
-export set_plan!
+update_plan!(sd::AbstractSolverData, m::Model, p::Plan) = error("Not implemented for $(typeof(sd)).")
+export update_plan!

@@ -46,7 +46,7 @@ end
 
 
 """
-    set_plan!(sd::StackedTimeSolverData, model, plan; changed=false)
+    update_plan!(sd::StackedTimeSolverData, model, plan; changed=false)
 
 Implementation for the Stacked Time algorithm. Plan must have the same range as
 the original plan.
@@ -56,7 +56,7 @@ detected. Setting the `changed` flag to `true` forces the update even if the
 plan seems unchanged. This necessary only in rare circumstances.
 
 """
-function set_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = false)
+function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = false)
     if sd.NT != length(p.range)
         error("Unable to update using a simulation plan of different length.")
     end
@@ -69,11 +69,12 @@ function set_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = false
     
     # Assume initial conditions are set correctly to exogenous in the constructor
     # We only update the masks during the simulation periods
-    unknowns = m.allvars
+    # unknowns = m.allvars
     foo = falses(sd.NU)
     for t in sim
-        s = p[t]
-        si = indexin(s, unknowns)
+        # s = p[t]
+        # si = indexin(s, unknowns)
+        si = p[t, Val(:inds)]
         fill!(foo, false)
         foo[si] .= true
         if !all(foo .== sd.exog_mask[LI[t,:]])
@@ -245,7 +246,7 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
     exog_mask::Vector{Bool} = falses(nunknowns * NT)
     # Initial conditions are set as exogenous values
     exog_mask[vec(LI[init,:])] .= true
-    # The exogenous values during sim are set in set_plan!() call below.
+    # The exogenous values during sim are set in update_plan!() call below.
 
     # Final conditions are complicated 
     fc_mask::Vector{Bool} = falses(nunknowns * NT)
@@ -259,7 +260,7 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
                              m.sstate.values, m.evaldata, exog_mask, fc_mask, solve_mask, 
                              [nothing])
 
-    return set_plan!(sd, m, p; changed = true)
+    return update_plan!(sd, m, p; changed = true)
 end
 
 @inline function assign_exog_data!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
