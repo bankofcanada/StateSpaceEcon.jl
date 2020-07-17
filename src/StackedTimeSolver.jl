@@ -14,6 +14,7 @@ using DiffResults
 using Printf
 
 using ModelBaseEcon
+using TimeSeriesEcon
 
 using ..Plans
 

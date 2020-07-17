@@ -46,6 +46,43 @@ export simulate
 
 Run a simulation for the given model, simulation plan and exogenous data.
 
+### Arguments
+  * `model` - the [`Model`](@ref) instance to simulate.
+  * `plan` - the [`Plan`](@ref) for the simulation.
+  * `data` - a 2D `Array` containing the exogenous data. This includes the
+    initial and final conditions.
+
+### Options as keyword arguments
+  * `fctype::`[`FCType`](@ref) - set the desired final condition type for the
+    simulation. The default value is [`fcgiven`](@ref). Other possible values
+    include [`fclevel`](@ref) and [`fcslope`](@ref).
+  * `initial_guess::AbstractMatrix{Float64}` - a 2D `Array` containing the
+    initial guess for the solution. This is used to start the Newton-Raphson
+    algorithm. The default value is an empty array (`zeros(0,0)`), in which case
+    we use the exogenous data for the initial condition. You can use the steady
+    state solution using [`steadystatearray`](@ref).
+  * `linearize::Bool` - set to `true` to instruct the solver to use the
+    liearized model. If the model is already linearized, this option has the
+    effect that the model gets linearized about the current steady stat and with
+    the value of `deviation` given here. Otherwise the model is linearized about
+    the steady state. After the simulation is computed, the model is restored to
+    its original state. Default value is `false`.
+  * `deviation::Bool` - set to `true` if the `data` is in deviations from the
+    steady state. This is only relevant if the `linearize` option is set to
+    `true`. Default value is `false`.
+  * `anticipate::Bool` - set to `false` to instruct the solver that all shocks
+    are unanticilated by the agents. Default value is `true`.
+  * `verbose::Bool` - control whether or not to print progress information.
+    Default value is taken from `model.options`.
+  * `tol::Float64` - set the desired accuracy. Default value is taken from
+    `model.options`.
+  * `maxiter::Int` - algorithm fails if the desired accuracy is not reached
+    within this maximum number of iterations. Default value is taken from
+    `model.options`.
+
+### See also: 
+
+### Examples
 
 """
 function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
@@ -191,4 +228,60 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     return x[:,1:end - nauxs]
 end
 
+# The versions of simulate with Dict
 
+# Simulate command, IRIS style but without a range
+function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, plan::Plan; 
+    deviation::Bool = false, overlay::Bool = false, kwargs...)::Dict{String,<:Any}
+    # Convert dictionary to Array{Float64,2}
+    data01 = dict2array(D1, m.varshks, range = plan.range)
+    # Adjust array with steady state values if necessary
+    if deviation
+        # Check that the steady state has been solved for
+        if all(m.sstate.mask) && !any(isnan.(m.sstate.values)) && !any(isinf.(m.sstate.values))
+            # Add steady state values to data01
+            datass = sstatearray(m, plan);
+            data01 = data01 .+ datass;
+        else
+            # The SS is not solved. We issue an error message.
+            error("The steady state is not solved.")
+        end
+    end
+    ig = zeros(0, 0)
+    if :initial_guess ∈ keys(kwargs)
+        if kwargs[:initial_guess] isa Dict
+            ig = dict2array(kwargs[:initial_guess], m.varshks, range = plan.range)
+        end
+    end
+    # Call native simulate commmand with Array{Float64,2}
+    data02 = simulate(m, plan, data01; kwargs..., initial_guess = ig)
+    # Remove steady state values from data02
+    if deviation
+        data02 = data02 .- datass;
+    end
+    # Reconvert Array{Float64,2} to Dict{String,Any}
+    D2 = array2dict(data02, m.varshks, plan.range[1])
+    # Overlay D1 and D2
+    if overlay
+        D3 = dictoverlay(D1, D2)
+    else
+        D3 = D2
+    end
+    return D3
+end
+
+# Simulate command, IRIS style with a range
+function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, rng::AbstractUnitRange, plan::Plan = Plan(m, rng); kwargs...)::Dict{String,<:Any}
+    # If we have a range, we just take a slice of the plan to enforce the range,
+    # but taking into account the model max lag and max lead.
+    plan = plan[rng,m];
+    # We simulate as usual, but this time, with just plan properly adjusted
+    # for the range
+    return simulate(m, D1, plan; kwargs...)
+end
+
+# Simulate command with one date, just in case
+function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, rng::MIT, plan::Plan = Plan(m, rng:rng); kwargs...)::Dict{String,<:Any}
+    # return simulate(m,D1,rng:rng, plan; kwargs...)
+    return simulate(m, D1, plan[rng:rng,m]; kwargs...)
+end
