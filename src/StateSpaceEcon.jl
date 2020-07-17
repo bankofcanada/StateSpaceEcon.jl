@@ -13,7 +13,7 @@ using ModelBaseEcon
 
 include("SteadyStateSolver.jl")
 include("Plans.jl")
-include("StackedTimeSolver.jl")
 include("misc.jl")
+include("StackedTimeSolver.jl")
 
 end # module

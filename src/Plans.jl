@@ -380,5 +380,5 @@ end # module Plans
 using .Plans
 export Plan,
     exogenize!, endogenize!, exog_endo!, endo_exog!, autoexogenize!,
-    zeroarray, zerodict, steadystatearray, steadystatedict
+    zeroarray, zerodict, zerodata, steadystatearray, steadystatedict, steadystatedata
 

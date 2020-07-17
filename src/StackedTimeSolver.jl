@@ -20,6 +20,7 @@ using ..Plans
 
 include("stackedtime/abstract.jl")
 include("stackedtime/solverdata.jl")
+include("stackedtime/misc.jl")
 include("stackedtime/simulate.jl")
 
 end # module
@@ -27,3 +28,5 @@ end # module
 using .StackedTimeSolver
 export FCType, fcgiven, fclevel, fcslope
 export simulate
+export seriesoverlay, dictoverlay
+export dict2array, array2dict, array2data
