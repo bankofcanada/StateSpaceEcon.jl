@@ -36,7 +36,7 @@ last Dict containing it.
 
 See also: [`seriesoverlay`](@ref)
 """
-function dictoverlay(D1::Dict{String,Any}, D2::Dict{String,Any})
+function dictoverlay(D1::Dict{String,<:Any}, D2::Dict{String,<:Any})
     # Get keys
     K1 = keys(D1);
     K2 = keys(D2);
