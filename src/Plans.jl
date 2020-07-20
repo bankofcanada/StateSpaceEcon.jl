@@ -268,24 +268,25 @@ zeroarray(m::Model, rng::AbstractUnitRange) = zeroarray(m, Plan(m, rng))
     zerodict(model, plan)
     zerodict(model, range)
 
-Create a dictionary containing a Series of the appropriate range for each
-variable in the model for a simulation with the given plan or over the given
-range. If a range is given rather than a plan, the data is prepared for the
-default plan over that range. This means that appropriate number of periods are
-added before and after the range to account for initial and final conditions.
+Create a dictionary containing a [`TSeries`](@ref) of the appropriate range for
+each variable in the model for a simulation with the given plan or over the
+given range. If a range is given rather than a plan, the data is prepared for
+the default plan over that range. This means that appropriate number of periods
+are added before and after the range to account for initial and final
+conditions.
 
 See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-zerodict(::Model, p::Plan) = Dict(string(v) => Series(p.range, 0.0) for v in keys(p.varsshks))
+zerodict(::Model, p::Plan) = Dict(string(v) => TSeries(p.range, 0.0) for v in keys(p.varsshks))
 zerodict(m::Model, rng::AbstractUnitRange) = zerodict(m, Plan(m, rng))
 
 """
     zerodata(model, plan)
     zerodata(model, range)
 
-Create a `NamedTuple` containing a Series of the appropriate range for each
+Create a `NamedTuple` containing a [`TSeries`](@ref) of the appropriate range for each
 variable in the model for a simulation with the given plan or over the given
 range. If a range is given rather than a plan, the data is prepared for the
 default plan over that range. This means that appropriate number of periods are
@@ -295,7 +296,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-zerodata(::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((Series(p.range, 0.0) for _ in p.varsshks)...,))
+zerodata(::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((TSeries(p.range, 0.0) for _ in p.varsshks)...,))
 zerodata(m::Model, rng::AbstractUnitRange) = zerodata(m, Plan(m, rng))
 
 """
@@ -319,7 +320,7 @@ steadystatearray(m::Model, p::Plan) = Float64[i <= ModelBaseEcon.nvariables(m) ?
     steadystatearray(model, plan)
     steadystatearray(model, range)
 
-Create a dictionary containing a Series of the appropriate range for each
+Create a dictionary containing a [`TSeries`](@ref) of the appropriate range for each
 variable in the model for a simulation with the given plan or over the given
 range. The matrix is initialized with the steady state level of each variable.
 If a range is given rather than a plan, it is augmented with periods before and
@@ -330,13 +331,13 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatedict(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
-steadystatedict(m::Model, p::Plan) = Dict(string(v) => Series(p.range, i <= ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0.0) for (v, i) in pairs(p.varsshks))
+steadystatedict(m::Model, p::Plan) = Dict(string(v) => TSeries(p.range, i <= ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0.0) for (v, i) in pairs(p.varsshks))
 
 """
     steadystatedata(model, plan)
     steadystatedata(model, range)
 
-Create a dictionary containing a Series of the appropriate range for each
+Create a dictionary containing a [`TSeries`](@ref) of the appropriate range for each
 variable in the model for a simulation with the given plan or over the given
 range. The matrix is initialized with the steady state level of each variable.
 If a range is given rather than a plan, it is augmented with periods before and
@@ -347,7 +348,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatedata(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
-steadystatedata(m::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((Series(p.range, i ≤ ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0) for (v, i) in pairs(p.varsshks))...,))
+steadystatedata(m::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((TSeries(p.range, i ≤ ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0) for (v, i) in pairs(p.varsshks))...,))
 
 #######################################
 # The internal interface to simulations code.

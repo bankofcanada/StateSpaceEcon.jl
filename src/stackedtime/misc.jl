@@ -4,18 +4,18 @@ export seriesoverlay
 """
     seriesoverlay(ts1, ts2)
 
-Return a new series over the full range of both arguments. The overlapping part
+Return a new [`TSeries`](@ref) over the full range of both arguments. The overlapping part
 contains values from the last argument.
 
 See also: [`dictoverlay`](@ref)
 
 """
-function seriesoverlay(ts1::Series, ts2::Series)
+function seriesoverlay(ts1::TSeries, ts2::TSeries)
     # Make a copy of the output sries
     tsout = deepcopy(ts2);
-    # Range of the first series
+    # Range of the first TSeries
     Rng1 = mitrange(ts1);
-    # Range of the second series
+    # Range of the second TSeries
     Rng2 = mitrange(ts2);
     if Rng1.start < Rng2.start
         tsout[Rng1.start:Rng2.start - 1] = ts1;
@@ -30,7 +30,7 @@ export dictoverlay
 """
     dictoverlay(d1, d2)
 
-Merge two dictionaries. Common key where the values are [`Series`](@ref) of the
+Merge two dictionaries. Common key where the values are [`TSeries`](@ref) of the
 same frequency are overlayed. Otherwise, a common key takes the value of the
 last Dict containing it.
 
@@ -57,8 +57,8 @@ function dictoverlay(D1::Dict{String,Any}, D2::Dict{String,Any})
             push!(D3, k => D1[k])
         else
             # If we find it in both D1 and D2
-            if isa(D1[k], Series) && isa(D2[k], Series)
-                # If both are series, we overlay them.
+            if isa(D1[k], TSeries) && isa(D2[k], TSeries)
+                # If both are TSeries, we overlay them.
                 push!(D3, k => seriesoverlay(D1[k], D2[k]))
             else
                 # Otherwise, we give priority to D2
@@ -76,11 +76,11 @@ export array2dict
 Convert the simulation data array to a dictionary.
 """
 function array2dict(data::AbstractArray{Float64,2}, vars::AbstractArray{<:AbstractString,1}, start_date::MIT)::Dict{String,Any}
-    Dict{String,Any}(vars[i] => Series(start_date, data[:,i]) for i ∈ 1:length(vars))
+    Dict{String,Any}(vars[i] => TSeries(start_date, data[:,i]) for i ∈ 1:length(vars))
 end
 
 function array2dict(data::AbstractArray{Float64,2}, vars::AbstractArray{Symbol,1}, start_date::MIT)::Dict{String,Any}
-    Dict{String,Any}(string(vars[i]) => Series(start_date, data[:,i]) for i ∈ 1:length(vars))
+    Dict{String,Any}(string(vars[i]) => TSeries(start_date, data[:,i]) for i ∈ 1:length(vars))
 end
 
 export array2data
@@ -92,25 +92,25 @@ Convert the simulation data array to a named tuple.
 """
 function array2data(data::AbstractArray{Float64,2}, vars::AbstractArray{<:AbstractString,1}, start_date::MIT)
     names = tuple(Symbol.(vars)...)
-    NamedTuple{names}([Series(start_date, data[:,i]) for i in 1:size(data, 2)])
+    NamedTuple{names}([TSeries(start_date, data[:,i]) for i in 1:size(data, 2)])
 end
 
 function array2data(data::AbstractArray{Float64,2}, vars::AbstractArray{Symbol,1}, start_date::MIT)
-    NamedTuple{tuple(vars...)}([Series(start_date, data[:,i]) for i in 1:size(data, 2)])
+    NamedTuple{tuple(vars...)}([TSeries(start_date, data[:,i]) for i in 1:size(data, 2)])
 end
 
 export dict2array
 """
     dict2array(d, vars; range)
 
-Convert a dictionary of [`Series`](@ref) to a 2d array of simulation data for
+Convert a dictionary of [`TSeries`](@ref) to a 2d array of simulation data for
 the given range.  The `range` argument is optional and defaults to `nothing`.
 
 """
 function dict2array(d::Dict{<:AbstractString,<:Any}, vars::AbstractArray{<:AbstractString,1}; range::Union{Nothing,AbstractUnitRange} = nothing)::Array{Float64,2}
     # Number of variables to consider
     vars_l = length(vars)
-    # If the range is not provided, we check that the series
+    # If the range is not provided, we check that the TSeries
     # all have the same range
     if range == nothing
         ranges = [mitrange(d[string(var)]) for var in vars]
@@ -119,7 +119,7 @@ function dict2array(d::Dict{<:AbstractString,<:Any}, vars::AbstractArray{<:Abstr
         if test_ranges
             range = ranges[1];
         else
-            error("The series in the dictionary do not have the same range. Provide a range.")
+            error("The TSeries in the dictionary do not have the same range. Provide a range.")
         end
     end
     # Length of the range
@@ -139,7 +139,7 @@ function dict2array(d::Dict{<:AbstractString,<:Any}, vars::AbstractArray{<:Abstr
             # Allocate the data
             data[:,col] = myvec;
         else
-            # We raise a flag and record which series are incomplete
+            # We raise a flag and record which TSeries are incomplete
             test_failed = true;
             push!(issues_var, var);
         end
