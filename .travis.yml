@@ -1,0 +1,23 @@
+language: julia
+arch:
+  - amd64
+os:
+  - linux
+  - osx
+  - windows
+notifications:
+  email: false
+branches:
+  only:
+  - master
+codecov: true
+julia:
+  # - nightly
+  - 1.0
+  - 1.4
+jobs:
+  allow_failures:
+    - julia: 1.4
+after_success:
+  - julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(process_folder())'
+#   - julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Coveralls.submit(process_folder())'
