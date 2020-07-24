@@ -16,6 +16,9 @@ julia:
   - 1.0
   - 1.4
 jobs:
+  before_script:
+    - julia --color=yes --project -e 'using Pkg; Pkg.add("https://github.com/bankofcanada/ModelBaseEcon.jl.git"); Pkg.add("https://github.com/bankofcanada/TimeSeriesEcon.jl.git")'
+
   allow_failures:
     - julia: 1.4
 # after_success:
