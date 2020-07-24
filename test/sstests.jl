@@ -110,7 +110,7 @@ end
         clear_sstate!(m)
         sssolve!(m);
         # overdetermined inconsistent set of constraints
-        @test check_sstate(m) == 1
+        @test check_sstate(m) > 0
 
         empty!(m.sstate.constraints)
         @steadystate m linv = lc - 7
