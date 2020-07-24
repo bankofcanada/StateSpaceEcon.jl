@@ -11,6 +11,7 @@ Pages = ["examples.md"]
 StateSpaceEcon
 ```
 
+
 ## Index
 
 ```@index

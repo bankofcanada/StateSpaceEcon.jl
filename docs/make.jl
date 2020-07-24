@@ -2,6 +2,7 @@
 # push!(LOAD_PATH,"../src/") 
 
 # Run these locally to build docs/build folder:
+# julia --color=yes --project=docs/ -e 'using Pkg; pkg\"add https://github.com/bankofcanada/TimeSeriesEcon.jl.git; add https://github.com/bankofcanada/ModelBaseEcon.jl.git\"'
 # julia --color=yes --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'       
 # julia --project=docs/ docs/make.jl
 
