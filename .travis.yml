@@ -15,8 +15,6 @@ julia:
   # - nightly
   - 1.0
   - 1.4
-before_script:
-  - julia --color=yes --project -e 'using Pkg; pkg"rm TimeSeriesEcon; rm ModelBaseEcon; resolve; instantiate; add https://github.com/bankofcanada/TimeSeriesEcon.jl.git; add https://github.com/bankofcanada/ModelBaseEcon.jl.git"'
 jobs:
   allow_failures:
     - julia: 1.4
