@@ -23,6 +23,6 @@ makedocs(sitename = "StateSpaceEcon.jl",
     ]
 )
 
-# deploydocs(
-#     repo = "github.com/bankofcanada/StateSpaceEcon.jl.git",
-# )
+deploydocs(
+    repo = "github.com/bankofcanada/StateSpaceEcon.jl.git",
+)
