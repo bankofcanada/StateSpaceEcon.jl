@@ -62,5 +62,5 @@ end
     @test length(split(out, '\n')) == 6
 end
 
-# include("sstests.jl")
-# include("simtests.jl")
+include("sstests.jl")
+include("simtests.jl")
