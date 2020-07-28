@@ -12,6 +12,7 @@ using ModelBaseEcon
 @using_example M7A
 
 using Test
+using Suppressor
 
 @testset "1dsolvers" begin
     # f(x) = (x-2)*(x-3) = a x^2 + b x + c with vals = [a, x, b, c]
@@ -41,6 +42,9 @@ end
     m = M1.model
     p = Plan(m, 1:3)
     @test first(p.range) == ii(0)
+    @test last(p.range) == ii(4)
+    out = @capture_out print(p)
+    @test length(split(out, '\n')) == 2
     @test p[1] == [:y_shk]
     @test p[ii(1)] == [:y_shk]
     endogenize!(p, :y_shk, ii(1))
@@ -54,7 +58,9 @@ end
     @test p[ii(2)] == p[3] == [:y]
     @test p[ii(3)] == p[4] == []
     @test p[ii(4)] == p[5] == [:y, :y_shk]
+    out = @capture_out print(p)
+    @test length(split(out, '\n')) == 6
 end
 
-include("sstests.jl")
-include("simtests.jl")
+# include("sstests.jl")
+# include("simtests.jl")

@@ -139,7 +139,8 @@ function collapsed_range(p::Plan{T}) where T <: MIT
     push!(ret, make_key() => val)
 end
 
-function Base.show(io::IO, ::MIME"text/plain", p::Plan)
+Base.show(io::IO, ::MIME"text/plain", p::Plan) = show(io, p)
+function Base.show(io::IO, p::Plan)
     # 0) show summary before setting :compact
     summary(io, p)
     isempty(p) && return
