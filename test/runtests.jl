@@ -1,4 +1,15 @@
 using StateSpaceEcon
+using TimeSeriesEcon
+using ModelBaseEcon
+
+@info "Loading Model examples. Might take some time to pre-compile."
+@using_example M1
+@using_example M2
+@using_example M3
+@using_example M3nl
+@using_example M6
+@using_example M7
+@using_example M7A
 
 using Test
 
@@ -26,15 +37,6 @@ using Test
     end
 end
 
-using ModelBaseEcon
-@using_example M1
-@using_example M2
-@using_example M3
-@using_example M3nl
-@using_example M6
-@using_example M7
-@using_example M7A
-
 @testset "Plans" begin
     m = M1.model
     p = Plan(m, 1:3)
@@ -54,5 +56,5 @@ using ModelBaseEcon
     @test p[ii(4)] == p[5] == [:y, :y_shk]
 end
 
-include("sstests.jl")
-include("simtests.jl")
+# include("sstests.jl")
+# include("simtests.jl")
