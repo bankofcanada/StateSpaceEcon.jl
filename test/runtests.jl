@@ -9,19 +9,19 @@ using Test
         vals = [1.0, NaN, -5.0, 6.0]
 
         vals[2] = 0.0
-        @test StateSpaceEcon.SteadyStateSolver.newton1!(fdf, vals, 2; tol = eps(), maxiter = 8)
+        @test StateSpaceEcon.SteadyStateSolver.newton1!(fdf, vals, 2; tol=eps(), maxiter=8)
         @test vals ≈ [1.0, 2.0, -5.0, 6.0] atol = 1e3 * eps()
 
         vals[2] = 6.0
-        @test StateSpaceEcon.SteadyStateSolver.newton1!(fdf, vals, 2; tol = eps(), maxiter = 8)
+        @test StateSpaceEcon.SteadyStateSolver.newton1!(fdf, vals, 2; tol=eps(), maxiter=8)
         @test vals ≈ [1.0, 3.0, -5.0, 6.0] atol = 1e3 * eps()
 
         vals[2] = 0.0
-        @test StateSpaceEcon.SteadyStateSolver.bisect!(f, vals, 2, fdf(vals)[2][2]; tol = eps())
+        @test StateSpaceEcon.SteadyStateSolver.bisect!(f, vals, 2, fdf(vals)[2][2]; tol=eps())
         @test vals ≈ [1.0, 2.0, -5.0, 6.0] atol = 1e3 * eps()
 
         vals[2] = 6.0
-        @test StateSpaceEcon.SteadyStateSolver.bisect!(f, vals, 2, fdf(vals)[2][2]; tol = eps())
+        @test StateSpaceEcon.SteadyStateSolver.bisect!(f, vals, 2, fdf(vals)[2][2]; tol=eps())
         @test vals ≈ [1.0, 3.0, -5.0, 6.0] atol = 1e3 * eps()
     end
 end
@@ -34,6 +34,25 @@ using ModelBaseEcon
 @using_example M6
 @using_example M7
 @using_example M7A
+
+@testset "Plans" begin
+    m = M1.model
+    p = Plan(m, 1:3)
+    @test first(p.range) == ii(0)
+    @test p[1] == [:y_shk]
+    @test p[ii(1)] == [:y_shk]
+    endogenize!(p, :y_shk, ii(1))
+    @test isempty(p[ii(1)])
+    endogenize!(p, :y_shk, ii(1):ii(3))
+    exogenize!(p, :y, ii(2))
+    exogenize!(p, :y, ii(4))
+    # make sure indexing with integers works as well
+    @test p[ii(0)] == p[1] == [:y_shk]
+    @test p[ii(1)] == p[2] == []
+    @test p[ii(2)] == p[3] == [:y]
+    @test p[ii(3)] == p[4] == []
+    @test p[ii(4)] == p[5] == [:y, :y_shk]
+end
 
 include("sstests.jl")
 include("simtests.jl")
