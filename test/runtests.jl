@@ -56,5 +56,5 @@ end
     @test p[ii(4)] == p[5] == [:y, :y_shk]
 end
 
-# include("sstests.jl")
-# include("simtests.jl")
+include("sstests.jl")
+include("simtests.jl")
