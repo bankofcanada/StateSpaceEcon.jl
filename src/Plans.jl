@@ -82,8 +82,8 @@ Base.axes(p::Plan) = (p.range,)
 Base.length(p::Plan) = length(p.range)
 Base.IndexStyle(::Plan) = IndexLinear()
 
-@inline _offset(p::Plan{T}, idx::T) where T = 1 - first(p.range) + idx
-@inline _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where T = 1 - first(p.range) .+ idx
+@inline _offset(p::Plan{T}, idx::T) where T = idx - first(p.range) + 1
+@inline _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where T = idx .- first(p.range) .+ 1
 
 ## Integer index is taken as is
 Base.getindex(p::Plan, idx::Int) = p[p.range[idx]]
@@ -118,6 +118,12 @@ Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize
 # Pretty printing
 
 Base.summary(io::IO, p::Plan) = print(io, typeof(p), " with range ", p.range)
+
+#  Temporary fix to override bugs in TimeSeriesEcon
+Base.axes(r::AbstractUnitRange{<:MIT}) = (Base.OneTo(length(r)),)
+Base.axes1(r::AbstractUnitRange{<:MIT}) = Base.OneTo(length(r))
+Base.getindex(r::AbstractUnitRange{<:MIT}, I::AbstractUnitRange{Int}) = r[first(I)]:r[last(I)]
+Base.getindex(r::AbstractUnitRange{<:MIT}, I::AbstractVector{Int}) = [r[i] for i in I]
 
 # Used in the show() implementation below
 function collapsed_range(p::Plan{T}) where T <: MIT
@@ -180,7 +186,7 @@ Modify the status of the given variable(s) on the given date(s). If `value` is
 """
 function setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::AbstractUnitRange{T}) where T <: MIT
     firstindex(p) ≤ first(date) && last(date) ≤ lastindex(p) || throw(BoundsError(p, date))
-    idx1 = 1 - firstindex(p) .+ date
+    idx1 = date .- firstindex(p) .+ 1
     for v in vars
         idx2 = get(p.varsshks, v, 0)
         if idx2 == 0
