@@ -47,6 +47,8 @@ Base.IndexStyle(sd::SimData) = IndexStyle(_values(sd))
 Base.getindex(sd::SimData, i1...) = getindex(_values(sd), i1...)
 Base.setindex!(sd::SimData, val, i1...) = setindex!(_values(sd), val, i1...)
 
+Base.:(==)(a::SimData, b::SimData) = frequencyof(a) == frequencyof(b) && firstdate(a) == firstdate(b) && _values(a) == _values(b)
+
 Base.dataids(sd::SimData) = Base.dataids(_values(sd))
 
 # Define dot access to columns
@@ -63,17 +65,35 @@ end
 Base.getindex(sd::SimData, col::Symbol) = getproperty(sd, col)
 Base.getindex(sd::SimData, col::AbstractString) = getproperty(sd, Symbol(col))
 
-function Base.setproperty!(sd::SimData,  col::Symbol, val) 
-    col = getproperty(sd, col)
+function Base.setproperty!(sd::SimData,  col::Symbol, val)
+    try
+        col = getproperty(sd, col)
+    catch BoundsError
+        error("Cannot assign new data column this way. Use hcat(sd, column=value, ...) instead")
+    end
     if Base.mightalias(col, val)
         val = copy(val)
     end
     setindex!(col, val, :)
 end
 
+Base.getindex(sd::SimData, cols::AbstractArray{Symbol}) = getindex(sd, tuple(cols...))
+function Base.getindex(sd::SimData, cols::NTuple{N, Symbol}) where N
+    SimData(firstdate(sd), tuple(cols...), hcat((getproperty(sd, c) for c in cols)...))
+end
+
+function Base.hcat(sd::SimData; KW...)
+    l1 = size(sd, 1)
+    as_vect(v::Number) = fill(Float64(v), l1)
+    as_vect(v) = v
+    names = (_names(sd)..., keys(KW)...)
+    vals = hcat(_values(sd), (as_vect(v) for v in values(KW))...)
+    return SimData(firstdate(sd), names, vals)
+end
+
 # Indexing access with MIT
 
-function check_frequency(a,b)
+function check_frequency(a, b)
     Fa = frequencyof(a)
     Fb = frequencyof(b)
     Fa == Fb || throw(ArgumentError("wrong frequency: expected $Fa got $Fb."))
@@ -97,7 +117,9 @@ end
 function Base.setindex!(sd::SimData, val::AbstractVector{<:Real}, i1::MIT) 
     check_frequency(sd, i1)
     if firstdate(sd) <= i1 <= lastdate(sd)
-        return setindex!(_values_view(sd, i1 - firstdate(sd) + 1, :), val, :)
+        row = i1 - firstdate(sd) + 1
+        setindex!(_values_view(sd, row, :), val, :)
+        return _values(sd)[row,:]
     else
         throw(BoundsError(sd, i1))
     end
@@ -106,16 +128,36 @@ end
 function Base.setindex!(sd::SimData, val::NamedTuple, i1::MIT)
     check_frequency(sd, i1)
     if firstdate(sd) <= i1 <= lastdate(sd)
-        return setindex!(_values_view(sd, i1 - firstdate(sd) + 1, :), [val[n] for n in _names(sd)], :)
+        for (n, v) in pairs(val)
+            setindex!(getproperty(sd, n), v, i1)
+        end
+        return sd[i1]
+    else
+        throw(BoundsError(sd, i1))
+    end
+    return sd[i1]
+end
+
+# A selection of several rows returns a slice from the original SimData
+function Base.getindex(sd::SimData, i1::AbstractUnitRange{<:MIT})
+    check_frequency(sd, i1)
+    if firstdate(sd) <= minimum(i1) <= maximum(i1) <= lastdate(sd)
+        return SimData(first(i1), _names(sd), _values_slice(sd, i1 .- firstdate(sd) .+ 1, :))
     else
         throw(BoundsError(sd, i1))
     end
 end
 
-# A selection of several rows returns a slice from the original SimData
-Base.getindex(sd::SimData, i1::AbstractUnitRange{<:MIT}) = @if_same_frequency sd i1 SimData(first(i1), _names(sd), _values_slice(sd, i1 .- firstdate(sd) .+ 1, :))
-Base.getindex(sd::SimData, i1::AbstractUnitRange{<:Integer}) = SimData(firstdate(sd) + first(i1) - 1, _names(sd), _values_slice(sd, i1, :))
-
+function Base.setindex!(sd::SimData, val, i1::AbstractUnitRange{<:MIT})
+    check_frequency(sd, i1)
+    if firstdate(sd) <= minimum(i1) <= maximum(i1) <= lastdate(sd)
+        rows = i1 .- firstdate(sd) .+ 1
+        setindex!(_values_view(sd, rows, :), val, :, :)
+        return sd[rows,:]
+    else
+        throw(BoundsError(sd, i1))
+    end
+end
 
 #### Pretty printing
 

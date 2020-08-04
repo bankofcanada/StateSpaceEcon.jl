@@ -62,10 +62,6 @@ end
     @test length(split(out, '\n')) == 6
 end
 
-@testset "SimData" begin
-    @test true
-    @info "TODO - tests for SimData"
-end
-
+include("simdatatests.jl")
 include("sstests.jl")
 include("simtests.jl")
