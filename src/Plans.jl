@@ -122,8 +122,6 @@ Base.summary(io::IO, p::Plan) = print(io, typeof(p), " with range ", p.range)
 #  Temporary fix to override bugs in TimeSeriesEcon
 Base.axes(r::AbstractUnitRange{<:MIT}) = (Base.OneTo(length(r)),)
 Base.axes1(r::AbstractUnitRange{<:MIT}) = Base.OneTo(length(r))
-Base.getindex(r::AbstractUnitRange{<:MIT}, I::AbstractUnitRange{Int}) = r[first(I)]:r[last(I)]
-Base.getindex(r::AbstractUnitRange{<:MIT}, I::AbstractVector{Int}) = [r[i] for i in I]
 
 # Used in the show() implementation below
 function collapsed_range(p::Plan{T}) where T <: MIT

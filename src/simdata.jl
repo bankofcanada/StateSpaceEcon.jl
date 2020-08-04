@@ -32,8 +32,9 @@ end
 # Coming soon stay tuned
 
 TimeSeriesEcon.firstdate(sd::SimData) = getfield(sd, :firstdate)
-TimeSeriesEcon.lastdate(sd::SimData) = firstdate(sd) + size(_values(sd), 1)
+TimeSeriesEcon.lastdate(sd::SimData) = (firstdate(sd) - 1) + size(_values(sd), 1) 
 TimeSeriesEcon.frequencyof(::SimData{F}) where F <: Frequency = F
+TimeSeriesEcon.mitrange(sd::SimData) = (firstdate(sd) - 1) .+ Base.axes1(sd)
 
 @inline _columns(sd::SimData) = getfield(sd, :columns)
 @inline _names(sd::SimData) = keys(getfield(sd, :columns))
@@ -42,26 +43,74 @@ TimeSeriesEcon.frequencyof(::SimData{F}) where F <: Frequency = F
 @inline _values_slice(sd::SimData, i1, i2) = getindex(getfield(sd, :values), i1, i2)
 
 Base.size(sd::SimData) = size(_values(sd))
-Base.getindex(sd::SimData, i1, i2) = getindex(_values(sd), i1, i2)
-Base.setindex!(sd::SimData, val, i1, i2) = setindex!(_values(sd), val, i1, i2)
+Base.IndexStyle(sd::SimData) = IndexStyle(_values(sd))
+Base.getindex(sd::SimData, i1...) = getindex(_values(sd), i1...)
+Base.setindex!(sd::SimData, val, i1...) = setindex!(_values(sd), val, i1...)
 
 Base.dataids(sd::SimData) = Base.dataids(_values(sd))
 
 # Define dot access to columns
 Base.propertynames(sd::SimData) = _names(sd)
-Base.getproperty(sd::SimData, col::Symbol) = getfield(_columns(sd), col)
+function Base.getproperty(sd::SimData, col::Symbol)
+    if col in _names(sd)
+        return getfield(_columns(sd), col)
+    else
+        throw(BoundsError(sd, [col,]))
+    end
+end
+
+# Access to columns by [:xyz] notation
+Base.getindex(sd::SimData, col::Symbol) = getproperty(sd, col)
+Base.getindex(sd::SimData, col::AbstractString) = getproperty(sd, Symbol(col))
+
+function Base.setproperty!(sd::SimData,  col::Symbol, val) 
+    col = getproperty(sd, col)
+    if Base.mightalias(col, val)
+        val = copy(val)
+    end
+    setindex!(col, val, :)
+end
 
 # Indexing access with MIT
+
+function check_frequency(a,b)
+    Fa = frequencyof(a)
+    Fb = frequencyof(b)
+    Fa == Fb || throw(ArgumentError("wrong frequency: expected $Fa got $Fb."))
+end
 
 macro if_same_frequency(a, b, expr)
     :( frequencyof($a) == frequencyof($b) ? $(expr) : throw(ArgumentError("Wrong frequency")) ) |> esc
 end
 
 # A single MIT materializes as a NamedTuple (row of the matrix with column names attached to the values)
-Base.getindex(sd::SimData, i1::MIT) = @if_same_frequency sd i1 NamedTuple{_names(sd)}(_values_view(sd, i1 - firstdate(sd) + 1, :))
+function Base.getindex(sd::SimData, i1::MIT) 
+    check_frequency(sd, i1)
+    if firstdate(sd) <= i1 <= lastdate(sd)
+        return @inbounds NamedTuple{_names(sd)}(_values_view(sd, i1 - firstdate(sd) + 1, :))
+    else
+        throw(BoundsError(sd, i1))
+    end
+end
+
 # Modifying a row in a table -> one must pass in a vector
-Base.setindex!(sd::SimData, val::AbstractVector{<:Real}, i1::MIT) = @if_same_frequency sd i1 setindex!(_values_view(sd, i1 - firstdate(sd) + 1, :), val, :)
-Base.setindex!(sd::SimData, val::NamedTuple, i1::MIT) = @if_same_frequency sd i1 setindex!(_values_view(sd, i1 - firstdate(sd) + 1, :), [val[n] for n in _names[sd]], :)
+function Base.setindex!(sd::SimData, val::AbstractVector{<:Real}, i1::MIT) 
+    check_frequency(sd, i1)
+    if firstdate(sd) <= i1 <= lastdate(sd)
+        return setindex!(_values_view(sd, i1 - firstdate(sd) + 1, :), val, :)
+    else
+        throw(BoundsError(sd, i1))
+    end
+end
+
+function Base.setindex!(sd::SimData, val::NamedTuple, i1::MIT)
+    check_frequency(sd, i1)
+    if firstdate(sd) <= i1 <= lastdate(sd)
+        return setindex!(_values_view(sd, i1 - firstdate(sd) + 1, :), [val[n] for n in _names(sd)], :)
+    else
+        throw(BoundsError(sd, i1))
+    end
+end
 
 # A selection of several rows returns a slice from the original SimData
 Base.getindex(sd::SimData, i1::AbstractUnitRange{<:MIT}) = @if_same_frequency sd i1 SimData(first(i1), _names(sd), _values_slice(sd, i1 .- firstdate(sd) .+ 1, :))
@@ -72,8 +121,8 @@ Base.getindex(sd::SimData, i1::AbstractUnitRange{<:Integer}) = SimData(firstdate
 
 sprint_names(names) = length(names) > 10 ? "$(length(names)) variables" : "variables (" * join(names, ",") * ")"
 Base.summary(io::IO, sd::SimData) = isempty(sd) ?
-        print(IOContext(io, :limit => true), "Empty SimData with ", sprint_names(_names(sd)), " from ", firstdate(sd)) :
-        print(IOContext(io, :limit => true), size(sd, 1), '×', size(sd, 2), " SimData with ", sprint_names(_names(sd)), " from ", firstdate(sd))
+        print(IOContext(io, :limit => true), "Empty SimData with ", sprint_names(_names(sd)), " in ", mitrange(sd)) :
+        print(IOContext(io, :limit => true), size(sd, 1), '×', size(sd, 2), " SimData with ", sprint_names(_names(sd)), " in ", mitrange(sd))
 
 
 Base.show(io::IO, ::MIME"text/plain", sd::SimData) = show(io, sd)
