@@ -1,5 +1,6 @@
 
 @testset "SimData" begin
+    @test_throws ArgumentError SimData(1M10, (:a, :b, :c), rand(10, 2))
     let nms = (:a, :b), dta = rand(20, 2), sd = SimData(2000Q1, nms, copy(dta)), dta2 = rand(size(dta)...)
         @test firstdate(sd) == 2000Q1
         @test lastdate(sd) == 2000Q1 + 20 - 1
@@ -67,15 +68,38 @@
         @test sd[end,1] == 5.0
         @test_throws BoundsError sd[2004Q4] = (a = 5.0, c = 1.1)
         @test_throws ArgumentError sd[2000Y]
+        @test_throws BoundsError sd[1999Q4] = (a = 5.0, b = 1.1)
+        @test_throws BoundsError sd[2010Q4] = rand(2)
         # 
         @test sd[2001Q1:2002Q4] isa SimData
         @test sd[2001Q1:2002Q4] == sd[5:12,:]
         sd[2001Q1:2002Q4] = 1:16
         @test sd[5:12,:] == reshape(1.0:16.0, :, 2)
+        @test_throws BoundsError sd[1111Q4:2002Q1]
+        @test_throws BoundsError sd[2002Q1:2200Q2]
         @test_throws DimensionMismatch sd[2001Q1:2002Q4] = 1:17
         # assign new column
         sd1 = hcat(sd, c=sd.a + 3.0)
         @test sd1[nms] == sd
         @test sd1[[:a,:c]] == sd1[:,[1,3]]
+    end
+end
+
+
+@testset "SimData show" begin
+    letters = Symbol.(['a':'z'...])
+    for (nrow, fd) = zip([3, 4, 5, 6, 7, 8, 22, 23, 24, 25, 26, 30], Iterators.cycle((qq(2010, 1), mm(2010, 1), yy(2010), ii(1))))
+        for ncol = [2,5,10,20]
+            io = IOBuffer()
+            sd = SimData(fd, tuple(letters[1:ncol]...), rand(nrow, ncol))
+            show(IOContext(io, :displaysize => (nrow, 80)), MIME"text/plain"(), sd)
+            lines = readlines(seek(io, 0))
+            @test length(lines) == max(3, min(nrow + 1, nrow - 3))
+            @test maximum(length, lines) <= 80
+            io = IOBuffer()
+            show(IOContext(io, :limit => false), sd)
+            lines = readlines(seek(io, 0))
+            @test length(lines) == nrow + 2
+        end
     end
 end
