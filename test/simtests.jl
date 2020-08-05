@@ -7,10 +7,10 @@
     m.β = 1.0 - m.α
     for T = 6:10
         p = Plan(m, 2:T - 1)
-        data = zeroarray(m, p)
+        data = zerodata(m, p)
         data[1, :] = [1 0]   # initial condition
         data[end, :] = [5 0] # final condition
-        sim00 = simulate(m, p, data)
+        sim00 = simulate(m, data, p)
         exp00 = hcat(1.0:(5.0 - 1.0) / (T - 1):5.0, zeros(T))
         # @info "T=$T" sim00 exp00 data
         @test sim00 ≈ exp00
@@ -18,18 +18,18 @@
         data1 = copy(data)
         shk = .1
         y2val = ((T - 2) * (1 + 2 * shk) + 5.0) / (T - 1)
-        data1[2,2] = shk  # shock at time 2
-        sim01 = simulate(m, p, data1)
+        data1[2U,:y_shk] = shk  # shock at time 2
+        sim01 = simulate(m, data1, p)
         exp01 = vcat([1.0 y2val:(5.0 - y2val) / (T - 2):5.0...], [0 shk zeros(T - 2)...])'
         @test sim01 ≈ exp01
         # exogenous-endogenous swap 
         # - replicate the solution above backing out the shock that produces it
         data2 = copy(data)
-        data2[2, 1] = sim01[2, 1]
+        data2[2U, :y] = sim01[2U, :y]
         p2 = deepcopy(p)
         exogenize!(p2, :y, 2)
         endogenize!(p2, :y_shk, 2)
-        sim02 = simulate(m, p2, data2)
+        sim02 = simulate(m, data2, p2)
         exp02 = sim01
         @test sim02 ≈ exp02
     end
@@ -139,8 +139,8 @@ end
     data[1,1] = 1.0;
     data[end,1] = 5.0;
     data[3,2] = 0.1;
-    res_u = simulate(m, p, data; anticipate = false)
-    true_u = Float64[1 0; 2 0; 47/15 0.1; 61/15 0; 5 0]
+    res_u = simulate(m, p, data; anticipate=false)
+    true_u = Float64[1 0; 2 0; 47 / 15 0.1; 61 / 15 0; 5 0]
     @test res_u ≈ true_u atol = 1e-12
 end
 
@@ -171,7 +171,7 @@ end
             # Run the simulations and test
             ares = simulate(m, p, adata)
             @test ares ≈ atrue atol = m.options.tol
-            ures = simulate(m, p, udata; anticipate = false)
+            ures = simulate(m, p, udata; anticipate=false)
             @test ures ≈ utrue atol = m.options.tol
         end
         let adata = zeroarray(m, p),
@@ -184,7 +184,7 @@ end
             # Run the simulations and test
             ares = simulate(m, p, adata)
             @test ares ≈ atrue atol = m.options.tol
-            ures = simulate(m, p, udata; anticipate = false)
+            ures = simulate(m, p, udata; anticipate=false)
             @test ures ≈ utrue atol = m.options.tol
         end
     end
@@ -210,7 +210,7 @@ end
         # Run the simulations and test
         ares = simulate(m, p, adata)
         @test ares ≈ atrue atol = m.options.tol
-        ures = simulate(m, p, udata; anticipate = false)
+        ures = simulate(m, p, udata; anticipate=false)
         @test ures ≈ utrue atol = m.options.tol
     end
 end
@@ -242,7 +242,7 @@ end
             # Run the simulations and test
             ares = simulate(m, p, adata)
             @test ares ≈ atrue atol = m.options.tol
-            ures = simulate(m, p, udata; anticipate = false)
+            ures = simulate(m, p, udata; anticipate=false)
             @test ures ≈ utrue atol = m.options.tol
         end
         let adata = zeroarray(m, p),
@@ -255,7 +255,7 @@ end
             # Run the simulations and test
             ares = simulate(m, p, adata)
             @test ares ≈ atrue atol = m.options.tol
-            ures = simulate(m, p, udata; anticipate = false)
+            ures = simulate(m, p, udata; anticipate=false)
             @test ures ≈ utrue atol = m.options.tol
         end
     end
@@ -281,7 +281,7 @@ end
         # Run the simulations and test
         ares = simulate(m, p, adata)
         @test ares ≈ atrue atol = m.options.tol
-        ures = simulate(m, p, udata; anticipate = false)
+        ures = simulate(m, p, udata; anticipate=false)
         @test ures ≈ utrue atol = m.options.tol
     end
 end

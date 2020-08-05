@@ -200,8 +200,10 @@ function Base.setindex!(sd::SimData, vals, r::AbstractUnitRange{<:MIT}, c::NTupl
             end
         end
         rows = r .- firstdate(sd) .+ 1
+        if vals isa Number
+            vals = fill(Float64(vals), length(r) * length(c))
+        end
         setindex!(_values_view(sd, rows, cols), vals, :, :)
-        return 
     else
         throw(BoundsError(sd, r))
     end
@@ -225,17 +227,26 @@ function Base.show(io::IO, sd::SimData)
 
     from = firstdate(sd)
     dheight, dwidth = displaysize(io)
-    io = IOContext(io, :compact => true)
+    if get(io, :compact, nothing) === nothing
+        io = IOContext(io, :compact => true)
+    end
     dwidth -= 11
 
-    sd1 = [reshape([_names(sd)...], 1, :); _values(sd)]
-    A = Base.alignment(io, sd1, axes(sd1, 1), 1:nsym, dwidth, dwidth, 2)
+    names_str = let 
+        names = map(_names(sd)) do n
+            sn = string(n)
+            return sn[1:min(10, length(sn))]
+        end
+        reshape([names...], 1, :)
+    end
+    sd_with_names = [names_str; _values(sd)]
+    A = Base.alignment(io, sd_with_names, axes(sd_with_names, 1), 1:nsym, dwidth, dwidth, 2)
 
     all_cols = true
     if length(A) ≠ nsym
         dwidth = div(dwidth - 1, 2)
-        AL = Base.alignment(io, sd1, axes(sd1, 1), 1:nsym, dwidth, dwidth, 2)
-        AR = reverse(Base.alignment(io, sd1, axes(sd1, 1), reverse(1:nsym), dwidth, dwidth, 2))
+        AL = Base.alignment(io, sd_with_names, axes(sd_with_names, 1), 1:nsym, dwidth, dwidth, 2)
+        AR = reverse(Base.alignment(io, sd_with_names, axes(sd_with_names, 1), reverse(1:nsym), dwidth, dwidth, 2))
         Linds = [1:length(AL)...]
         Rinds = [nsym - length(AR) + 1:nsym...]
         all_cols = false
@@ -250,10 +261,10 @@ function Base.show(io::IO, sd::SimData)
         if v isa Number
             vl, vr = Base.alignment(io, v)
         else
-            vl, vr = 0, length(sv)
-        end
-        if length(sv) > al + ar
-            sv = sv[1:al + ar]
+            if length(sv) > al + ar
+                sv = sv[1:al + ar - 1] * '…'
+            end
+            vl, vr = al, length(sv) - al
         end
         print(io, repeat(" ", al - vl), sv, repeat(" ", ar - vr), sep)
     end

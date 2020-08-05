@@ -60,6 +60,9 @@ end
     @test p[ii(4)] == p[5] == [:y, :y_shk]
     out = @capture_out print(p)
     @test length(split(out, '\n')) == 6
+    out = @capture_out print(IOContext(stdout, :displaysize => (7, 80)), p)
+    @test length(split(out, '\n')) == 4
+    @test length(split(out, '⋮')) == 2
 end
 
 include("simdatatests.jl")

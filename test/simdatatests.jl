@@ -91,25 +91,48 @@
         end
         @test_throws BoundsError sd[1999Q1, (:a,)]
         @test_throws BoundsError sd[2001Q1:2001Q2, (:a, :c)]
+        @test_throws Exception sd.c = 5
+        @test similar(sd) isa typeof(sd)
+        @test_throws BoundsError sd[1999Q1:2000Q4] = zeros(8, 2)
+        @test_throws BoundsError sd[2004Q1:2013Q4, [:a, :b]]
+        # setindex with two 
+        sd[2001Q1, (:b,)] = 3.5
+        @test sd[5,2] == 3.5
+        sd[2000Q1:2001Q4, (:b,)] = 3.7
+        @test all(sd[1:8,2] .== 3.7)
+        @test_throws BoundsError sd[1999Q1:2000Q4, (:a, :b)] = 5.7
+        @test_throws BoundsError sd[2000Q1:2000Q4, (:a, :c)] = 5.7
     end
 end
 
 
 @testset "SimData show" begin
-    letters = Symbol.(['a':'z'...])
-    let io = IOBuffer() , sd = SimData(1U, (:alpha, :beta), zeros(20, 2))
+    # test the case when column labels are longer than the numbers
+    let io = IOBuffer(), sd =  SimData(1U, (:verylongandsuperboringnameitellya, :anothersuperlongnamethisisridiculous, :a), rand(20, 3) .* 100)
+        show(io, sd)
+        lines = readlines(seek(io, 0))
+        # labels longer than 10 character are abbreviated with '…' at the end
+        @test length(split(lines[2], '…')) == 3
+    end
+    let io = IOBuffer() , sd = SimData(1U, (:alpha, :beta), zeros(24, 2))
         show(io, sd)
         lines = readlines(seek(io, 0))
         lens = length.(lines)
+        # when labels are longer than the numbers, the entire column stretches to fit the label
         @test lens[2] == lens[3]
     end
-    for (nrow, fd) = zip([3, 4, 5, 6, 7, 8, 22, 23, 24, 25, 26, 30], Iterators.cycle((qq(2010, 1), mm(2010, 1), yy(2010), ii(1))))
+    nrow = 24
+    letters = Symbol.(['a':'z'...])
+    for (nlines, fd) = zip([3, 4, 5, 6, 7, 8, 22, 23, 24, 25, 26, 30], Iterators.cycle((qq(2010, 1), mm(2010, 1), yy(2010), ii(1))))
         for ncol = [2,5,10,20]
+            # display size if nlines × 80
+            # data size is nrow × ncol
+            # when printing data there are two header lines - summary and column names
             io = IOBuffer()
             sd = SimData(fd, tuple(letters[1:ncol]...), rand(nrow, ncol))
-            show(IOContext(io, :displaysize => (nrow, 80)), MIME"text/plain"(), sd)
+            show(IOContext(io, :displaysize => (nlines, 80)), MIME"text/plain"(), sd)
             lines = readlines(seek(io, 0))
-            @test length(lines) == max(3, min(nrow + 1, nrow - 3))
+            @test length(lines) == max(3, min(nrow + 2, nlines - 3))
             @test maximum(length, lines) <= 80
             io = IOBuffer()
             show(IOContext(io, :limit => false), sd)

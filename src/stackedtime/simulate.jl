@@ -16,7 +16,7 @@ Solve the simulation problem.
 """
 function sim_nr!(x::AbstractArray{Float64}, sd::AbstractSolverData,
                 maxiter::Int64, tol::Float64, verbose::Bool,
-                sparse_solver::Function = (A, b)->A \ b)
+                sparse_solver::Function=(A, b) -> A \ b)
     for it = 1:maxiter
         @timer Fx, Jx = global_RJ(x, x, sd)
         @timer nFx = norm(Fx, Inf)
@@ -86,16 +86,16 @@ Run a simulation for the given model, simulation plan and exogenous data.
 
 """
 function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
-                    initial_guess::AbstractArray{Float64,2} = zeros(0, 0),
-                    linearize::Bool = false,
-                    deviation::Bool = false,
-                    anticipate::Bool = true,
-                    verbose::Bool = m.options.verbose,
-                    tol::Float64 = m.options.tol,
-                    maxiter::Int64 = m.options.maxiter,
-                    fctype::FCType = fcgiven,
-                    expectation_horizon::Union{Nothing,Int64} = nothing,
-                    sparse_solver::Function = (A, b)->A \ b
+                    initial_guess::AbstractArray{Float64,2}=zeros(0, 0),
+                    linearize::Bool=false,
+                    deviation::Bool=false,
+                    anticipate::Bool=true,
+                    verbose::Bool=m.options.verbose,
+                    tol::Float64=m.options.tol,
+                    maxiter::Int64=m.options.maxiter,
+                    fctype::FCType=fcgiven,
+                    expectation_horizon::Union{Nothing,Int64}=nothing,
+                    sparse_solver::Function=(A, b) -> A \ b
     )
     NT = length(p.range)
     nauxs = length(m.auxvars)
@@ -113,7 +113,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     end
     if linearize
         org_med = m.evaldata
-        linearize!(m; deviation = deviation)
+        linearize!(m; deviation=deviation)
     end
     if anticipate
         @timer gdata = StackedTimeSolverData(m, p, fctype)
@@ -232,9 +232,9 @@ end
 
 # Simulate command, IRIS style but without a range
 function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, plan::Plan; 
-    deviation::Bool = false, overlay::Bool = false, kwargs...)::Dict{String,<:Any}
+    deviation::Bool=false, overlay::Bool=false, kwargs...)::Dict{String,<:Any}
     # Convert dictionary to Array{Float64,2}
-    data01 = dict2array(D1, m.varshks, range = plan.range)
+    data01 = dict2array(D1, m.varshks, range=plan.range)
     # Adjust array with steady state values if necessary
     if deviation
         # Check that the steady state has been solved for
@@ -250,11 +250,11 @@ function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, plan::Plan;
     ig = zeros(0, 0)
     if :initial_guess ∈ keys(kwargs)
         if kwargs[:initial_guess] isa Dict
-            ig = dict2array(kwargs[:initial_guess], m.varshks, range = plan.range)
+            ig = dict2array(kwargs[:initial_guess], m.varshks, range=plan.range)
         end
     end
     # Call native simulate commmand with Array{Float64,2}
-    data02 = simulate(m, plan, data01; kwargs..., initial_guess = ig)
+    data02 = simulate(m, plan, data01; kwargs..., initial_guess=ig)
     # Remove steady state values from data02
     if deviation
         data02 = data02 .- datass;
@@ -271,7 +271,7 @@ function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, plan::Plan;
 end
 
 # Simulate command, IRIS style with a range
-function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, rng::AbstractUnitRange, plan::Plan = Plan(m, rng); kwargs...)::Dict{String,<:Any}
+function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, rng::AbstractUnitRange, plan::Plan=Plan(m, rng); kwargs...)::Dict{String,<:Any}
     # If we have a range, we just take a slice of the plan to enforce the range,
     # but taking into account the model max lag and max lead.
     plan = plan[rng,m];
@@ -281,7 +281,7 @@ function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, rng::AbstractUnitR
 end
 
 # Simulate command with one date, just in case
-function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, rng::MIT, plan::Plan = Plan(m, rng:rng); kwargs...)::Dict{String,<:Any}
+function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, rng::MIT, plan::Plan=Plan(m, rng:rng); kwargs...)::Dict{String,<:Any}
     # return simulate(m,D1,rng:rng, plan; kwargs...)
     return simulate(m, D1, plan[rng:rng,m]; kwargs...)
 end
@@ -291,9 +291,9 @@ import ..SimData
 simulate(m::Model, D1::SimData, rng, plan::Plan=Plan(m, rng); kwargs...) = simulate(m, D1, plan[rng, m]; kwargs...)
 
 function simulate(m::Model, D1::SimData, plan::Plan;
-    deviation::Bool = false, overlay::Bool = false, kwargs...)::typeof(D1)
+    deviation::Bool=false, overlay::Bool=false, kwargs...)::typeof(D1)
     ret = copy(D1)
-    ig = get(kwargs, :initial_guess, zeros(0,0))
+    ig = get(kwargs, :initial_guess, zeros(0, 0))
     if ig isa SimData
         ig = ig[plan.range, m.varshks]
     end
