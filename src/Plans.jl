@@ -62,6 +62,7 @@ range of the plan is augmented to include periods before and after the given
 range, over which initial and final conditions will be applied.
 
 """
+Plan(model::Model, r::MIT) = Plan(model, r:r)
 function Plan(model::Model, range::AbstractUnitRange)
     if !(eltype(range) <: MIT)
         range = UnitRange{MIT{Unit}}(range)
@@ -82,8 +83,8 @@ Base.axes(p::Plan) = (p.range,)
 Base.length(p::Plan) = length(p.range)
 Base.IndexStyle(::Plan) = IndexLinear()
 
-@inline _offset(p::Plan{T}, idx::T) where T = 1 - first(p.range) + idx
-@inline _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where T = 1 - first(p.range) .+ idx
+@inline _offset(p::Plan{T}, idx::T) where T = idx - first(p.range) + 1
+@inline _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where T = idx .- first(p.range) .+ 1
 
 ## Integer index is taken as is
 Base.getindex(p::Plan, idx::Int) = p[p.range[idx]]
@@ -91,7 +92,7 @@ Base.getindex(p::Plan, idx::AbstractUnitRange{Int}) = p[p.range[idx]]
 Base.getindex(p::Plan, idx::Int, ::Val{:inds}) = findall(p.exogenous[idx,:])
 
 # Index of the frequency type returns the list of exogenous symbols
-Base.getindex(p::Plan{T}, idx::T) where T <: MIT = [keys(p.varsshks)[p[_offset(p,idx),Val(:inds)]]...,]
+Base.getindex(p::Plan{T}, idx::T) where T <: MIT = [keys(p.varsshks)[p[_offset(p, idx),Val(:inds)]]...,]
 function Base.getindex(p::Plan{T}, idx::T, ::Val{:inds}) where T <: MIT
     first(p.range) ≤ idx ≤ last(p.range) || throw(BoundsError(p, idx))
     return p[_offset(p, idx), Val(true)]
@@ -102,7 +103,7 @@ Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}) = p[UnitRange{MIT
 function Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}) where T <: MIT
     rng.start < p.range.start && throw(BoundsError(p, rng.start))
     rng.stop > p.range.stop && throw(BoundsError(p, rng.stop))
-    return Plan{T}(rng, p.varsshks, p.exogenous[_offset(rng), :])
+    return Plan{T}(rng, p.varsshks, p.exogenous[_offset(p, rng), :])
 end
 
 # A range with a model returns a plan trimmed over that range and extended for initial and final conditions.
@@ -119,25 +120,53 @@ Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize
 
 Base.summary(io::IO, p::Plan) = print(io, typeof(p), " with range ", p.range)
 
-function Base.show(io::IO, ::MIME"text/plain", p::Plan)
+#  Temporary fix to override bugs in TimeSeriesEcon
+Base.axes(r::AbstractUnitRange{<:MIT}) = (Base.OneTo(length(r)),)
+Base.axes1(r::AbstractUnitRange{<:MIT}) = Base.OneTo(length(r))
+
+# Used in the show() implementation below
+function collapsed_range(p::Plan{T}) where T <: MIT
+    ret = Pair{Union{T,UnitRange{T}},Vector{Symbol}}[]
+    i1 = first(p.range)
+    i2 = i1
+    val = p[i1]
+    make_key() = i1 == i2 ? i1 : i1:i2
+    for i in p.range[2:end]
+        val_i = p[i]
+        if val_i == val
+            i2 = i
+        else
+            push!(ret, make_key() => val)
+            i1 = i2 = i
+            val = val_i
+        end
+    end
+    push!(ret, make_key() => val)
+end
+
+Base.show(io::IO, ::MIME"text/plain", p::Plan) = show(io, p)
+function Base.show(io::IO, p::Plan)
     # 0) show summary before setting :compact
     summary(io, p)
     isempty(p) && return
     print(io, ":")
     nrow, ncol = displaysize(io)
-    if length(p) <= nrow - 5
-        for r in p.range
-            print(io, "\n  ", r, " => ", p[r])
+    cp = collapsed_range(p)
+    # find the longest string left of "=>" for padding
+    maxl = maximum(length("$k") for (k,v) in cp)
+    if length(cp) <= nrow - 5
+        for (r, v) in cp
+            print(io, "\n  ", lpad("$r", maxl, " "), " => ", v)
         end
     else
         top = div(nrow - 5, 2)
-        bot = length(p.range) - nrow + 6 + top
-        for r in p.range[1:top]
-            print(io, "\n  ", r, " => ", p[r])
+        bot = length(cp) - nrow + 6 + top
+        for (r, v) in cp[1:top]
+            print(io, "\n  ", lpad("$r", maxl, " "), " => ", v)
         end
         print(io, "\n   ⋮")
-        for r in p.range[bot:end]
-            print(io, "\n  ", r, " => ", p[r])
+        for (r, v) in cp[bot:end]
+            print(io, "\n  ", lpad("$r", maxl, " "), " => ", v)
         end
     end
 end
@@ -156,7 +185,7 @@ Modify the status of the given variable(s) on the given date(s). If `value` is
 """
 function setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::AbstractUnitRange{T}) where T <: MIT
     firstindex(p) ≤ first(date) && last(date) ≤ lastindex(p) || throw(BoundsError(p, date))
-    idx1 = 1 - firstindex(p) .+ date
+    idx1 = date .- firstindex(p) .+ 1
     for v in vars
         idx2 = get(p.varsshks, v, 0)
         if idx2 == 0
@@ -168,8 +197,9 @@ function setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::Abstr
 end
 setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::Array{Symbol,1}, date::AbstractUnitRange{Int}) = setplanvalue!(p, val, vars, UnitRange{MIT{Unit}}(date))
 setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::Array{Symbol,1}, date::Integer) = setplanvalue!(p, val, vars, ii(date):ii(date))
+setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::Array{Symbol,1}, date::MIT{Unit}) = setplanvalue!(p, val, vars, date:date)
 setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::T) where T <: MIT = setplanvalue!(p, val, vars, date:date)
-setplanvalue!(p::Plan, val::Bool, vars::Array{Symbol,1}, date) = (foreach(d->setplanvalue!(p, val, vars, d), date); p)
+setplanvalue!(p::Plan, val::Bool, vars::Array{Symbol,1}, date) = (foreach(d -> setplanvalue!(p, val, vars, d), date); p)
 
 
 """
@@ -248,6 +278,11 @@ end
 #######################################
 # The user interface to prepare data for simulation.
 
+TimeSeriesEcon.frequencyof(p::Plan) = frequencyof(p.range)
+TimeSeriesEcon.firstdate(p::Plan) = first(p.range)
+TimeSeriesEcon.lastdate(p::Plan) = last(p.range)
+import ..SimData
+
 """
     zeroarray(model, plan)
     zeroarray(model, range)
@@ -296,7 +331,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-zerodata(::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((TSeries(p.range, 0.0) for _ in p.varsshks)...,))
+zerodata(::Model, p::Plan) = SimData(firstdate(p), keys(p.varsshks), zeros(length(p), length(p.varsshks)))
 zerodata(m::Model, rng::AbstractUnitRange) = zerodata(m, Plan(m, rng))
 
 """
@@ -337,7 +372,7 @@ steadystatedict(m::Model, p::Plan) = Dict(string(v) => TSeries(p.range, i <= Mod
     steadystatedata(model, plan)
     steadystatedata(model, range)
 
-Create a dictionary containing a [`TSeries`](@ref) of the appropriate range for each
+Create a [`SimData`](@ref) containing a [`TSeries`](@ref) of the appropriate range for each
 variable in the model for a simulation with the given plan or over the given
 range. The matrix is initialized with the steady state level of each variable.
 If a range is given rather than a plan, it is augmented with periods before and
@@ -348,7 +383,10 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatedata(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
-steadystatedata(m::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((TSeries(p.range, i ≤ ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0) for (v, i) in pairs(p.varsshks))...,))
+steadystatedata(m::Model, p::Plan) = hcat(
+    SimData(firstdate(p), (), zeros(length(p), 0)); 
+    (v => (i <= ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0) for (v, i) in pairs(p.varsshks))...
+)
 
 #######################################
 # The internal interface to simulations code.
