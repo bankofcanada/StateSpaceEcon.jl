@@ -82,12 +82,27 @@
         sd1 = hcat(sd, c=sd.a + 3.0)
         @test sd1[nms] == sd
         @test sd1[[:a,:c]] == sd1[:,[1,3]]
+        # access with 2 args MIT and Symbol
+        @test sd[2001Q2, (:a, :b)] isa NamedTuple
+        let foo = sd[2001Q2:2002Q1, (:a, :b)] 
+            @test foo isa SimData
+            @test size(foo) == (4, 2) 
+            @test firstdate(foo) == 2001Q2
+        end
+        @test_throws BoundsError sd[1999Q1, (:a,)]
+        @test_throws BoundsError sd[2001Q1:2001Q2, (:a, :c)]
     end
 end
 
 
 @testset "SimData show" begin
     letters = Symbol.(['a':'z'...])
+    let io = IOBuffer() , sd = SimData(1U, (:alpha, :beta), zeros(20, 2))
+        show(io, sd)
+        lines = readlines(seek(io, 0))
+        lens = length.(lines)
+        @test lens[2] == lens[3]
+    end
     for (nrow, fd) = zip([3, 4, 5, 6, 7, 8, 22, 23, 24, 25, 26, 30], Iterators.cycle((qq(2010, 1), mm(2010, 1), yy(2010), ii(1))))
         for ncol = [2,5,10,20]
             io = IOBuffer()

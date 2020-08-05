@@ -62,6 +62,7 @@ range of the plan is augmented to include periods before and after the given
 range, over which initial and final conditions will be applied.
 
 """
+Plan(model::Model, r::MIT) = Plan(model, r:r)
 function Plan(model::Model, range::AbstractUnitRange)
     if !(eltype(range) <: MIT)
         range = UnitRange{MIT{Unit}}(range)
@@ -277,6 +278,11 @@ end
 #######################################
 # The user interface to prepare data for simulation.
 
+TimeSeriesEcon.frequencyof(p::Plan) = frequencyof(p.range)
+TimeSeriesEcon.firstdate(p::Plan) = first(p.range)
+TimeSeriesEcon.lastdate(p::Plan) = last(p.range)
+import ..SimData
+
 """
     zeroarray(model, plan)
     zeroarray(model, range)
@@ -325,7 +331,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-zerodata(::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((TSeries(p.range, 0.0) for _ in p.varsshks)...,))
+zerodata(::Model, p::Plan) = SimData(firstdate(p), keys(p.varsshks), zeros(length(p), length(p.varsshks)))
 zerodata(m::Model, rng::AbstractUnitRange) = zerodata(m, Plan(m, rng))
 
 """
@@ -366,7 +372,7 @@ steadystatedict(m::Model, p::Plan) = Dict(string(v) => TSeries(p.range, i <= Mod
     steadystatedata(model, plan)
     steadystatedata(model, range)
 
-Create a dictionary containing a [`TSeries`](@ref) of the appropriate range for each
+Create a [`SimData`](@ref) containing a [`TSeries`](@ref) of the appropriate range for each
 variable in the model for a simulation with the given plan or over the given
 range. The matrix is initialized with the steady state level of each variable.
 If a range is given rather than a plan, it is augmented with periods before and
@@ -377,7 +383,10 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatedata(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
-steadystatedata(m::Model, p::Plan) = NamedTuple{keys(p.varsshks)}(((TSeries(p.range, i ≤ ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0) for (v, i) in pairs(p.varsshks))...,))
+steadystatedata(m::Model, p::Plan) = hcat(
+    SimData(firstdate(p), (), zeros(length(p), 0)); 
+    (v => (i <= ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0) for (v, i) in pairs(p.varsshks))...
+)
 
 #######################################
 # The internal interface to simulations code.

@@ -47,6 +47,8 @@ Base.IndexStyle(sd::SimData) = IndexStyle(_values(sd))
 Base.getindex(sd::SimData, i1...) = getindex(_values(sd), i1...)
 Base.setindex!(sd::SimData, val, i1...) = setindex!(_values(sd), val, i1...)
 
+Base.similar(sd::SimData) = SimData(firstdate(sd), _names(sd), similar(_values(sd)))
+
 Base.:(==)(a::SimData, b::SimData) = frequencyof(a) == frequencyof(b) && firstdate(a) == firstdate(b) && _values(a) == _values(b)
 
 Base.dataids(sd::SimData) = Base.dataids(_values(sd))
@@ -78,7 +80,7 @@ function Base.setproperty!(sd::SimData,  col::Symbol, val)
 end
 
 Base.getindex(sd::SimData, cols::AbstractArray{Symbol}) = getindex(sd, tuple(cols...))
-function Base.getindex(sd::SimData, cols::NTuple{N, Symbol}) where N
+function Base.getindex(sd::SimData, cols::NTuple{N,Symbol}) where N
     SimData(firstdate(sd), tuple(cols...), hcat((getproperty(sd, c) for c in cols)...))
 end
 
@@ -159,6 +161,52 @@ function Base.setindex!(sd::SimData, val, i1::AbstractUnitRange{<:MIT})
     end
 end
 
+
+Base.getindex(sd::SimData, r, c::Symbol) = getproperty(sd, c)[r]
+Base.getindex(sd::SimData, r::MIT, c::NTuple{N,Symbol}) where N = (a = sd[r]; NamedTuple{c}([a[cc] for cc in c]))
+Base.getindex(sd::SimData, r::MIT, c::AbstractVector{Symbol}) = (a = sd[r]; NamedTuple{tuple(c...)}([a[cc] for cc in c]))
+Base.getindex(sd::SimData, r::AbstractUnitRange{<:MIT}, c::AbstractVector{Symbol}) = getindex(sd, r, tuple(c...))
+function Base.getindex(sd::SimData, r::AbstractUnitRange{<:MIT}, c::NTuple{N,Symbol}) where N 
+    check_frequency(sd, r)
+    if firstdate(sd) <= first(r) <= last(r) <= lastdate(sd)
+        col_inds = indexin(c, [_names(sd)...])
+        for (cc, cn) in zip(c, col_inds)
+            if cn === nothing
+                throw(BoundsError(sd, [cc]))
+            end
+        end
+        return SimData(first(r), c, _values_slice(sd, r .- firstdate(sd) .+ 1, col_inds))
+    else
+        throw(BoundsError(sd, r))
+    end
+end
+
+Base.setindex!(sd::SimData, v, r, c::Symbol) = setindex!(getproperty(sd, c), v, r)
+function Base.setindex!(sd::SimData, vals, r::MIT, c::NTuple{N,Symbol}) where N 
+    for (cc, vv) in zip(c, vals)
+        setindex!(sd, vv, r, cc)
+    end
+    return sd[r, c]
+end
+Base.setindex!(sd::SimData, vals, r::MIT, c::AbstractVector{Symbol}) = setindex!(sd, vals, r, tuple(c...))
+Base.setindex!(sd::SimData, vals, r::AbstractUnitRange{<:MIT}, c::AbstractVector{Symbol}) = setindex!(sd, vals, r, tuple(c...))
+function Base.setindex!(sd::SimData, vals, r::AbstractUnitRange{<:MIT}, c::NTuple{N,Symbol}) where N
+    check_frequency(sd, r)
+    if firstdate(sd) <= first(r) <= last(r) <= lastdate(sd)
+        cols = indexin(c, [_names(sd)...])
+        for (cc, cn) in zip(c, cols)
+            if cn === nothing
+                throw(BoundsError(sd, [cc]))
+            end
+        end
+        rows = r .- firstdate(sd) .+ 1
+        setindex!(_values_view(sd, rows, cols), vals, :, :)
+        return 
+    else
+        throw(BoundsError(sd, r))
+    end
+end
+
 #### Pretty printing
 
 sprint_names(names) = length(names) > 10 ? "$(length(names)) variables" : "variables (" * join(names, ",") * ")"
@@ -180,13 +228,14 @@ function Base.show(io::IO, sd::SimData)
     io = IOContext(io, :compact => true)
     dwidth -= 11
 
-    A = Base.alignment(io, sd, 1:nval, 1:nsym, dwidth, dwidth, 2)
+    sd1 = [reshape([_names(sd)...], 1, :); _values(sd)]
+    A = Base.alignment(io, sd1, axes(sd1, 1), 1:nsym, dwidth, dwidth, 2)
 
     all_cols = true
     if length(A) ≠ nsym
         dwidth = div(dwidth - 1, 2)
-        AL = Base.alignment(io, sd, 1:nval, 1:nsym, dwidth, dwidth, 2)
-        AR = reverse(Base.alignment(io, sd, 1:nval, reverse(1:nsym), dwidth, dwidth, 2))
+        AL = Base.alignment(io, sd1, axes(sd1, 1), 1:nsym, dwidth, dwidth, 2)
+        AR = reverse(Base.alignment(io, sd1, axes(sd1, 1), reverse(1:nsym), dwidth, dwidth, 2))
         Linds = [1:length(AL)...]
         Rinds = [nsym - length(AR) + 1:nsym...]
         all_cols = false

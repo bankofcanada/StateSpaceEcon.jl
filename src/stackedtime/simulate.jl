@@ -285,3 +285,20 @@ function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, rng::MIT, plan::Pl
     # return simulate(m,D1,rng:rng, plan; kwargs...)
     return simulate(m, D1, plan[rng:rng,m]; kwargs...)
 end
+
+import ..SimData
+
+simulate(m::Model, D1::SimData, rng, plan::Plan=Plan(m, rng); kwargs...) = simulate(m, D1, plan[rng, m]; kwargs...)
+
+function simulate(m::Model, D1::SimData, plan::Plan;
+    deviation::Bool = false, overlay::Bool = false, kwargs...)::typeof(D1)
+    ret = copy(D1)
+    ig = get(kwargs, :initial_guess, zeros(0,0))
+    if ig isa SimData
+        ig = ig[plan.range, m.varshks]
+    end
+    sim = simulate(m, plan, D1[plan.range, m.varshks]; kwargs..., initial_guess=ig)
+    # overlay the sim data onto ret
+    ret[plan.range, m.varshks] = sim
+    return ret
+end
