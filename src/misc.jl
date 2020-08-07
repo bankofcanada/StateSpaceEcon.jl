@@ -15,8 +15,6 @@ optionally showing the column names.
     `Val` argument. If any names are longer than that, they will not be
     truncated and so the display will not be aligned properly. Sorry about that!
 
-See also: [`@printf`](@ref)
-
 """
 printmatrix(mat, args...) = printmatrix(mat, Val(12.7), args...)
 @generated function printmatrix(mat, ::Val{N}, cols = nothing) where N

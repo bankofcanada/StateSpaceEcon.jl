@@ -8,8 +8,8 @@ which is used in simulations. The plan object contains information about the
 range of the simulation and which variables and shocks are exogenous or
 endogenous at each period of the range.
 
-### Constructor
-  * [`Plan`](ref)`(model, range)`
+### Constructors
+  * [`Plan(model, range)`](@ref Plan)
 
 ### Modify the plan
   * [`exogenize!`](@ref), [`endogenize!`](@ref) - make variables exogenous or
@@ -20,10 +20,12 @@ endogenous at each period of the range.
     the list in the model
 
 ### Prepare data for simulation
-  * [`zeroarray`](@ref), [`zerodict`] - prepare a matrix or a dictionary of data
-    for the simulation
-  * [`steadystatearray`](@ref), [`steadystatedict`] - prepare a matrix or a
-    dictionary of data for the simulation containing the steady state
+  * [`zeroarray`](@ref), [`zerodict`](@ref), [`zerodata`](@ref) - prepare a
+    matrix or a dictionary or a [`SimData`](@ref) of data for the simulation
+    containing zeros.
+  * [`steadystatearray`](@ref), [`steadystatedict`](@ref),
+    [`steadystatedata`](@ref) - prepare a matrix or a dictionary or a [`SimData`](@ref) of data for the
+    simulation containing the steady state.
 
 """
 module Plans
@@ -41,7 +43,7 @@ export plansum
 
 
 """
-    Plan{T}
+    Plan{T <: MIT}
 
 A data structure representing the simulation plan. It holds information about
 the time range of the simulation and which variables/shocks are exogenous at
@@ -54,15 +56,19 @@ struct Plan{T <: MIT} <: AbstractVector{Vector{Symbol}}
     exogenous::BitArray{2}
 end
 
+Plan(model::Model, r::MIT) = Plan(model, r:r)
 """
     Plan(model, range)
 
 Create a default simulation plan for the given model over the given range. The
 range of the plan is augmented to include periods before and after the given
-range, over which initial and final conditions will be applied.
+range, over which initial and final conditions will be applied. 
+
+Instead of a range, one could also pass in a single moment in time
+([`MIT`](@ref TimeSeriesEcon.MIT)) instance, in which case it is interpreted as
+a range of length 1.
 
 """
-Plan(model::Model, r::MIT) = Plan(model, r:r)
 function Plan(model::Model, range::AbstractUnitRange)
     if !(eltype(range) <: MIT)
         range = UnitRange{MIT{Unit}}(range)
@@ -265,8 +271,8 @@ autoexogenize!(plan, model, date)
 Modify the given plan according to the "autoexogenize" protocol defined in the
 given model. All variables in the autoexogenization list become endogenous and
 their corresponding shocks become exogenous over the given date or range. `date`
-can be a moment in time (same type as the plan), or a range or an iterable or a
-container.
+can be a moment in time (same frequency as the given plan), a range, an
+iterable, or a container.
 
 """
 function autoexogenize!(p::Plan, m::Model, date)

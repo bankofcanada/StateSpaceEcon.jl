@@ -54,8 +54,8 @@ Run a simulation for the given model, simulation plan and exogenous data.
 
 ### Options as keyword arguments
   * `fctype::`[`FCType`](@ref) - set the desired final condition type for the
-    simulation. The default value is [`fcgiven`](@ref). Other possible values
-    include [`fclevel`](@ref) and [`fcslope`](@ref).
+    simulation. The default value is `fcgiven`. Other possible values
+    include `fclevel` and `fcslope`.
   * `initial_guess::AbstractMatrix{Float64}` - a 2D `Array` containing the
     initial guess for the solution. This is used to start the Newton-Raphson
     algorithm. The default value is an empty array (`zeros(0,0)`), in which case
