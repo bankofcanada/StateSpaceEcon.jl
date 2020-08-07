@@ -4,16 +4,20 @@ export check_sstate
 """
     check_sstate(model; <options>)
 
-Run a diagnostic test to determine if the steady state solution stored within the given
-model instance is indeed a valid steady state solution.
+Run a diagnostic test to determine if the steady state solution stored within
+the given model object is indeed a solution of the steady state system of
+equations.
 
-Return the number of steady state equations that are violated by the current steady state solution.
-If `verbose=true`, also display diagnostic information in the form of listing the bad equations and
-their residuals.
+Return the number of steady state equations that are violated by the current
+steady state solution. If `verbose=true`, also display diagnostic information in
+the form of listing all bad equations and their residuals.
 
 ### Options
-  * `verbose` - defaults to model.options.verbose
-  * `tol` - defaults to model.options.tol
+Standard options (default values from `model.options`)
+  * `verbose` 
+  * `tol` - an equation is considered satisfied if its residual, in absolute
+    value, is smaller than this number.
+
 """
 function check_sstate(model::Model; verbose::Bool = model.options.verbose, tol::Float64 = model.options.tol)
     R, J = global_SS_RJ(model.sstate.values, model)
@@ -43,22 +47,26 @@ end
 
 
 
-
+export diagnose_sstate
 """
     diagnose_sstate([point,] model)
 
-Run diagnostics on the steady state of the given model. If `point` is not
-given, then we check the steady state solution stored inside the given model.
+Run diagnostics on the steady state of the given model. If `point` is not given,
+then we check the steady state solution stored inside the given model.
 
-Retun a tuple of "bad" equations and "bad" variables. 
+Return a tuple of "bad" equations and "bad" variables. 
 
-The set of "bad" equations is one that is inconsistent, i.e. there is no solution. This might happen if the system is overdetermined.
+The set of "bad" equations is one that is inconsistent, i.e. there is no
+solution. This might happen if the system is overdetermined.
 
-The set of "bad" variables contains variables that cannot be solved uniquely. This might happen if the system is underdetermined. In this case,
-try addind steady state constraints until you get a unique solution.  See `@steadystate` in ModelBaseEcon.
+The set of "bad" variables contains variables that cannot be solved uniquely.
+This might happen if the system is underdetermined. In this case, try adding
+steady state constraints until you get a unique solution. See
+[`@steadystate`](@ref ModelBaseEcon.@steadystate) in ModelBaseEcon.
 
-!!! warning
-    Internal function. Use [`check_sstate`](@ref) instead.
+!!! warning "Internal function"
+    The output from this function may be difficult to read.<br>
+    Call [`check_sstate`](@ref) instead.
 """
 @inline diagnose_sstate(model::Model) = diagnose_sstate(model.sstate.values, model)
 function diagnose_sstate(point::AbstractVector{Float64}, model::Model)

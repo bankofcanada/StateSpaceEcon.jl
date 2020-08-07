@@ -30,4 +30,5 @@ using .SteadyStateSolver
 export clear_sstate!
 export initial_sstate!
 export check_sstate
+export diagnose_sstate
 export sssolve!

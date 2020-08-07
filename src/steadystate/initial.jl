@@ -1,6 +1,9 @@
 
 """
-    update_auxvars_ss()
+    update_auxvars_ss(point, model)
+
+!!! warning "Internal function"
+    This function is for internal use. Do not call directly.
 """
 function update_auxvars_ss(point::Vector{Float64}, model::Model)
     nvars = length(model.variables)
@@ -46,7 +49,7 @@ end
 
 Call `update_auxvars_ss`, then call `presolve_sstate!`.
 
-!!! warning
+!!! warning "Internal function"
     This function is for internal use. Do not call directly.
 """
 function _do_update_auxvars_presolve!(model::Model; verbose::Bool)
@@ -80,8 +83,12 @@ Set the steady state values to the provided defaults and presolve.
 
 ### Arguments
   * `model` - the model instance
-  * `lvl` - the default level value. Each steady state level is set to this number.
-  * `slp` - the default slope value. Each steady state slope is set to this number.
+  * `lvl`, `slp` - the initial guess for the level and the slope. Each could be
+    a number or a vector of length equal to the number of variable in the mode.
+
+### Options
+Standard options (default values are taken from `model.options`)
+  * `verbose`
 """
 function clear_sstate!(model::Model; lvl = 0.1, slp = 0.0, verbose = model.options.verbose)
     ss = model.sstate
@@ -100,14 +107,21 @@ export clear_sstate!
 
 Set the steady state values from the given vector and presolve.
 
-Call this function to specify initial guesses for the iterative steady state solver.
-If the value of a steady state variable is known, add that as a steady state equation.
+Call this function to specify initial guesses for the iterative steady state
+solver. If the value of a steady state variable is known, it is better to use
+[`@steadystate`](@ref ModelBaseEcon.@steadystate) to add that as a steady state
+constraint.
 
 ### Arguments
   * `model` - the model.
-  * `init` - a vector of length equal to twice the number of variables in the model.
-  The level and slope values are staggered, i.e., the level and slope of variable j 
-  are in init[2j-1] and init[2j].
+  * `init` - a vector of length equal to twice the number of variables in the
+    model. The level and slope values are staggered, i.e., the level and slope
+    of variable j are in init[2j-1] and init[2j].
+
+### Options
+Standard options (default values are taken from `model.options`)
+  * `verbose`
+
 """
 function initial_sstate!(model::Model, init::AbstractVector{Float64}; verbose = model.options.verbose)
     ss = model.sstate
