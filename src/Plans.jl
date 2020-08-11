@@ -155,24 +155,42 @@ function Base.show(io::IO, p::Plan)
     # 0) show summary before setting :compact
     summary(io, p)
     isempty(p) && return
-    print(io, ":")
+    # print(io, ":")
     nrow, ncol = displaysize(io)
+    limit = get(io, :limit, true)
     cp = collapsed_range(p)
     # find the longest string left of "=>" for padding
     maxl = maximum(length("$k") for (k,v) in cp)
-    if length(cp) <= nrow - 5
+    if limit
+        dcol = ncol - maxl - 6
+    else
+        dcol = typemax(Int)
+    end
+    print_exog(names) = begin
+        lens = cumsum(map(x->length("$x, "), names))
+        show = lens .< dcol
+        show[1] = true
+        print(io, join(names[show], ", "))
+        if !all(show)
+            print(io, ", …")
+        end
+    end
+    if !limit || length(cp) <= nrow - 5 
         for (r, v) in cp
-            print(io, "\n  ", lpad("$r", maxl, " "), " => ", v)
+            print(io, "\n  ", lpad("$r", maxl, " "), " → ")
+            print_exog(v)
         end
     else
         top = div(nrow - 5, 2)
         bot = length(cp) - nrow + 6 + top
         for (r, v) in cp[1:top]
-            print(io, "\n  ", lpad("$r", maxl, " "), " => ", v)
+            print(io, "\n  ", lpad("$r", maxl, " "), " → ")
+            print_exog(v)
         end
         print(io, "\n   ⋮")
         for (r, v) in cp[bot:end]
-            print(io, "\n  ", lpad("$r", maxl, " "), " => ", v)
+            print(io, "\n  ", lpad("$r", maxl, " "), " → ")
+            print_exog(v)
         end
     end
 end
