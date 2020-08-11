@@ -22,7 +22,7 @@ function sim_nr!(x::AbstractArray{Float64}, sd::AbstractSolverData,
         @timer nFx = norm(Fx, Inf)
         if nFx < tol
             if verbose
-                println("$it, || Fx || = $(nFx)")
+                @info "$it, || Fx || = $(nFx)"
             end
             break
         end
@@ -30,7 +30,7 @@ function sim_nr!(x::AbstractArray{Float64}, sd::AbstractSolverData,
         @timer nΔx = norm(vec(Δx), Inf)
         assign_update_step!(x, -1.0, Δx, sd)
         if verbose
-            println("$it, || Fx || = $(nFx), || Δx || = $(nΔx)")
+            @info "$it, || Fx || = $(nFx), || Δx || = $(nΔx)"
         end
         if nΔx < tol
             break
@@ -118,6 +118,9 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     if anticipate
         @timer gdata = StackedTimeSolverData(m, p, fctype)
         @timer assign_exog_data!(x, exog_data, gdata)
+        if verbose
+            @info "Simulating $(p.range[1 + m.maxlag:NT - m.maxlead])"
+        end
         @timer sim_nr!(x, gdata, maxiter, tol, verbose, sparse_solver)
     else # unanticipated shocks
         init = 1:m.maxlag
@@ -147,6 +150,9 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
                 assign_final_condition!(xx, exog_data[sim_range,:], gdata, Val(gdata.FC))
+                if verbose
+                    @info "Simulating $(p.range[t:T])"
+                end
                 @timer sim_nr!(xx, gdata, maxiter, tol, verbose, sparse_solver)
             end
         else
@@ -172,6 +178,9 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
                 assign_exog_data!(xx, exog_data[sim_range,:], sdata)
+                if verbose
+                    @info "Simulating $(p.range[t:T])"
+                end
                 sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver)
             end
             # intermediate simulations
@@ -199,6 +208,9 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 @timer xx[t0, exog_inds] = exog_data[t, exog_inds]
                 # Update the final conditions
                 @timer assign_final_condition!(xx, zeros(0, 0), sdata, Val(fcslope))
+                if verbose
+                    @info "Simulating $(p.range[t .+ (0:expectation_horizon - 1)])"
+                end
                 @timer sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver)
                 last_t = t  # keep track of last simulation time
             end
@@ -216,6 +228,9 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                     sim_range = UnitRange(psim.range)
                     xx = view(x, sim_range, :)
                     assign_final_condition!(xx, exog_data[sim_range, :], sdata, Val(fctype))
+                    if verbose
+                        @info "Simulating $(p.range[last_t + 1:T])"
+                    end
                     @timer sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver)
                 end
             end

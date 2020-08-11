@@ -373,7 +373,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatearray(m::Model, rng::AbstractUnitRange) = steadystatearray(m, Plan(m, rng))
-steadystatearray(m::Model, p::Plan) = Float64[i <= ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0.0 for _ in p.range, (v, i) = pairs(p.varsshks)]
+steadystatearray(m::Model, p::Plan) = Float64[i <= ModelBaseEcon.nvariables(m) ? m.sstate[v].level : 0.0 for _ in p.range, (v, i) = pairs(p.varsshks)]
 
 """
     steadystatearray(model, plan)
@@ -390,7 +390,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatedict(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
-steadystatedict(m::Model, p::Plan) = Dict(string(v) => TSeries(p.range, i <= ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0.0) for (v, i) in pairs(p.varsshks))
+steadystatedict(m::Model, p::Plan) = Dict(string(v) => TSeries(p.range, i <= ModelBaseEcon.nvariables(m) ? m.sstate[v].level : 0.0) for (v, i) in pairs(p.varsshks))
 
 """
     steadystatedata(model, plan)
@@ -409,7 +409,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 steadystatedata(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
 steadystatedata(m::Model, p::Plan) = hcat(
     SimData(firstdate(p), (), zeros(length(p), 0)); 
-    (v => (i <= ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0) for (v, i) in pairs(p.varsshks))...
+    (v => (i <= ModelBaseEcon.nvariables(m) ? m.sstate[v].level : 0) for (v, i) in pairs(p.varsshks))...
 )
 
 #######################################
