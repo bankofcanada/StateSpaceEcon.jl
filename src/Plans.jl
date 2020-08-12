@@ -126,10 +126,6 @@ Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize
 
 Base.summary(io::IO, p::Plan) = print(io, typeof(p), " with range ", p.range)
 
-#  Temporary fix to override bugs in TimeSeriesEcon
-Base.axes(r::AbstractUnitRange{<:MIT}) = (Base.OneTo(length(r)),)
-Base.axes1(r::AbstractUnitRange{<:MIT}) = Base.OneTo(length(r))
-
 # Used in the show() implementation below
 function collapsed_range(p::Plan{T}) where T <: MIT
     ret = Pair{Union{T,UnitRange{T}},Vector{Symbol}}[]
