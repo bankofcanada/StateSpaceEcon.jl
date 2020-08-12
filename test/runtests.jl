@@ -63,6 +63,12 @@ end
     out = @capture_out print(IOContext(stdout, :displaysize => (7, 80)), p)
     @test length(split(out, '\n')) == 4
     @test length(split(out, '⋮')) == 2
+    let p = Plan(m, 2000Q1:2020Q4)
+        endogenize!(p, shocks(m), 2000Q1:2002Q4)
+        @test isempty(p[2000Q1])
+        out = @capture_out print(p)
+        length(split(out, "\n")) == 4
+    end
 end
 
 include("simdatatests.jl")

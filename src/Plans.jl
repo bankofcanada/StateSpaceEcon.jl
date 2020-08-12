@@ -166,7 +166,11 @@ function Base.show(io::IO, p::Plan)
     else
         dcol = typemax(Int)
     end
-    print_exog(names) = begin
+    function print_exog(names) 
+        if isempty(names)
+            print(io, "∅")
+            return
+        end
         lens = cumsum(map(x->length("$x, "), names))
         show = lens .< dcol
         show[1] = true
