@@ -410,7 +410,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-steadystatedata(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
+steadystatedata(m::Model, rng::AbstractUnitRange) = steadystatedata(m, Plan(m, rng))
 steadystatedata(m::Model, p::Plan) = hcat(
     SimData(firstdate(p), (), zeros(length(p), 0)); 
     (v => (i <= ModelBaseEcon.nvariables(m) ? m.sstate[v].level : 0) for (v, i) in pairs(p.varsshks))...
