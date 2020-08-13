@@ -219,11 +219,11 @@ function setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::Abstr
     end
     return p
 end
-setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::Array{Symbol,1}, date::AbstractUnitRange{Int}) = setplanvalue!(p, val, vars, UnitRange{MIT{Unit}}(date))
-setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::Array{Symbol,1}, date::Integer) = setplanvalue!(p, val, vars, ii(date):ii(date))
-setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::Array{Symbol,1}, date::MIT{Unit}) = setplanvalue!(p, val, vars, date:date)
-setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::T) where T <: MIT = setplanvalue!(p, val, vars, date:date)
-setplanvalue!(p::Plan, val::Bool, vars::Array{Symbol,1}, date) = (foreach(d -> setplanvalue!(p, val, vars, d), date); p)
+setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::AbstractArray{Symbol,1}, date::AbstractUnitRange{Int}) = setplanvalue!(p, val, vars, UnitRange{MIT{Unit}}(date))
+setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::AbstractArray{Symbol,1}, date::Integer) = setplanvalue!(p, val, vars, ii(date):ii(date))
+setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::AbstractArray{Symbol,1}, date::MIT{Unit}) = setplanvalue!(p, val, vars, date:date)
+setplanvalue!(p::Plan{T}, val::Bool, vars::AbstractArray{Symbol,1}, date::T) where T <: MIT = setplanvalue!(p, val, vars, date:date)
+setplanvalue!(p::Plan, val::Bool, vars::AbstractArray{Symbol,1}, date) = (foreach(d -> setplanvalue!(p, val, vars, d), date); p)
 
 
 """
@@ -237,8 +237,9 @@ container.
 """
 exogenize!(p::Plan, var::Symbol, date) = setplanvalue!(p, true, [var,], date)
 exogenize!(p::Plan, var::AbstractString, date) = setplanvalue!(p, true, [Symbol(var),], date)
-exogenize!(p::Plan, vars::Vector{<:AbstractString}, date) = setplanvalue!(p, true, map(Symbol, vars), date)
-exogenize!(p::Plan, vars::Vector{Symbol}, date) = setplanvalue!(p, true, vars, date)
+exogenize!(p::Plan, vars::AbstractVector{<:AbstractString}, date) = setplanvalue!(p, true, map(Symbol, vars), date)
+exogenize!(p::Plan, vars::AbstractVector{Symbol}, date) = setplanvalue!(p, true, vars, date)
+exogenize!(p::Plan, vars::NTuple, date) = setplanvalue!(p, true, [vars...], date)
 
 
 """
@@ -252,8 +253,9 @@ iterable or a container.
 """
 endogenize!(p::Plan, var::Symbol, date) = setplanvalue!(p, false, [var,], date)
 endogenize!(p::Plan, var::AbstractString, date) = setplanvalue!(p, false, [Symbol(var),], date)
-endogenize!(p::Plan, vars::Vector{<:AbstractString}, date) = setplanvalue!(p, false, map(Symbol, vars), date)
-endogenize!(p::Plan, vars::Vector{Symbol}, date) = setplanvalue!(p, false, vars, date)
+endogenize!(p::Plan, vars::AbstractVector{<:AbstractString}, date) = setplanvalue!(p, false, map(Symbol, vars), date)
+endogenize!(p::Plan, vars::AbstractVector{Symbol}, date) = setplanvalue!(p, false, vars, date)
+endogenize!(p::Plan, vars::NTuple, date) = setplanvalue!(p, false, [vars...], date)
 
 
 """
