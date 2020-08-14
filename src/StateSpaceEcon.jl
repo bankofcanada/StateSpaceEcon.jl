@@ -16,5 +16,6 @@ include("SteadyStateSolver.jl")
 include("Plans.jl")
 include("misc.jl")
 include("StackedTimeSolver.jl")
+include("plotrecipes.jl")
 
 end # module

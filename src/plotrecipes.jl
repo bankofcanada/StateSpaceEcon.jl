@@ -1,0 +1,28 @@
+
+using RecipesBase
+@recipe plot(sd::SimData...; vars=nothing, names=nothing) = begin
+    if vars === nothing
+        error("Must specify variables to plot")
+    elseif vars == :all
+        vars = StateSpaceEcon._names(sd[1])
+    end
+    if length(vars) > 10
+        error("Too many variables. Split into pages.")
+    end
+    if names === nothing
+        names = ["data$i" for i = 1:length(sd)]
+    end
+    layout --> length(vars)
+    title --> reshape(map(string, [vars...]), 1, :)
+    titlefont --> font(10, :bold)
+    label --> repeat(reshape([names...], 1, :), inner=(1, length(vars)))
+    linewidth --> 1.5
+    left_margin --> 4 * Plots.mm
+    for s in sd
+        for v in vars
+            @series begin
+                s[v]
+            end
+        end
+    end
+end
