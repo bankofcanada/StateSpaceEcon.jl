@@ -1,5 +1,5 @@
 
-export StackedTimeSolverData
+# export StackedTimeSolverData
 """
     StackedTimeSolverData <: AbstractSolverData
 

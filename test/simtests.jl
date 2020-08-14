@@ -1,8 +1,8 @@
 
 
 
-@testset "M1.simple" begin
-    m = M1.model
+@testset "E1.simple" begin
+    m = E1.model
     m.α = 0.5
     m.β = 1.0 - m.α
     for T = 6:10
@@ -33,7 +33,7 @@
         exp02 = sim01
         @test sim02 ≈ exp02
     end
-    # test_simulation(M1.model, "data/M1_TestMatrix.csv")
+    # test_simulation(E1.model, "data/M1_TestMatrix.csv")
 end
 
 using DelimitedFiles
@@ -63,27 +63,27 @@ function test_simulation(m, path)
     @test res02 ≈ data_chk
 end
 
-@testset "M1.sim" begin
-    test_simulation(M1.model, "data/M1_TestData.csv")
+@testset "E1.sim" begin
+    test_simulation(E1.model, "data/M1_TestData.csv")
 end
 
-@testset "M2.sim" begin
-    test_simulation(M2.model, "data/M2_TestData.csv")
+@testset "E2.sim" begin
+    test_simulation(E2.model, "data/M2_TestData.csv")
 end
 
-@testset "M3.sim" begin
-    test_simulation(M3.model, "data/M3_TestData.csv")
+@testset "E3.sim" begin
+    test_simulation(E3.model, "data/M3_TestData.csv")
 end
 
-@testset "M6.sim" begin
-    test_simulation(M6.model, "data/M6_TestData.csv")
+@testset "E6.sim" begin
+    test_simulation(E6.model, "data/M6_TestData.csv")
 end
 
 #############################################################
 # linearization tests
 
 @testset "linearize" begin
-    m3 = deepcopy(M3.model)
+    m3 = deepcopy(E3.model)
     clear_sstate!(m3)
     @test_throws ModelBaseEcon.LinearizationError linearize!(m3)
 
@@ -92,7 +92,7 @@ end
 
     test_simulation(m3, "data/M3_TestData.csv")
 
-    m3nl = deepcopy(M3nl.model)
+    m3nl = deepcopy(E3nl.model)
     m3nl.sstate.values .= m3.sstate.values
     m3nl.sstate.mask .= m3.sstate.mask
     @test issssolved(m3nl)
@@ -109,7 +109,7 @@ end
     @test isa(m3.evaldata, ModelBaseEcon.LinearizedModelEvaluationData)
     test_simulation(m3, "data/M3_TestData.csv")
 
-    m7 = deepcopy(M7.model)
+    m7 = deepcopy(E7.model)
     if !issssolved(m7)
         empty!(m7.sstate.constraints)
         @steadystate m7 linv = lc - 7;
@@ -120,10 +120,10 @@ end
     # the aux variables are present
     @test_throws ModelBaseEcon.LinearizationError linearize!(m7)
 
-    clear_sstate!(M7A.model)
-    sssolve!(M7A.model)
+    clear_sstate!(E7A.model)
+    sssolve!(E7A.model)
     # non-zeros linear growth in the steady state 
-    @test_throws ModelBaseEcon.LinearizationError linearize!(M7A.model)
+    @test_throws ModelBaseEcon.LinearizationError linearize!(E7A.model)
 
 end
 
@@ -131,8 +131,8 @@ end
 #############################################################
 # Tests of unanticipated shocks
 
-@testset "M1.unant" begin
-    m = M1.model
+@testset "E1.unant" begin
+    m = E1.model
     m.α = m.β = 0.5
     p = Plan(m, 1:3);
     data = zeroarray(m, p);
@@ -144,8 +144,8 @@ end
     @test res_u ≈ true_u atol = 1e-12
 end
 
-@testset "M2.unant" begin
-    m = M2.model
+@testset "E2.unant" begin
+    m = E2.model
     nvars = length(m.variables)
     nshks = length(m.shocks)
     var_inds = 1:nvars
@@ -215,8 +215,8 @@ end
     end
 end
 
-@testset "M3.unant" begin
-    m = M3.model
+@testset "E3.unant" begin
+    m = E3.model
     nvars = length(m.variables)
     nshks = length(m.shocks)
     var_inds = 1:nvars

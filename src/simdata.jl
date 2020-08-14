@@ -106,6 +106,7 @@ macro if_same_frequency(a, b, expr)
 end
 
 # A single MIT materializes as a NamedTuple (row of the matrix with column names attached to the values)
+Base.getindex(sd::SimData, i1::MIT, ::Colon) = sd[i1 - firstdate(sd) + 1, :]
 function Base.getindex(sd::SimData, i1::MIT) 
     check_frequency(sd, i1)
     if firstdate(sd) <= i1 <= lastdate(sd)
@@ -116,6 +117,7 @@ function Base.getindex(sd::SimData, i1::MIT)
 end
 
 # Modifying a row in a table -> one must pass in a vector
+Base.setindex!(sd::SimData, val, i1::MIT, ::Colon) = sd[i1-firstdate(sd)+1, :] = val
 function Base.setindex!(sd::SimData, val::AbstractVector{<:Real}, i1::MIT) 
     check_frequency(sd, i1)
     if firstdate(sd) <= i1 <= lastdate(sd)

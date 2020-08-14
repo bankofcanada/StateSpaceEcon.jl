@@ -54,7 +54,7 @@ matrix.
 
 """
 global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, g::AbstractSolverData) = error("Not implemented for $(typeof(g)).")
-export global_RJ
+# export global_RJ
 
 """
     global_R!(res::Vector, x::Array, exog::Array, sd::AbstractSolverData)
@@ -63,7 +63,7 @@ Compute the residual of the dynamic system of equations at the given point `x` u
 The residual is updated in place.
 """
 global_R!(res::AbstractArray{Float64}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, g::AbstractSolverData) = error("Not implemented for $(typeof(g)).")
-export global_R!
+# export global_R!
 
 """
     assign_exog_data(x::Array, exog::Array, sd::AbstractSolverData)
@@ -73,7 +73,7 @@ constructor of sd) with exogenous values taken from `exog`.
 
 """
 assign_exog_data!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, g::AbstractSolverData) = error("Not implemented for $(typeof(g)).")
-export assign_exog_data!
+# export assign_exog_data!
 
 """
     assign_final_condition!(x::Array, exog::Array, sd::AbstractSolverData, ::Val{T})
@@ -86,7 +86,7 @@ to the constructor of `sd`.
 
 """
 assign_final_condition!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, g::AbstractSolverData, ::Val{T}) where T = error("Not implemented for $(typeof(g)) with final condition $(T).")
-export assign_final_condition!
+# export assign_final_condition!
 
 """
     assign_update_step!(x::Array, lambda::Real, dx::Array, sd::AbstractSolverData)
@@ -95,7 +95,7 @@ Assign the iterative update. Equivalent to `x = x + lambda * dx`.
 """
 function assign_update_step! end
 @inline assign_update_step!(x::AbstractArray{Float64}, lambda::Float64, Δx::AbstractArray{Float64}, ::AbstractSolverData) = BLAS.axpy!(lambda, Δx, x)  # axpy!(a,x,y) <=> y .= a .* x .+ y
-export assign_update_step!
+# export assign_update_step!
 
 """
     update_plan!(sd, model, plan)
@@ -107,4 +107,4 @@ have different exogenous/endogenous assignments.
 
 """
 update_plan!(sd::AbstractSolverData, m::Model, p::Plan) = error("Not implemented for $(typeof(sd)).")
-export update_plan!
+# export update_plan!

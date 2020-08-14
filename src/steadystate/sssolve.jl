@@ -6,31 +6,32 @@ export sssolve!
 Solve the steady state problem for the given model.
 
 ### Options
-  * `verbose - defaults to `model.options.verbose`
-  * `tol` - defaults to `model.options.tol`
-  * `maxiter` - defaults to `model.options.maxiter`
-  * `presolve::Bool` - whether or not the presolve the system.
-  * `method::Symbol` - choose the solution algorithm. Valid options are `:nr`, `lm`, and `:auto`.
-  The `:auto` method starts with the LM algorithm and automatically switches to NR when it
-  starts to converge.
-  * `nropts::Options` - options to control the Newton-Raphson algorithm.
-  * `lmopts::Options` - options to control the Levenberg–Marquardt algorithm.
+Standard options (default values are taken from `model.options`)
+  * `verbose`
+  * `tol`, `maxiter` - control the stopping criteria of the solver
+
+Specific options
+  * `presolve::Bool` - whether or not to use a presolve pass. Default is `true`.
+  * `method::Symbol` - choose the solution algorithm. Valid options are `:nr`
+    for Newton-Raphson, `:lm` for Levenberg-Marquardt, and `:auto`. The `:auto`
+    method starts with the LM algorithm and automatically switches to NR when it
+    starts to converge. Default is `:nr`.
 """
 function sssolve!(model::Model; 
-    verbose::Bool = model.options.verbose, 
-    tol::Float64 = model.options.tol,
-    maxiter::Int64 = model.options.maxiter,
-    presolve::Bool = true,
-    nropts = Options(linesearch = false),
-    lmopts = Options(),
-    method::Symbol = :nr
+    verbose::Bool=model.options.verbose, 
+    tol::Float64=model.options.tol,
+    maxiter::Int64=model.options.maxiter,
+    presolve::Bool=true,
+    nropts=Options(linesearch=false),
+    lmopts=Options(),
+    method::Symbol=:nr
 )::Vector{Float64}
 
     if method ∉ (:nr, :lm, :auto)
         error("Method should be one of :nr, :lm, or :auto, not :$method")
     end
 
-    sd = SolverData(model; presolve = presolve)
+    sd = SolverData(model; presolve=presolve)
     if sd.nvars == 0
         # Nothing left to solve for
         return sd.point
@@ -59,7 +60,7 @@ function sssolve!(model::Model;
 
     if method ∈ (:lm, :auto)
         @timer r0, j0 = global_SS_RJ(xx, sd)
-        first_step_lm!(xx, dx, r0, j0, lm; verbose = verbose)
+        first_step_lm!(xx, dx, r0, j0, lm; verbose=verbose)
         nf = nr0 = norm(r0, Inf)
         if verbose
             @info "0, || Fx || = $(nr0), || Δx || = $(norm(dx, Inf)), lambda = $(lm.params[1])"
@@ -80,10 +81,10 @@ function sssolve!(model::Model;
         nf = norm(r0, Inf)
 
         if (method == :nr) || ((method == :auto) && run_nr)
-            step_nr!(xx, dx, r0, j0, nr; verbose = verbose)
+            step_nr!(xx, dx, r0, j0, nr; verbose=verbose)
             last_step_method = :nr
         else
-            step_lm!(xx, dx, r0, j0, lm; verbose = verbose)
+            step_lm!(xx, dx, r0, j0, lm; verbose=verbose)
             run_nr = (nf < nr0 < 1e-2) && (lm.params[1] <= 1e-3)
             last_step_method = :lm
         end

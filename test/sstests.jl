@@ -1,6 +1,6 @@
 
-@testset "M1.sstate" begin
-    let m = M1.model
+@testset "E1.sstate" begin
+    let m = E1.model
         m.α = 0.5
         m.β = 1.0 - m.α
         clear_sstate!(m)
@@ -36,8 +36,8 @@
     end
 end
 
-@testset "M2.sstate" begin
-    let m = M2.model
+@testset "E2.sstate" begin
+    let m = E2.model
         clear_sstate!(m)
         sssolve!(m);
         @test check_sstate(m) == 0
@@ -61,8 +61,8 @@ end
     end
 end
 
-@testset "M6.sstate" begin
-    let m = M6.model
+@testset "E6.sstate" begin
+    let m = E6.model
         m.options.maxiter = 50
 
         clear_sstate!(m)
@@ -83,8 +83,8 @@ end
     end
 end
 
-@testset "M7.sstate" begin
-    let m = M7.model
+@testset "E7.sstate" begin
+    let m = E7.model
         m.options.maxiter = 100
         m.options.tol = 1e-9
 

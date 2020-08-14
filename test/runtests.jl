@@ -3,13 +3,13 @@ using TimeSeriesEcon
 using ModelBaseEcon
 
 @info "Loading Model examples. Might take some time to pre-compile."
-@using_example M1
-@using_example M2
-@using_example M3
-@using_example M3nl
-@using_example M6
-@using_example M7
-@using_example M7A
+@using_example E1
+@using_example E2
+@using_example E3
+@using_example E3nl
+@using_example E6
+@using_example E7
+@using_example E7A
 
 using Test
 using Suppressor
@@ -39,7 +39,7 @@ using Suppressor
 end
 
 @testset "Plans" begin
-    m = M1.model
+    m = E1.model
     p = Plan(m, 1:3)
     @test first(p.range) == ii(0)
     @test last(p.range) == ii(4)
@@ -63,6 +63,12 @@ end
     out = @capture_out print(IOContext(stdout, :displaysize => (7, 80)), p)
     @test length(split(out, '\n')) == 4
     @test length(split(out, '⋮')) == 2
+    let p = Plan(m, 2000Q1:2020Q4)
+        endogenize!(p, shocks(m), 2000Q1:2002Q4)
+        @test isempty(p[2000Q1])
+        out = @capture_out print(p)
+        length(split(out, "\n")) == 4
+    end
 end
 
 include("simdatatests.jl")

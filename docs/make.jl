@@ -18,8 +18,10 @@ makedocs(sitename = "StateSpaceEcon.jl",
          modules = [StateSpaceEcon],
          doctest = false,
          pages = [
-        "Home" => "index.md",
-        "Examples" => "examples.md"
+        "Reference" => "index.md",
+
+        
+        # "Examples" => "examples.md"
     ]
 )
 

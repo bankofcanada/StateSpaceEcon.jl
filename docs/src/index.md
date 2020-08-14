@@ -1,16 +1,36 @@
-# Home
+# Reference
 
 ```@contents
-Pages = ["examples.md"]
-
+Pages = ["index.md"]
 ```
 
-## Introduction
+## Steady state solver
 
-```@docs
-StateSpaceEcon
+```@autodocs
+Modules = [StateSpaceEcon.SteadyStateSolver]
+Private = false
 ```
 
+## Plans
+
+```@autodocs
+Modules = [StateSpaceEcon.Plans]
+Private = false
+```
+
+## Stacked time solver
+
+```@autodocs
+Modules = [StateSpaceEcon.StackedTimeSolver]
+Private = false
+```
+
+## Various
+
+```@autodocs
+Modules = [StateSpaceEcon]
+Private = false
+```
 
 ## Index
 

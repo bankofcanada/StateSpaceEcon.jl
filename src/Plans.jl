@@ -8,8 +8,8 @@ which is used in simulations. The plan object contains information about the
 range of the simulation and which variables and shocks are exogenous or
 endogenous at each period of the range.
 
-### Constructor
-  * [`Plan`](ref)`(model, range)`
+### Constructors
+  * [`Plan(model, range)`](@ref Plan)
 
 ### Modify the plan
   * [`exogenize!`](@ref), [`endogenize!`](@ref) - make variables exogenous or
@@ -20,10 +20,12 @@ endogenous at each period of the range.
     the list in the model
 
 ### Prepare data for simulation
-  * [`zeroarray`](@ref), [`zerodict`] - prepare a matrix or a dictionary of data
-    for the simulation
-  * [`steadystatearray`](@ref), [`steadystatedict`] - prepare a matrix or a
-    dictionary of data for the simulation containing the steady state
+  * [`zeroarray`](@ref), [`zerodict`](@ref), [`zerodata`](@ref) - prepare a
+    matrix or a dictionary or a [`SimData`](@ref) of data for the simulation
+    containing zeros.
+  * [`steadystatearray`](@ref), [`steadystatedict`](@ref),
+    [`steadystatedata`](@ref) - prepare a matrix or a dictionary or a [`SimData`](@ref) of data for the
+    simulation containing the steady state.
 
 """
 module Plans
@@ -41,7 +43,7 @@ export plansum
 
 
 """
-    Plan{T}
+    Plan{T <: MIT}
 
 A data structure representing the simulation plan. It holds information about
 the time range of the simulation and which variables/shocks are exogenous at
@@ -54,15 +56,19 @@ struct Plan{T <: MIT} <: AbstractVector{Vector{Symbol}}
     exogenous::BitArray{2}
 end
 
+Plan(model::Model, r::MIT) = Plan(model, r:r)
 """
     Plan(model, range)
 
 Create a default simulation plan for the given model over the given range. The
 range of the plan is augmented to include periods before and after the given
-range, over which initial and final conditions will be applied.
+range, over which initial and final conditions will be applied. 
+
+Instead of a range, one could also pass in a single moment in time
+([`MIT`](@ref TimeSeriesEcon.MIT)) instance, in which case it is interpreted as
+a range of length 1.
 
 """
-Plan(model::Model, r::MIT) = Plan(model, r:r)
 function Plan(model::Model, range::AbstractUnitRange)
     if !(eltype(range) <: MIT)
         range = UnitRange{MIT{Unit}}(range)
@@ -120,10 +126,6 @@ Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize
 
 Base.summary(io::IO, p::Plan) = print(io, typeof(p), " with range ", p.range)
 
-#  Temporary fix to override bugs in TimeSeriesEcon
-Base.axes(r::AbstractUnitRange{<:MIT}) = (Base.OneTo(length(r)),)
-Base.axes1(r::AbstractUnitRange{<:MIT}) = Base.OneTo(length(r))
-
 # Used in the show() implementation below
 function collapsed_range(p::Plan{T}) where T <: MIT
     ret = Pair{Union{T,UnitRange{T}},Vector{Symbol}}[]
@@ -149,24 +151,46 @@ function Base.show(io::IO, p::Plan)
     # 0) show summary before setting :compact
     summary(io, p)
     isempty(p) && return
-    print(io, ":")
+    # print(io, ":")
     nrow, ncol = displaysize(io)
+    limit = get(io, :limit, true)
     cp = collapsed_range(p)
     # find the longest string left of "=>" for padding
     maxl = maximum(length("$k") for (k,v) in cp)
-    if length(cp) <= nrow - 5
+    if limit
+        dcol = ncol - maxl - 6
+    else
+        dcol = typemax(Int)
+    end
+    function print_exog(names) 
+        if isempty(names)
+            print(io, "∅")
+            return
+        end
+        lens = cumsum(map(x->length("$x, "), names))
+        show = lens .< dcol
+        show[1] = true
+        print(io, join(names[show], ", "))
+        if !all(show)
+            print(io, ", …")
+        end
+    end
+    if !limit || length(cp) <= nrow - 5 
         for (r, v) in cp
-            print(io, "\n  ", lpad("$r", maxl, " "), " => ", v)
+            print(io, "\n  ", lpad("$r", maxl, " "), " → ")
+            print_exog(v)
         end
     else
         top = div(nrow - 5, 2)
         bot = length(cp) - nrow + 6 + top
         for (r, v) in cp[1:top]
-            print(io, "\n  ", lpad("$r", maxl, " "), " => ", v)
+            print(io, "\n  ", lpad("$r", maxl, " "), " → ")
+            print_exog(v)
         end
         print(io, "\n   ⋮")
         for (r, v) in cp[bot:end]
-            print(io, "\n  ", lpad("$r", maxl, " "), " => ", v)
+            print(io, "\n  ", lpad("$r", maxl, " "), " → ")
+            print_exog(v)
         end
     end
 end
@@ -195,11 +219,11 @@ function setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::Abstr
     end
     return p
 end
-setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::Array{Symbol,1}, date::AbstractUnitRange{Int}) = setplanvalue!(p, val, vars, UnitRange{MIT{Unit}}(date))
-setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::Array{Symbol,1}, date::Integer) = setplanvalue!(p, val, vars, ii(date):ii(date))
-setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::Array{Symbol,1}, date::MIT{Unit}) = setplanvalue!(p, val, vars, date:date)
-setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::T) where T <: MIT = setplanvalue!(p, val, vars, date:date)
-setplanvalue!(p::Plan, val::Bool, vars::Array{Symbol,1}, date) = (foreach(d -> setplanvalue!(p, val, vars, d), date); p)
+setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::AbstractArray{Symbol,1}, date::AbstractUnitRange{Int}) = setplanvalue!(p, val, vars, UnitRange{MIT{Unit}}(date))
+setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::AbstractArray{Symbol,1}, date::Integer) = setplanvalue!(p, val, vars, ii(date):ii(date))
+setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::AbstractArray{Symbol,1}, date::MIT{Unit}) = setplanvalue!(p, val, vars, date:date)
+setplanvalue!(p::Plan{T}, val::Bool, vars::AbstractArray{Symbol,1}, date::T) where T <: MIT = setplanvalue!(p, val, vars, date:date)
+setplanvalue!(p::Plan, val::Bool, vars::AbstractArray{Symbol,1}, date) = (foreach(d -> setplanvalue!(p, val, vars, d), date); p)
 
 
 """
@@ -213,8 +237,9 @@ container.
 """
 exogenize!(p::Plan, var::Symbol, date) = setplanvalue!(p, true, [var,], date)
 exogenize!(p::Plan, var::AbstractString, date) = setplanvalue!(p, true, [Symbol(var),], date)
-exogenize!(p::Plan, vars::Vector{<:AbstractString}, date) = setplanvalue!(p, true, map(Symbol, vars), date)
-exogenize!(p::Plan, vars::Vector{Symbol}, date) = setplanvalue!(p, true, vars, date)
+exogenize!(p::Plan, vars::AbstractVector{<:AbstractString}, date) = setplanvalue!(p, true, map(Symbol, vars), date)
+exogenize!(p::Plan, vars::AbstractVector{Symbol}, date) = setplanvalue!(p, true, vars, date)
+exogenize!(p::Plan, vars::NTuple, date) = setplanvalue!(p, true, [vars...], date)
 
 
 """
@@ -228,8 +253,9 @@ iterable or a container.
 """
 endogenize!(p::Plan, var::Symbol, date) = setplanvalue!(p, false, [var,], date)
 endogenize!(p::Plan, var::AbstractString, date) = setplanvalue!(p, false, [Symbol(var),], date)
-endogenize!(p::Plan, vars::Vector{<:AbstractString}, date) = setplanvalue!(p, false, map(Symbol, vars), date)
-endogenize!(p::Plan, vars::Vector{Symbol}, date) = setplanvalue!(p, false, vars, date)
+endogenize!(p::Plan, vars::AbstractVector{<:AbstractString}, date) = setplanvalue!(p, false, map(Symbol, vars), date)
+endogenize!(p::Plan, vars::AbstractVector{Symbol}, date) = setplanvalue!(p, false, vars, date)
+endogenize!(p::Plan, vars::NTuple, date) = setplanvalue!(p, false, [vars...], date)
 
 
 """
@@ -265,8 +291,8 @@ autoexogenize!(plan, model, date)
 Modify the given plan according to the "autoexogenize" protocol defined in the
 given model. All variables in the autoexogenization list become endogenous and
 their corresponding shocks become exogenous over the given date or range. `date`
-can be a moment in time (same type as the plan), or a range or an iterable or a
-container.
+can be a moment in time (same frequency as the given plan), a range, an
+iterable, or a container.
 
 """
 function autoexogenize!(p::Plan, m::Model, date)
@@ -349,7 +375,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatearray(m::Model, rng::AbstractUnitRange) = steadystatearray(m, Plan(m, rng))
-steadystatearray(m::Model, p::Plan) = Float64[i <= ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0.0 for _ in p.range, (v, i) = pairs(p.varsshks)]
+steadystatearray(m::Model, p::Plan) = Float64[i <= ModelBaseEcon.nvariables(m) ? m.sstate[v].level : 0.0 for _ in p.range, (v, i) = pairs(p.varsshks)]
 
 """
     steadystatearray(model, plan)
@@ -366,7 +392,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatedict(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
-steadystatedict(m::Model, p::Plan) = Dict(string(v) => TSeries(p.range, i <= ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0.0) for (v, i) in pairs(p.varsshks))
+steadystatedict(m::Model, p::Plan) = Dict(string(v) => TSeries(p.range, i <= ModelBaseEcon.nvariables(m) ? m.sstate[v].level : 0.0) for (v, i) in pairs(p.varsshks))
 
 """
     steadystatedata(model, plan)
@@ -382,10 +408,10 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-steadystatedata(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
+steadystatedata(m::Model, rng::AbstractUnitRange) = steadystatedata(m, Plan(m, rng))
 steadystatedata(m::Model, p::Plan) = hcat(
     SimData(firstdate(p), (), zeros(length(p), 0)); 
-    (v => (i <= ModelBaseEcon.nvariables(m) ? m.sstate[v] : 0) for (v, i) in pairs(p.varsshks))...
+    (v => (i <= ModelBaseEcon.nvariables(m) ? m.sstate[v].level : 0) for (v, i) in pairs(p.varsshks))...
 )
 
 #######################################
