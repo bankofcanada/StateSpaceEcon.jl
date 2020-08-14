@@ -1,2 +1,4 @@
 ignore:
   - "src/plotrecipes.jl"
+  - "docs/*"
+  
