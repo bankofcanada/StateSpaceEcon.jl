@@ -14,10 +14,10 @@ codecov: true
 julia:
   # - nightly
   - 1.0
-  - latest
+  - 1.5
 jobs:
   allow_failures:
-    - julia: latest
+    - julia: 1.5
   include:
   - stage: "Documentation"
     julia: 1.0
