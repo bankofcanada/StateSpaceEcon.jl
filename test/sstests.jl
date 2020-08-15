@@ -1,4 +1,5 @@
 
+empty!(E1.model.sstate.constraints)
 @testset "E1.sstate" begin
     let m = E1.model
         m.α = 0.5
@@ -36,6 +37,7 @@
     end
 end
 
+empty!(E2.model.sstate.constraints)
 @testset "E2.sstate" begin
     let m = E2.model
         clear_sstate!(m)

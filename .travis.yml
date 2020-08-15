@@ -4,7 +4,7 @@ arch:
 os:
   - linux
   - osx
-  - windows
+  # - windows
 notifications:
   email: false
 branches:
