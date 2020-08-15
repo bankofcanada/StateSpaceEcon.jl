@@ -1,5 +1,5 @@
 
-using RecipesBase
+using Plots
 @recipe plot(sd::SimData...; vars=nothing, names=nothing) = begin
     if vars === nothing
         error("Must specify variables to plot")
