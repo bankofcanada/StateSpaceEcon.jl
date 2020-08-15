@@ -4,7 +4,7 @@ arch:
 os:
   - linux
   - osx
-  # - windows
+  - windows
 notifications:
   email: false
 branches:
@@ -14,10 +14,10 @@ codecov: true
 julia:
   # - nightly
   - 1.0
-  - 1.4
+  - latest
 jobs:
   allow_failures:
-    - julia: 1.4
+    - julia: latest
   include:
   - stage: "Documentation"
     julia: 1.0
