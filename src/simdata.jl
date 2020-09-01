@@ -44,8 +44,11 @@ TimeSeriesEcon.mitrange(sd::SimData) = (firstdate(sd) - 1) .+ Base.axes1(sd)
 
 Base.size(sd::SimData) = size(_values(sd))
 Base.IndexStyle(sd::SimData) = IndexStyle(_values(sd))
-Base.getindex(sd::SimData, i1...) = getindex(_values(sd), i1...)
-Base.setindex!(sd::SimData, val, i1...) = setindex!(_values(sd), val, i1...)
+
+# Indexing with integers falls back to AbstractArray
+const FallbackType = Union{Integer, Colon, AbstractUnitRange{<:Integer}, AbstractVector{<:Integer}, CartesianIndex}
+Base.getindex(sd::SimData, i1::FallbackType...) = getindex(_values(sd), i1...)
+Base.setindex!(sd::SimData, val, i1::FallbackType...) = setindex!(_values(sd), val, i1...)
 
 Base.similar(sd::SimData) = SimData(firstdate(sd), _names(sd), similar(_values(sd)))
 
@@ -64,8 +67,7 @@ function Base.getproperty(sd::SimData, col::Symbol)
 end
 
 # Access to columns by [:xyz] notation
-Base.getindex(sd::SimData, col::Symbol) = getproperty(sd, col)
-Base.getindex(sd::SimData, col::AbstractString) = getproperty(sd, Symbol(col))
+Base.getindex(sd::SimData, col) = getproperty(sd, Symbol(col))
 
 function Base.setproperty!(sd::SimData,  col::Symbol, val)
     try
@@ -79,7 +81,9 @@ function Base.setproperty!(sd::SimData,  col::Symbol, val)
     setindex!(col, val, :)
 end
 
-Base.getindex(sd::SimData, cols::AbstractArray{Symbol}) = getindex(sd, tuple(cols...))
+Base.getindex(sd::SimData, cols::AbstractVector) = getindex(sd, tuple(map(Symbol, cols)...))
+Base.getindex(sd::SimData, cols::Tuple) = getindex(sd, tuple(map(Symbol, cols)...))
+
 function Base.getindex(sd::SimData, cols::NTuple{N,Symbol}) where N
     SimData(firstdate(sd), tuple(cols...), hcat((getproperty(sd, c) for c in cols)...))
 end
@@ -164,10 +168,11 @@ function Base.setindex!(sd::SimData, val, i1::AbstractUnitRange{<:MIT})
 end
 
 
-Base.getindex(sd::SimData, r, c::Symbol) = getproperty(sd, c)[r]
+Base.getindex(sd::SimData, r, c) = getproperty(sd, Symbol(c))[r]
+Base.getindex(sd::SimData, r, c::AbstractVector) = getindex(sd, r, tuple(map(Symbol, c)...))
+Base.getindex(sd::SimData, r, c::Tuple) = getindex(sd, r, tuple(map(Symbol, c)...))
+
 Base.getindex(sd::SimData, r::MIT, c::NTuple{N,Symbol}) where N = (a = sd[r]; NamedTuple{c}([a[cc] for cc in c]))
-Base.getindex(sd::SimData, r::MIT, c::AbstractVector{Symbol}) = (a = sd[r]; NamedTuple{tuple(c...)}([a[cc] for cc in c]))
-Base.getindex(sd::SimData, r::AbstractUnitRange{<:MIT}, c::AbstractVector{Symbol}) = getindex(sd, r, tuple(c...))
 function Base.getindex(sd::SimData, r::AbstractUnitRange{<:MIT}, c::NTuple{N,Symbol}) where N 
     check_frequency(sd, r)
     if firstdate(sd) <= first(r) <= last(r) <= lastdate(sd)
@@ -183,16 +188,18 @@ function Base.getindex(sd::SimData, r::AbstractUnitRange{<:MIT}, c::NTuple{N,Sym
     end
 end
 
-Base.setindex!(sd::SimData, v, r, c::Symbol) = setindex!(getproperty(sd, c), v, r)
-function Base.setindex!(sd::SimData, vals, r::MIT, c::NTuple{N,Symbol}) where N 
-    for (cc, vv) in zip(c, vals)
+Base.setindex!(sd::SimData, v, r, c) = setindex!(getproperty(sd, Symbol(c)), v, r)
+Base.setindex!(sd::SimData, v, r, c::AbstractVector) = setindex!(sd, v, r, tuple(map(Symbol, c)...))
+Base.setindex!(sd::SimData, v, r, c::Tuple) = setindex!(sd, v, r, tuple(map(Symbol, c)...))
+
+function Base.setindex!(sd::SimData, v, r::MIT, c::NTuple{N,Symbol}) where N 
+    for (cc, vv) in zip(c, v)
         setindex!(sd, vv, r, cc)
     end
     return sd[r, c]
 end
-Base.setindex!(sd::SimData, vals, r::MIT, c::AbstractVector{Symbol}) = setindex!(sd, vals, r, tuple(c...))
-Base.setindex!(sd::SimData, vals, r::AbstractUnitRange{<:MIT}, c::AbstractVector{Symbol}) = setindex!(sd, vals, r, tuple(c...))
-function Base.setindex!(sd::SimData, vals, r::AbstractUnitRange{<:MIT}, c::NTuple{N,Symbol}) where N
+
+function Base.setindex!(sd::SimData, v, r::AbstractUnitRange{<:MIT}, c::NTuple{N,Symbol}) where N
     check_frequency(sd, r)
     if firstdate(sd) <= first(r) <= last(r) <= lastdate(sd)
         cols = indexin(c, [_names(sd)...])
@@ -202,10 +209,10 @@ function Base.setindex!(sd::SimData, vals, r::AbstractUnitRange{<:MIT}, c::NTupl
             end
         end
         rows = r .- firstdate(sd) .+ 1
-        if vals isa Number
-            vals = fill(Float64(vals), length(r) * length(c))
+        if v isa Number
+            v = fill(Float64(v), length(r) * length(c))
         end
-        setindex!(_values_view(sd, rows, cols), vals, :, :)
+        setindex!(_values_view(sd, rows, cols), v, :, :)
     else
         throw(BoundsError(sd, r))
     end
