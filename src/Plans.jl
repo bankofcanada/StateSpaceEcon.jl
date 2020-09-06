@@ -76,7 +76,9 @@ function Plan(model::Model, range::AbstractUnitRange)
     range = (first(range) - model.maxlag):(last(range) + model.maxlead)
     nvars = ModelBaseEcon.nvariables(model)
     nshks = ModelBaseEcon.nshocks(model)
-    vs_names = tuple(ModelBaseEcon.variables(model)..., ModelBaseEcon.shocks(model)...)
+    # force conversion of variables and shocks to Symbol
+    vs_names = Symbol[ModelBaseEcon.variables(model)..., ModelBaseEcon.shocks(model)...]
+    vs_names = tuple(vs_names...)
     varsshks = NamedTuple{vs_names}(1:(nvars + nshks))
     return Plan{eltype(range)}(range, varsshks, BitArray(var > nvars for _ in range, var = 1:(nvars + nshks)))
 end
@@ -235,11 +237,9 @@ be a moment in time (same type as the plan), or a range or an iterable or a
 container.
 
 """
-exogenize!(p::Plan, var::Symbol, date) = setplanvalue!(p, true, [var,], date)
-exogenize!(p::Plan, var::AbstractString, date) = setplanvalue!(p, true, [Symbol(var),], date)
-exogenize!(p::Plan, vars::AbstractVector{<:AbstractString}, date) = setplanvalue!(p, true, map(Symbol, vars), date)
-exogenize!(p::Plan, vars::AbstractVector{Symbol}, date) = setplanvalue!(p, true, vars, date)
-exogenize!(p::Plan, vars::NTuple, date) = setplanvalue!(p, true, [vars...], date)
+exogenize!(p::Plan, var, date) = setplanvalue!(p, true, Symbol[var,], date)
+exogenize!(p::Plan, vars::AbstractVector, date) = setplanvalue!(p, true, Symbol[vars...], date)
+exogenize!(p::Plan, vars::Tuple, date) = setplanvalue!(p, true, Symbol[vars...], date)
 
 
 """
@@ -251,11 +251,9 @@ given dates. `vars` can be a `Symbol` or a `String` or a `Vector` of such.
 iterable or a container.
 
 """
-endogenize!(p::Plan, var::Symbol, date) = setplanvalue!(p, false, [var,], date)
-endogenize!(p::Plan, var::AbstractString, date) = setplanvalue!(p, false, [Symbol(var),], date)
-endogenize!(p::Plan, vars::AbstractVector{<:AbstractString}, date) = setplanvalue!(p, false, map(Symbol, vars), date)
-endogenize!(p::Plan, vars::AbstractVector{Symbol}, date) = setplanvalue!(p, false, vars, date)
-endogenize!(p::Plan, vars::NTuple, date) = setplanvalue!(p, false, [vars...], date)
+endogenize!(p::Plan, var, date) = setplanvalue!(p, false, Symbol[var,], date)
+endogenize!(p::Plan, vars::AbstractVector, date) = setplanvalue!(p, false, Symbol[vars...], date)
+endogenize!(p::Plan, vars::Tuple, date) = setplanvalue!(p, false, Symbol[vars...], date)
 
 
 """
