@@ -53,10 +53,10 @@ the original plan.
 
 By default the data structure is updated only if an actual change in the plan is
 detected. Setting the `changed` flag to `true` forces the update even if the
-plan seems unchanged. This necessary only in rare circumstances.
+plan seems unchanged. This is necessary only in rare circumstances.
 
 """
-function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = false)
+function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=false)
     if sd.NT != length(p.range)
         error("Unable to update using a simulation plan of different length.")
     end
@@ -85,11 +85,10 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = fa
 
     # Update the solve_mask array
     if changed 
-        sd.solve_mask .= .!(sd.fc_mask .| sd.exog_mask)
+        @. sd.solve_mask = !(sd.fc_mask | sd.exog_mask)
         @assert !any(sd.exog_mask .& sd.fc_mask)
         @assert sum(sd.solve_mask) == size(sd.J, 1)
     end
-
 
     # Update the Jacobian correction matrix, if exogenous plan changed
     if changed && (sd.FC == fcslope)
@@ -97,7 +96,7 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = fa
         foo = falses(sd.NU * sd.NT)
         foo[LI[last(sim),1:sd.NV]] .= true
         foo[LI[last(sim),sd.NV + sd.NS + 1:sd.NU]] .= true
-        JJfoo = repeat(findall(foo[sd.solve_mask]), inner = NTFC)
+        JJfoo = repeat(findall(foo[sd.solve_mask]), inner=NTFC)
         IIfoo = vcat((NTFC * (vi - 1) .+ (1:NTFC) for vi in Iterators.flatten((1:sd.NV, sd.NV + sd.NS + 1:sd.NU)) if !sd.exog_mask[LI[last(sim),vi]])...)
         sd.CiSc .= sparse(IIfoo, JJfoo, fill(Float64(-1), length(JJfoo)), NTFC * sd.NU, size(sd.J, 1))
         sd.CiSc.nzval .= -1
@@ -143,7 +142,6 @@ end
 
 """
     StackedTimeSolverData(model, plan, fctype)
-
 
 """
 function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
@@ -260,7 +258,7 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
                              m.sstate.values, m.evaldata, exog_mask, fc_mask, solve_mask, 
                              [nothing])
 
-    return update_plan!(sd, m, p; changed = true)
+    return update_plan!(sd, m, p; changed=true)
 end
 
 @inline function assign_exog_data!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
