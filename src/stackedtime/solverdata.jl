@@ -41,7 +41,7 @@ struct StackedTimeSolverData <: AbstractSolverData
     "Keep track of which variables are \"active\" for the solver."
     solve_mask::Vector{Bool}
     "Cache the LU decomposition of the active part of J"
-    luJ::Array{Any}
+    luJ::Ref{Any}
 end
 
 
@@ -92,18 +92,61 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=fals
 
     # Update the Jacobian correction matrix, if exogenous plan changed
     if changed && (sd.FC == fcslope)
-        # This is a mess! TODO Boyan: document what's going on here
-        foo = falses(sd.NU * sd.NT)
-        foo[LI[last(sim),1:sd.NV]] .= true
-        foo[LI[last(sim),sd.NV + sd.NS + 1:sd.NU]] .= true
-        JJfoo = repeat(findall(foo[sd.solve_mask]), inner=NTFC)
-        IIfoo = vcat((NTFC * (vi - 1) .+ (1:NTFC) for vi in Iterators.flatten((1:sd.NV, sd.NV + sd.NS + 1:sd.NU)) if !sd.exog_mask[LI[last(sim),vi]])...)
-        sd.CiSc .= sparse(IIfoo, JJfoo, fill(Float64(-1), length(JJfoo)), NTFC * sd.NU, size(sd.J, 1))
-        sd.CiSc.nzval .= -1
+        # Matrix C is composed of blocks looking like this:
+        #    1  0  0  0
+        #   -1  1  0  0
+        #    0 -1  1  0
+        #    0  0 -1  1
+        # The corresponding rows in Sc look like this
+        #   0 0 0 0 0 -1
+        #   0 0 0 0 0  0
+        #   0 0 0 0 0  0
+        #   0 0 0 0 0  0
+        # The C^{-1} * Sc matrix then looks like this
+        #   0 0 0 0 0 -1
+        #   0 0 0 0 0 -1
+        #   0 0 0 0 0 -1
+        #   0 0 0 0 0 -1
+        # The number of rows equals NTFC (the number of final condition periods)
+        # The column with the -1 is the one corresponding to the last simulation period of the variable.
+
+        # # foo is a mask array with foo[i] = true if i is a column  index for the last simulation period of a variable and foo[i] = false otherwise.
+        # foo = falses(sd.NU * sd.NT)                 # all false
+        # foo[LI[last(sim),1:sd.NV]] .= true          # true at last sim period of variables
+        # foo[LI[last(sim),sd.NV + sd.NS + 1:sd.NU]] .= true  # true at last sim period of aux variables
+        # # no final conditions for shocks - their final condition is always 0 (the expectation of the shock).
+
+        # # The column indices - findall(foo) returns the indexes of the elements that are true.
+        # #   then we repeat each NTFC times, since this is the number of rows we need
+        # JJfoo = repeat(findall(foo[sd.solve_mask]), inner=NTFC)
+
+        # The row indices 
+        #   the block for variable 1 gets row indexes 1 .. NTFC
+        #   the block for variable 2 gets row indexes NTFC+1 .. 2*NTFC
+        #   the block for variable vi gets row indexes (vi-1)*NTFC+1 .. vi*NTFC
+        # IIfoo = vcat((NTFC * (vi - 1) .+ (1:NTFC) for vi in Iterators.flatten((1:sd.NV, sd.NV + sd.NS + 1:sd.NU)) if sd.solve_mask[LI[last(sim),vi]])...)
+        IIfoo = Int[]
+        JJfoo = Int[]
+        VVfoo = Float64[]
+        for vi in Iterators.flatten((1:sd.NV, (sd.NV + sd.NS + 1):sd.NU))
+            colind = LI[last(sim), vi]
+            if sd.solve_mask[colind]
+                # if the variable is exogenous in the last period, then Sc doesn't have a column for it.
+                append!(IIfoo, ((vi - 1) * NTFC + 1):(vi * NTFC))
+                append!(VVfoo, fill(-1.0, NTFC))
+                foo = falses(sd.NU * sd.NT)
+                foo[colind] = true
+                append!(JJfoo, repeat(findall(foo[sd.solve_mask]), NTFC))
+            end
+        end
+        # Construct the sparse matrix
+        sd.CiSc .= sparse(IIfoo, JJfoo, VVfoo, NTFC * sd.NU, size(sd.J, 1))
+        # sd.CiSc .= sparse(IIfoo, JJfoo, fill(Float64(-1), length(JJfoo)), NTFC * sd.NU, size(sd.J, 1))
+        # sd.CiSc.nzval .= -1
     end
     if changed 
         # cached lu is no longer valid, since active columns have changed
-        sd.luJ[1] = nothing
+        sd.luJ[] = nothing
     end
 
     return sd
@@ -256,7 +299,7 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
     sd = StackedTimeSolverData(NT, nvars, nshks, nunknowns, fctype, TT, II, JJ, BI, JMAT, 
                              sparse([], [], Float64[], NTFC * nunknowns, size(JMAT, 1)), 
                              m.sstate.values, m.evaldata, exog_mask, fc_mask, solve_mask, 
-                             [nothing])
+                             Ref{Any}(nothing))
 
     return update_plan!(sd, m, p; changed=true)
 end
@@ -278,7 +321,7 @@ end
     LVLA = @view sd.SSV[2 * sd.NV + 1:2:end]
     for t in sd.TT[end]
         x[t,1:sd.NV] = LVLV
-        x[t,sd.NV + 1:sd.NV + sd.NS] .= 0.0 # slopes are always 0 in final conditions using steady state
+        x[t,sd.NV + 1:sd.NV + sd.NS] .= 0.0 # shocks are always 0 in final conditions using steady state
         x[t,sd.NV + sd.NS + 1:end] = LVLA
     end
     return x
@@ -291,7 +334,7 @@ end
     SLPA = @view sd.SSV[2 * sd.NV + 2:2:end]
     for t in sd.TT[end]
         x[t,1:sd.NV] = x[t - 1,1:sd.NV] .+ SLPV 
-        x[t,sd.NV + 1:sd.NV + sd.NS] .= 0.0  # slopes are always 0 in final conditions using steady state
+        x[t,sd.NV + 1:sd.NV + sd.NS] .= 0.0  # shocks are always 0 in final conditions using steady state
         x[t,sd.NV + sd.NS + 1:end] = x[t - 1,sd.NV + sd.NS + 1:end] .+ SLPA
     end
     return x
@@ -315,7 +358,7 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
     RES = Vector{Float64}(undef, size(JAC, 1))
     # Model equations @ [1] to [end-1]
     haveJ = isa(sd.evaldata, ModelBaseEcon.LinearizedModelEvaluationData) && !any(isnan.(JAC.nzval))
-    haveLU = sd.luJ[1] !== nothing
+    haveLU = sd.luJ[] !== nothing
     if haveJ
         # update only RES
         @timer "globalRJ/evalR!" for i = 1:length(sd.BI)
@@ -337,9 +380,9 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
             JJ = JAC[:, sd.solve_mask]
         end
         # compute lu decomposition of the active part of J and cache it.
-        @timer "LU decomposition" sd.luJ[1] = lu(JJ)
+        @timer "LU decomposition" sd.luJ[] = lu(JJ)
     end
-    return RES, sd.luJ[1]
+    return RES, sd.luJ[]
 end
 
 function assign_update_step!(x::AbstractArray{Float64}, λ::Float64, Δx::AbstractArray{Float64}, sd::StackedTimeSolverData)
