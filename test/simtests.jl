@@ -286,5 +286,35 @@ end
     end
 end
 
- 
-
+ @testset "FCTypes" begin
+     let m = E3.model
+        empty!(m.sstate.constraints)
+        clear_sstate!(m)
+        sssolve!(m)
+        p = Plan(m, 3:177)
+        ed = zerodata(m, p)
+        ed[3, 4:6] .= 0.2 * rand(3)
+        ed[3:end, 1:3] .= rand(178, 3)
+        s1 = simulate(m, ed, p, fctype=fclevel)
+        s2 = simulate(m, ed, p, fctype=fcslope)
+        s3 = simulate(m, ed, p, fctype=fcnatural)
+        @test maximum(abs, s1 - s2) < 1e-8
+        @test maximum(abs, s1 - s3) < 1e-8
+        @test maximum(abs, s3 - s2) < 1e-8
+     end
+     let m = E6.model
+        empty!(m.sstate.constraints)
+        @steadystate m lp  = 1.0
+        @steadystate m lp + lyn = 1.5
+        @steadystate m lp + ly = 1.2
+        clear_sstate!(m)
+        sssolve!(m)
+        p = Plan(m, 3:177)
+        ed = zerodata(m, p)
+        ed.dlp_shk[3] = rand()
+        ed.dly_shk[3] = rand()
+        s2 = simulate(m, ed, p, fctype=fcslope)
+        s3 = simulate(m, ed, p, fctype=fcnatural)
+        @test maximum(abs, s3 - s2) < 1e-12
+     end
+ end

@@ -26,7 +26,7 @@ include("stackedtime/simulate.jl")
 end # module
 
 using .StackedTimeSolver
-export FCType, fcgiven, fclevel, fcslope
+export FCType, fcgiven, fclevel, fcslope, fcrate, fcnatural
 export simulate
 export seriesoverlay, dictoverlay
 export dict2array, array2dict, array2data
