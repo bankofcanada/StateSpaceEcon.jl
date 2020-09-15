@@ -393,6 +393,7 @@ function global_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64},
             eval_R!(view(res, ii), point[tt,:], sd.evaldata)
         end
     end
+    return res
 end
 
 function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
