@@ -309,41 +309,10 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
     @timer foreach(sort! ∘ unique!, II)
 
     # BI holds the indexes in JMAT.nzval for each block of equations
-    # @timer JMAT.nzval .= 1:nnz(JMAT)  # encode nnz entries with their index
-    # @timer BI = [JMAT[ii,:].nzval for ii in II]  # re-distribute the nnz indexes according to II
     BI = make_BI(JMAT, II)  # same as the two lines above, but faster
 
     # We also need the times of the final conditions
     push!(TT, term)
-
-    ##############  The following code constructs the matrix imposing final conditions.
-    ##############  We don't need it anymore, but we kept the code in case we do in the future.
-    # # Final conditions
-    # if fctype ∈ (fcgiven, fclevel)
-    #     # @timer push!(TT, repeat(term, outer=nunknowns))
-    #     @timer push!(TT, term)
-    #     @timer push!(II, 1:NTFC*nunknowns)
-    #     @timer push!(JJ, vec(LI[term,:]))
-    # elseif fctype == fcslope
-    #     # the first index of term is
-    #     # @timer push!(TT, repeat(vec([term.-1 term]'), outer=nunknowns))
-    #     @timer push!(TT, term)
-    #     @timer push!(II, repeat(1:NTFC*nunknowns, inner=2))
-    #     @timer push!(JJ, vec([vec(LI[term.-1,:]) vec(LI[term,:])]'))
-    # else
-    #     error("Not implemented - unknown fctype $(fctype).")
-    # end
-    # JFCMAT = sparse(II[end], JJ[end], ones(Float64, axes(II[end])), NTFC*nunknowns, NT*nunknowns)
-    # (sort! ∘ unique!)(II[end])
-    # BIFC = make_BI(JFCMAT, II[end:end])
-    # if fctype == fcslope
-    #     # for the variables we set the t-1 coefficient to -1.0 (diff = slope of sstate)
-    #     @timer JFCMAT.nzval[BIFC[end][1:2:end]] .= -1.0
-    #     # for the shocks we set the t-1 coefficient to 0.0 (value = 0)
-    #     @timer JFCMAT.nzval[BIFC[end][NTFC*nvars*2+1:2:NTFC*(nvars+nshks)*2]] .= 0.0
-    # end
-    ##############
-    ##############
 
     # 
     exog_mask::Vector{Bool} = falses(nunknowns * NT)
@@ -460,7 +429,7 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
             @timer "LU decomposition" sd.luJ[] = lu(JJ)
         catch e
             if e isa SingularException
-                @error "The system is underdetermined with the given set of equations and final conditions."
+                error("The system is underdetermined with the given set of equations and final conditions.")
             end
             rethrow()
         end

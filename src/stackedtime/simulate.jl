@@ -93,7 +93,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                     verbose::Bool=m.options.verbose,
                     tol::Float64=m.options.tol,
                     maxiter::Int64=m.options.maxiter,
-                    fctype::FCType=fcgiven,
+                    fctype::FCType=getoption(m, :fctype, fcgiven),
                     expectation_horizon::Union{Nothing,Int64}=nothing,
                     sparse_solver::Function=(A, b) -> A \ b
     )

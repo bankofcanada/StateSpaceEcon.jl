@@ -1,8 +1,8 @@
 
 
 
-@enum FCType fcgiven fclevel fcrate fcnatural
-const global fcslope = fcrate
+@enum FCType fcgiven fclevel fcslope fcnatural
+const global fcrate = fcslope
 export FCType, fcgiven, fclevel, fcslope, fcrate, fcnatural
 
 """

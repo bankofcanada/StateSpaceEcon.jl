@@ -286,23 +286,40 @@ end
     end
 end
 
- @testset "FCTypes" begin
-     let m = E3.model
-        empty!(m.sstate.constraints)
-        clear_sstate!(m)
-        sssolve!(m)
+
+@testset "FCTypes" begin
+    let m = Model()
+        @variables m x
+        @equations m begin x[t] = x[t + 3] end
+        @initialize m
+        p = Plan(m, 1:1)
+        ed = zerodata(m, p)
+        @test_throws ArgumentError simulate(m, ed, p, fctype=fcnatural)
+    end
+    let m = E1.model
+        p = Plan(m, 3:17)
+        ed = zerodata(m, p)
+        ed .= rand(Float64, size(ed))
+        @test_throws ErrorException simulate(m, ed, p, fctype=fcnatural)
+    end
+    let m = E3.model
         p = Plan(m, 3:177)
         ed = zerodata(m, p)
         ed[3, 4:6] .= 0.2 * rand(3)
         ed[3:end, 1:3] .= rand(178, 3)
+        empty!(m.sstate.constraints)
+        clear_sstate!(m)
+        @test_throws ArgumentError simulate(m, ed, p, fctype=fclevel)
+        @test_throws ArgumentError simulate(m, ed, p, fctype=fcslope)
+        sssolve!(m)
         s1 = simulate(m, ed, p, fctype=fclevel)
         s2 = simulate(m, ed, p, fctype=fcslope)
         s3 = simulate(m, ed, p, fctype=fcnatural)
         @test maximum(abs, s1 - s2) < 1e-8
         @test maximum(abs, s1 - s3) < 1e-8
         @test maximum(abs, s3 - s2) < 1e-8
-     end
-     let m = E6.model
+    end
+    let m = E6.model
         empty!(m.sstate.constraints)
         @steadystate m lp  = 1.0
         @steadystate m lp + lyn = 1.5
@@ -316,5 +333,5 @@ end
         s2 = simulate(m, ed, p, fctype=fcslope)
         s3 = simulate(m, ed, p, fctype=fcnatural)
         @test maximum(abs, s3 - s2) < 1e-12
-     end
- end
+    end
+end
