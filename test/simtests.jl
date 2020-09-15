@@ -22,7 +22,7 @@
         sim01 = simulate(m, data1, p)
         exp01 = vcat([1.0 y2val:(5.0 - y2val) / (T - 2):5.0...], [0 shk zeros(T - 2)...])'
         @test sim01 ≈ exp01
-        # exogenous-endogenous swap 
+        # exogenous-endogenous swap
         # - replicate the solution above backing out the shock that produces it
         data2 = copy(data)
         data2[2U, :y] = sim01[2U, :y]
@@ -98,7 +98,7 @@ end
     @test issssolved(m3nl)
 
     # test_simulation(m3nl, "data/M3_TestMatrix.csv")
-    
+
     with_linearized(m3nl) do foo
         test_simulation(foo, "data/M3_TestData.csv")
     end
@@ -122,7 +122,7 @@ end
 
     clear_sstate!(E7A.model)
     sssolve!(E7A.model)
-    # non-zeros linear growth in the steady state 
+    # non-zeros linear growth in the steady state
     @test_throws ModelBaseEcon.LinearizationError linearize!(E7A.model)
 
 end
@@ -196,7 +196,7 @@ end
         init = 1:m.maxlag
         sim = 1 + m.maxlag:IDX - m.maxlead
         term = IDX .+ (1 - m.maxlead:0)
-        p = Plan(m, sim)        
+        p = Plan(m, sim)
         # Make up the exogenous data for the experiment
         adata = zeroarray(m, p);
         udata = zeroarray(m, p);
@@ -267,7 +267,7 @@ end
         init = 1:m.maxlag
         sim = 1 + m.maxlag:IDX - m.maxlead
         term = IDX .+ (1 - m.maxlead:0)
-        p = Plan(m, sim)        
+        p = Plan(m, sim)
         # Make up the exogenous data for the experiment
         adata = zeroarray(m, p);
         udata = zeroarray(m, p);
@@ -286,5 +286,68 @@ end
     end
 end
 
- 
+@testset "FCTypes" begin
+    let m = Model()
+        @variables m x
+        @equations m begin x[t] = x[t + 3] end
+        @initialize m
+        p = Plan(m, 1:1)
+        ed = zerodata(m, p)
+        @test_throws ArgumentError simulate(m, ed, p, fctype=fcnatural)
+    end
+    let m = E1.model
+        p = Plan(m, 3:17)
+        ed = zerodata(m, p)
+        ed .= rand(Float64, size(ed))
+        @test_throws ErrorException simulate(m, ed, p, fctype=fcnatural)
+        sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
+        @test_throws ErrorException StateSpaceEcon.StackedTimeSolver.update_plan!(sd, m, Plan(m, 3:8))
+        x = rand(Float64, size(ed))
+        R1, _ = StateSpaceEcon.StackedTimeSolver.global_RJ(x, ed, sd)
+        R2 = StateSpaceEcon.StackedTimeSolver.global_R!(similar(R1), x, ed, sd)
+        @test R1 ≈ R2
+    end
+    let m = E3.model
+        p = Plan(m, 3:177)
+        ed = zerodata(m, p)
+        ed[3, 4:6] .= 0.2 * rand(3)
+        ed[3:end, 1:3] .= rand(178, 3)
+        empty!(m.sstate.constraints)
+        clear_sstate!(m)
+        @test_throws ArgumentError simulate(m, ed, p, fctype=fclevel)
+        @test_throws ArgumentError simulate(m, ed, p, fctype=fcslope)
+        sssolve!(m)
+        s1 = simulate(m, ed, p, fctype=fclevel)
+        s2 = simulate(m, ed, p, fctype=fcslope)
+        s3 = simulate(m, ed, p, fctype=fcnatural)
+        @test maximum(abs, s1 - s2) < 1e-8
+        @test maximum(abs, s1 - s3) < 1e-8
+        @test maximum(abs, s3 - s2) < 1e-8
 
+        sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
+        x = rand(Float64, size(ed))
+        R1, _ = StateSpaceEcon.StackedTimeSolver.global_RJ(x, ed, sd)
+        R2 = StateSpaceEcon.StackedTimeSolver.global_R!(similar(R1), x, ed, sd)
+        @test R1 ≈ R2
+    end
+    let m = E6.model
+        empty!(m.sstate.constraints)
+        @steadystate m lp  = 1.0
+        @steadystate m lp + lyn = 1.5
+        @steadystate m lp + ly = 1.2
+        clear_sstate!(m)
+        sssolve!(m)
+        p = Plan(m, 3:177)
+        ed = zerodata(m, p)
+        ed.dlp_shk[3] = rand()
+        ed.dly_shk[3] = rand()
+        s2 = simulate(m, ed, p, fctype=fcslope)
+        s3 = simulate(m, ed, p, fctype=fcnatural)
+        @test maximum(abs, s3 - s2) < 1e-12
+
+        sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
+        x = rand(Float64, size(ed))
+        R1, _ = StateSpaceEcon.StackedTimeSolver.global_RJ(x, ed, sd)
+        R2 = StateSpaceEcon.StackedTimeSolver.global_R!(similar(R1), x, ed, sd)
+    end
+end

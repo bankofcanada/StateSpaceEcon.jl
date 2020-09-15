@@ -1,8 +1,9 @@
 
 
 
-@enum FCType fcgiven fclevel fcslope
-export FCType, fcgiven, fclevel, fcslope
+@enum FCType fcgiven fclevel fcslope fcnatural
+const global fcrate = fcslope
+export FCType, fcgiven, fclevel, fcslope, fcrate, fcnatural
 
 """
     FCType
@@ -12,8 +13,9 @@ An enumeration type representing the possible types of final conditions.
   * `fcgiven` - the final conditions are provided by the user.
   * `fclevel` - the final conditions are prescribed from the levels of the
     steady state solution.
-  * `fcslope` - the final conditions are such that the slope of the dynamic
+  * `fcrate` or `fcslope` - the final conditions are such that the slope of the dynamic
     solution matches the slope of the steady state solution.
+  * `fcnatural` - the final condition sets the second difference equal to zero.
 
 """
 FCType
@@ -24,8 +26,11 @@ FCType
 An abstract type for the internal data structure of a dynamic solver.
 
 ### Implementation (for developers)
-To implement a derived class, one must specialize the following methods for the
-`sd` argument of the new type.
+
+To implement a derived class, one must specialize the following methods. Note
+that in the signatures of most of these methods, the `sd` argument of the new
+type is the last argument..
+
   * Constructor - normally it would take a model and a plan together with a
     final condition type.
   * `global_RJ(x, exog, sd)` - compute the residual and the Jacobian (return a
