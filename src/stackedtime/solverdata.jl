@@ -348,25 +348,15 @@ end
 end
 
 @inline function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fclevel})
-    LVLV = @view sd.SSV[1:2:(2 * sd.NV)]
-    LVLA = @view sd.SSV[2 * sd.NV + 1:2:end]
     for t in sd.TT[end]
-        x[t,1:sd.NV] = LVLV
-        x[t,sd.NV + 1:sd.NV + sd.NS] .= 0.0 # shocks are always 0 in final conditions using steady state
-        x[t,sd.NV + sd.NS + 1:end] = LVLA
+        x[t,:] = sd.SSV[1:2:end]
     end
     return x
 end
 
 @inline function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcrate})
-    LVLV = @view sd.SSV[1:2:(2 * sd.NV)]
-    SLPV = @view sd.SSV[2:2:(2 * sd.NV)]
-    LVLA = @view sd.SSV[2 * sd.NV + 1:2:end]
-    SLPA = @view sd.SSV[2 * sd.NV + 2:2:end]
     for t in sd.TT[end]
-        x[t,1:sd.NV] = x[t - 1,1:sd.NV] .+ SLPV
-        x[t,sd.NV + 1:sd.NV + sd.NS] .= 0.0  # shocks are always 0 in final conditions using steady state
-        x[t,sd.NV + sd.NS + 1:end] = x[t - 1,sd.NV + sd.NS + 1:end] .+ SLPA
+        x[t,:] = x[t-1,:] .+ sd.SSV[2:2:end]
     end
     return x
 end
