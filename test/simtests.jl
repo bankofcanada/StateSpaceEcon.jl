@@ -258,6 +258,26 @@ end
             ures = simulate(m, p, udata; anticipate=false)
             @test ures ≈ utrue atol = m.options.tol
         end
+        # tests with different final conditions and expectation_horizon values.
+        for (fc, eh) = Iterators.product((fcgiven, fclevel, fcslope, fcnatural), ( nothing, 30, 50, 100))
+            # Make up the exogenous data for the experiment
+            p = Plan(m, sim)
+            udata = zeroarray(m, p)
+            udata[sim,shk_inds] .= utrue[sim,shk_inds]
+            udata[term,:] .= utrue[term,:]
+            # Run the simulations and test
+            ures = simulate(m, p, udata; anticipate=false, expectation_horizon=eh, fctype=fc)
+            @test ures ≈ utrue atol = m.options.tol  rtol = maximum(abs, utrue[term,:])
+            # Repeat with autoexogenize
+            p = Plan(m, sim)
+            udata = zeroarray(m, p)
+            autoexogenize!(p, m, sim)
+            udata[sim,var_inds] .= utrue[sim,var_inds]
+            udata[term,:] .= utrue[term,:]
+            # Run the simulations and test
+            ures = simulate(m, p, udata; anticipate=false, expectation_horizon=eh, fctype=fc)
+            @test ures ≈ utrue atol = m.options.tol rtol = maximum(abs, utrue[term,:])
+        end
     end
     for s in (1, 4)
         atrue = readdlm("./data/M3_t$(s)_Ant.csv", ',', Float64)
@@ -316,7 +336,10 @@ end
         clear_sstate!(m)
         @test_throws ArgumentError simulate(m, ed, p, fctype=fclevel)
         @test_throws ArgumentError simulate(m, ed, p, fctype=fcslope)
-        sssolve!(m)
+        vec1 = sssolve!(m)
+        initial_sstate!(m, 0.4 * rand(Float64, size(m.sstate.values)))
+        vec2 = sssolve!(m)
+        @test vec1 ≈ vec2
         s1 = simulate(m, ed, p, fctype=fclevel)
         s2 = simulate(m, ed, p, fctype=fcslope)
         s3 = simulate(m, ed, p, fctype=fcnatural)

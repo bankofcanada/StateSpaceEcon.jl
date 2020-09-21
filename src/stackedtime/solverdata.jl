@@ -375,6 +375,8 @@ end
     return x
 end
 
+@inline assign_final_condition!(x, e, sd::StackedTimeSolverData) = assign_final_condition!(x, e, sd, Val(sd.FC))
+
 function global_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
     point = reshape(point, sd.NT, sd.NU)
     exog_data = reshape(point, sd.NT, sd.NU)
