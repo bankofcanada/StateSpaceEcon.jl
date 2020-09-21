@@ -79,9 +79,9 @@ ignoring anything pre-solved.
   `presolve::Bool` - if `false`, any pre-solved information is ignored and
   the solver data is set up to solve all equations for all variables. 
 """
-function SolverData(model::Model; presolve::Bool = true, 
-            verbose::Bool = model.options.verbose,
-            tol::Float64 = model.options.tol
+function SolverData(model::Model; presolve::Bool=true, 
+            verbose::Bool=model.options.verbose,
+            tol::Float64=model.options.tol
 )
     # constructor where we're solving all equations for all variables
     local sstate = model.sstate
@@ -106,7 +106,7 @@ function SolverData(model::Model; presolve::Bool = true,
         bad_eqn_inds = findall(@. (!sd.solve_eqn) & (abs(sd.resid) > tol))
         if !isempty(bad_eqn_inds)
             # Sort so that largest residuals are at the top
-            sort!(bad_eqn_inds, lt = (l, r)->abs(sd.resid[l]) > abs(sd.resid[r]))
+            sort!(bad_eqn_inds, lt=(l, r) -> abs(sd.resid[l]) > abs(sd.resid[r]))
             if verbose
                 # print the list of bad equations
                 sep = "\n    "
@@ -125,32 +125,39 @@ function SolverData(model::Model; presolve::Bool = true,
                 sd.solve_var[eqn.vinds] .= false
             end
 
-            # if ssZeroSlope, make sure any slopes that were marked as active are restored.
-            if model.flags.ssZeroSlope
-                sd.solve_var[2:2:end] .= false
-            end
+            # All masked variables (where sstate.mask == true) are still inactive as well
+            sd.solve_var[sstate.mask] .= false
+
+            # # if ssZeroSlope, make sure any slopes that were marked as active are restored.
+            # if model.flags.ssZeroSlope
+            #     sd.solve_var[2:2:end] .= false
+            # end
         end
-        sd.vars_index .= 0
-        sd.vars_index[sd.solve_var] .= 1:sum(sd.solve_var)
-        sd.eqns_index .= 0
-        sd.eqns_index[sd.solve_eqn] .= 1:sum(sd.solve_eqn)
     else
         if model.flags.ssZeroSlope
             # ssZeroSlope means that all slopes are 0, so only the levels are active.
             sd.solve_var[1:2:end] .= true
             sd.solve_var[2:2:end] .= false
-            sd.vars_index[1:2:end] .= 1:(nvars ÷ 2)
-            sd.vars_index[2:2:end] .= 0
         else
             sd.solve_var .= true
-            sd.vars_index .= 1:nvars
+        end
+        # all shocks are zero and pre-solved
+        for (i,v) in enumerate(model.allvars)
+            if v.type == :shock 
+                sd.solve_var[2i .+ (-1:0)] .= false
+            elseif v.type == :steady
+                sd.solve_eqn[2i] = false
+            end
         end
         # all equations are active regardless.
         sd.solve_eqn .= true
-        sd.eqns_index .= 1:neqns
         # compute the residual at the initial point.
         global_SS_R!(sd.resid, sd.point, sd.alleqns)
     end
+    sd.vars_index .= 0
+    sd.vars_index[sd.solve_var] .= 1:sum(sd.solve_var)
+    sd.eqns_index .= 0
+    sd.eqns_index[sd.solve_eqn] .= 1:sum(sd.solve_eqn)
     return sd
 end
 @assert precompile(SolverData, (Model,))

@@ -7,7 +7,7 @@ empty!(E1.model.sstate.constraints)
         clear_sstate!(m)
         sssolve!(m)
         @test check_sstate(m) == 0
-        @test m.sstate.mask == falses(2)
+        @test m.sstate.mask == [false, false, true, true]
         # 
         @steadystate m y = 1.2
         m.α = 0.5
@@ -15,17 +15,17 @@ empty!(E1.model.sstate.constraints)
         clear_sstate!(m)
         sssolve!(m)
         @test check_sstate(m) == 0
-        @test m.sstate.mask == [true, false]
+        @test m.sstate.mask == [true, false, true, true]
         @test m.sstate.values[1] == 1.2
         # 
         m.α = 0.4
         m.β = 1.0 - m.α
         clear_sstate!(m, verbose = false)
-        @test m.sstate.mask == trues(2)
+        @test m.sstate.mask == trues(4)
         sssolve!(m; verbose = false)
         @test check_sstate(m) == 0
-        @test m.sstate.mask == trues(2)
-        @test m.sstate.values == [1.2, 0.0]
+        @test m.sstate.mask == trues(4)
+        @test m.sstate.values == [1.2, 0.0, 0.0, 0.0]
         # 
         empty!(m.sstate.constraints)
         m.α = 0.3
@@ -43,8 +43,8 @@ empty!(E2.model.sstate.constraints)
         clear_sstate!(m)
         sssolve!(m);
         @test check_sstate(m) == 0
-        @test m.sstate.mask == trues(6)
-        @test m.sstate.values == zeros(6)
+        @test m.sstate.mask == trues(12)
+        @test m.sstate.values == zeros(12)
 
         empty!(m.sstate.constraints)
         @steadystate m rate = 0.0
@@ -52,8 +52,8 @@ empty!(E2.model.sstate.constraints)
         @test m.sstate.mask[3] == true
         sssolve!(m)
         @test check_sstate(m) == 0
-        @test m.sstate.mask == trues(6)
-        @test m.sstate.values == zeros(6)
+        @test m.sstate.mask == trues(12)
+        @test m.sstate.values == zeros(12)
 
         empty!(m.sstate.constraints)
         @steadystate m rate = 0.1
@@ -70,8 +70,8 @@ end
         clear_sstate!(m)
         sssolve!(m)
         @test check_sstate(m) == 0
-        @test sum(m.sstate.mask) == 9
-        @test m.sstate.values[m.sstate.mask] ≈ [0.005, 0.0, 0.0045, 0.0, 0.0095, 0.0, 0.005, 0.0045, 0.0095]
+        @test sum(m.sstate.mask) == 9+4
+        @test m.sstate.values[m.sstate.mask] ≈ [0.005, 0.0, 0.0045, 0.0, 0.0095, 0.0, 0.005, 0.0045, 0.0095, 0, 0, 0, 0]
 
         empty!(m.sstate.constraints)
         @steadystate m lp = 2
@@ -81,7 +81,7 @@ end
         sssolve!(m);
         @test check_sstate(m) == 0
         @test all(m.sstate.mask)
-        @test m.sstate.values ≈ [0.005, 0.0, 0.0045, 0.0, 0.0095, 0.0, 2.0, 0.005, 3.0, 0.0045, 7.0, 0.0095]
+        @test m.sstate.values ≈ [0.005, 0.0, 0.0045, 0.0, 0.0095, 0.0, 2.0, 0.005, 3.0, 0.0045, 7.0, 0.0095, 0, 0, 0, 0]
     end
 end
 
@@ -103,7 +103,7 @@ end
         sssolve!(m);
         @test check_sstate(m) == 0
         @test all(m.sstate.mask)
-        @test m.sstate.values ≈ [0.004, 0.0, 0.004, 0.0, 0.004, 0.0, 14.0, 0.004, 7.0, 0.004, 9.267287357063445, 0.004, 14.000911466453774, 0.004, 14.000911466453774, 0.004, 9.267287357063445, 0.004]
+        @test m.sstate.values ≈ [0.004, 0.0, 0.004, 0.0, 0.004, 0.0, 14.0, 0.004, 7.0, 0.004, 9.267287357063445, 0.004, 14.000911466453774, 0.004, 0, 0, 0, 0, 14.000911466453774, 0.004, 9.267287357063445, 0.004]
 
         empty!(m.sstate.constraints)
         @steadystate m linv = lc - 7
@@ -123,6 +123,6 @@ end
         # overdetermined consistent set of constraints
         @test check_sstate(m) == 0
         @test all(m.sstate.mask)
-        @test m.sstate.values ≈ [0.004, 0.0, 0.004, 0.0, 0.004, 0.0, 14.0, 0.004, 7.0, 0.004, 9.267287357063445, 0.004, 14.000911466453774, 0.004, 14.000911466453774, 0.004, 9.267287357063445, 0.004]
+        @test m.sstate.values ≈ [0.004, 0.0, 0.004, 0.0, 0.004, 0.0, 14.0, 0.004, 7.0, 0.004, 9.267287357063445, 0.004, 14.000911466453774, 0.004, 0, 0, 0 ,0, 14.000911466453774, 0.004, 9.267287357063445, 0.004]
     end
 end

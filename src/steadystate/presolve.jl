@@ -27,9 +27,10 @@ and their `mask` enties are set to `true`.
 
 """
 @inline presolve_sstate!(model::Model; kwargs...) = presolve_sstate!(model, model.sstate.mask, model.sstate.values; kwargs...)
-function presolve_sstate!(model::Model, mask::AbstractVector{Bool}, values::AbstractVector{Float64}; 
-    verbose = model.verbose, tol = model.tol, _1dsolver = :bisect)
-    
+function presolve_sstate!(model::Model, mask::AbstractVector{Bool}, values::AbstractVector{Float64};
+    verbose = model.options.verbose, tol = model.options.tol,
+    _1dsolver = :bisect)
+
     if _1dsolver == :newton
         solve1d = (sseqn, vals, ind)->newton1!(sseqn.eval_RJ, vals, ind; maxiter = 5, tol = tol)
     elseif _1dsolver == :bisect
@@ -47,7 +48,7 @@ function presolve_sstate!(model::Model, mask::AbstractVector{Bool}, values::Abst
         for (eqind, sseqn) ∈ enumerate(alleqns)
             unsolved = .! mask[sseqn.vinds]
             if sum(unsolved) == 1
-                # There is exactly one variable in this equation that's not solved yet. 
+                # There is exactly one variable in this equation that's not solved yet.
                 ind = findall(unsolved)[1]
                 vals = view(values, sseqn.vinds)
                 sym = model.sstate.vars[sseqn.vinds[ind]]
@@ -73,7 +74,7 @@ function presolve_sstate!(model::Model, mask::AbstractVector{Bool}, values::Abst
                 end
             end
         end
-        # 
+        #
         if ! updated
             break
         end

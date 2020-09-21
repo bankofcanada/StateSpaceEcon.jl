@@ -119,7 +119,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         @timer gdata = StackedTimeSolverData(m, p, fctype)
         @timer assign_exog_data!(x, exog_data, gdata)
         if verbose
-            @info "Simulating $(p.range[1 + m.maxlag:NT - m.maxlead])"
+            @info "Simulating $(p.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
         end
         @timer sim_nr!(x, gdata, maxiter, tol, verbose, sparse_solver)
     else # unanticipated shocks
@@ -149,11 +149,14 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 # @timer assign_exog_data!(x[psim.range,:], exog_data[psim.range,:], gdata)
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
-                assign_final_condition!(xx, exog_data[sim_range,:], gdata, Val(gdata.FC))
+                assign_final_condition!(xx, exog_data[sim_range,:], gdata)
                 if verbose
-                    @info "Simulating $(p.range[t:T])"
+                    @info "Simulating $(p.range[t:T])" # anticipate expectation_horizon gdata.FC
                 end
                 @timer sim_nr!(xx, gdata, maxiter, tol, verbose, sparse_solver)
+                # if verbose
+                #     @info "Result at $t: " x[[t], :]
+                # end
             end
         else
             # the new code, where the first and last simulations use the true 
@@ -175,22 +178,26 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 psim = Plan(m, t:T)
                 setexog!(psim, t0, exog_inds)
                 @timer sdata = StackedTimeSolverData(m, psim, fctype)
+                x[t,exog_inds] = exog_data[t,exog_inds]
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
-                assign_exog_data!(xx, exog_data[sim_range,:], sdata)
+                assign_final_condition!(xx, exog_data[sim_range,:], sdata)
                 if verbose
-                    @info "Simulating $(p.range[t:T])"
+                    @info "Simulating $(p.range[t:T])" # anticipate expectation_horizon sdata.FC
                 end
                 sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver)
+                # if verbose
+                #     @info "Result at $t: " x[[t], :]
+                # end
             end
             # intermediate simulations
             last_t::Int64 = t0
             psim = Plan(m, 0:expectation_horizon - 1)
-            sdata = StackedTimeSolverData(m, psim, fcslope)
+            sdata = StackedTimeSolverData(m, psim, fcnatural)
             for t in sim[2:end]
                 exog_inds = p[t, Val(:inds)]
                 # we need to run a simulation if a variable is exogenous, or if a shock value is not zero
-                # these intermediate simulations are always with fcslope, 
+                # these intermediate simulations are always with fcnatural, 
                 #       have length equal to expectation_horizon and 
                 #       only the first period is imposed
                 if (exog_inds == shkinds) && (maximum(abs, exog_data[t, shkinds]) <= tol)
@@ -205,36 +212,42 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 # The initial conditions are already set
                 # The exogenous values are already set as well, except for the first period
                 # In other words, we only need to impose the first period here
-                @timer xx[t0, exog_inds] = exog_data[t, exog_inds]
+                xx[t0, exog_inds] = exog_data[t, exog_inds]
                 # Update the final conditions
-                @timer assign_final_condition!(xx, zeros(0, 0), sdata, Val(fcslope))
+                @timer assign_final_condition!(xx, zeros(0, 0), sdata)
                 if verbose
-                    @info "Simulating $(p.range[t .+ (0:expectation_horizon - 1)])"
+                    @info "Simulating $(p.range[t] .+ (0:expectation_horizon - 1))" # anticipate expectation_horizon sdata.FC
                 end
                 @timer sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver)
+                # if verbose
+                #     @info "Result at $t: " x[[t], :]
+                # end
                 last_t = t  # keep track of last simulation time
             end
             # last simulation
             if last_t > t0
                 # do we need to re-run the last simulation?
                 # if it didn't reach T, then yes
-                # if the final condition is not fcslope, then yes
-                if (last_t + expectation_horizon < T) || (fctype != fcslope)
-                    psim = Plan(m, last_t + 1:T)
+                # if the final condition is not fcnatural, then yes
+                if (last_t + expectation_horizon < T) || (fctype != fcnatural)
+                    psim = Plan(m, min(last_t + 1,T):T)
                     # there are no unanticipated shocks in this simulation
                     sdata = StackedTimeSolverData(m, psim, fctype)
                     # the initial conditions and the exogenous data are already in x
                     # we only need the final conditions
                     sim_range = UnitRange(psim.range)
                     xx = view(x, sim_range, :)
-                    assign_final_condition!(xx, exog_data[sim_range, :], sdata, Val(fctype))
+                    assign_final_condition!(xx, exog_data[sim_range, :], sdata)
                     if verbose
-                        @info "Simulating $(p.range[last_t + 1:T])"
+                        @info "Simulating $(p.range[last_t + 1:T])" # anticipate expectation_horizon sdata.FC
                     end
                     @timer sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver)
+                    # if verbose
+                    #     @info "Result at $(last_t + 1): " x[[last_t + 1], :]
+                    # end
                 end
             end
-            x = x[1:end - expectation_horizon,:]
+            x = x[1:end - expectation_horizon, :]
         end
     end
     if linearize
