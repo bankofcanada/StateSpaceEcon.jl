@@ -19,17 +19,27 @@ struct SimData{F <: Frequency,N <: NamedTuple,C <: AbstractMatrix{Float64}} <: A
     values::C
 
     # inner constructor enforces constraints.
-    function SimData(fd, names, values)
-        if length(names) != size(values, 2)
-            throw(ArgumentError("Number of names and columns don't match: $(length(names)) ≠ $(size(values, 2))."))
+    function SimData(fd, names::NTuple{N, Symbol}, values) where {N}
+        if N != size(values, 2)
+            throw(ArgumentError("Number of names and columns don't match: $N ≠ $(size(values, 2))."))
         end
-        columns = NamedTuple{names}([TSeries(fd, view(values, :, i)) for i in 1:length(names) ])
+        columns = NamedTuple{names}([TSeries(fd, view(values, :, i)) for i in 1:N ])
         new{frequencyof(fd),typeof(columns),typeof(values)}(fd, columns, values)
     end
 end
 
 # External constructors
-# Coming soon stay tuned
+"""
+    SimData(fd, vars, data)
+
+Construct an instance of SimData with the given variable names and data. The
+first date is provided in the `fd::MIT` argument, which also contains
+information about the frequency. The number of names must match the number of
+columns in `data`. The names must be String or Symbol or anything that converts
+to Symbol.
+
+"""
+SimData(fd, vars, data) = SimData(fd, tuple(Symbol.(vars)...), data)
 
 TimeSeriesEcon.firstdate(sd::SimData) = getfield(sd, :firstdate)
 TimeSeriesEcon.lastdate(sd::SimData) = (firstdate(sd) - 1) + size(_values(sd), 1) 
@@ -55,6 +65,11 @@ Base.similar(sd::SimData) = SimData(firstdate(sd), _names(sd), similar(_values(s
 Base.:(==)(a::SimData, b::SimData) = frequencyof(a) == frequencyof(b) && firstdate(a) == firstdate(b) && _values(a) == _values(b)
 
 Base.dataids(sd::SimData) = Base.dataids(_values(sd))
+
+export rawdata, colnames
+rawdata(sd::SimData) = _values(sd)
+colnames(sd::SimData) = keys(_columns(sd))
+Base.pairs(sd::SimData) = pairs(_columns(sd))
 
 # Define dot access to columns
 Base.propertynames(sd::SimData) = _names(sd)

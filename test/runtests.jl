@@ -73,4 +73,63 @@ end
 
 include("simdatatests.jl")
 include("sstests.jl")
+
+using StateSpaceEcon.StackedTimeSolver: dict2array, dict2data, array2dict, array2data, data2dict, data2array
+@testset "dict2array" begin
+    m = E3.model
+    sim = m.maxlag .+ (1:10)
+    p = Plan(m, sim)
+
+    # random data
+    d = zerodict(m, p)
+    for v in values(d)
+        v .= rand(Float64, size(v))
+    end
+
+    @test size(dict2array(d, [:pinf, :ygap])) == (length(p.range), 2)
+    @test size(dict2array(d, ["pinf", "ygap"])) == (length(p.range), 2)
+    @test size(dict2array(d, m.variables)) == (length(p.range), 3)
+    a = dict2array(d, m.allvars)
+    @test size(a) == (length(p.range), 6)
+    @test a == hcat((d[string(v)] for v in m.allvars)...)
+
+    # error variable missing from dictionary
+    @test_throws ArgumentError dict2array(d, [:pinf, :ygap, :nosuchvar])
+    # error out of range
+    @test_throws ArgumentError dict2array(d, [:pinf, :ygap], range=10U:20U)
+
+    # warning variables with different ranges
+    d["wrong_var"] = TSeries(3U, rand(10))
+    b = @test_logs (:warn, r".*Using\s+intersection\s+range: 3U:12U") dict2array(d, [:pinf, :wrong_var])
+    @test size(b) == (10, 2)
+    @test b[:,1] == d["pinf"][3U:12U].values
+    @test b[:,2] == d["wrong_var"][3U:12U].values
+
+    s = dict2data(d, m.allvars)
+    @test s == a
+
+    sa = data2array(s)
+    @test sa == s
+    s.pinf[3U:5U] = 3:5
+    @test sa == s
+
+    sd = data2dict(s)
+    @test Set(keys(sd)) == Set(string.(colnames(s)))
+
+    as = array2data(a, m.allvars, first(p.range))
+    @test as == a
+    a[1,2] = 2.5
+    @test as == a
+    as = array2data(a, m.allvars, first(p.range), copy=true)
+    @test as == a
+    a[1,2] = 3.0
+    @test as != a
+    as[1,2] = 3.0
+    @test as == a
+
+    ad = array2dict(a, m.allvars, first(p.range))
+    @test length(ad) == size(a, 2)
+    @test all(ad[string(v)].values == a[:,i] for (i, v) in enumerate(m.allvars))
+end
+
 include("simtests.jl")
