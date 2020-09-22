@@ -1,4 +1,6 @@
 
+import ..SimData
+import ..rawdata
 
 export seriesoverlay
 """
@@ -75,83 +77,121 @@ export array2dict
 
 Convert the simulation data array to a dictionary.
 """
-function array2dict(data::AbstractArray{Float64,2}, vars::AbstractArray{<:AbstractString,1}, start_date::MIT)::Dict{String,Any}
-    Dict{String,Any}(vars[i] => TSeries(start_date, data[:,i]) for i ∈ 1:length(vars))
-end
-
-function array2dict(data::AbstractArray{Float64,2}, vars::AbstractArray{Symbol,1}, start_date::MIT)::Dict{String,Any}
+function array2dict(data::AbstractArray{Float64,2}, vars::AbstractVector, start_date::MIT)::Dict{String,Any}
     Dict{String,Any}(string(vars[i]) => TSeries(start_date, data[:,i]) for i ∈ 1:length(vars))
 end
 
 export array2data
 """
-    array2data(data, vars, start_date)
+    array2data(data, vars, start_date; copy=false)
 
-Convert the simulation data array to a named tuple.
+Convert the simulation data array to a [`SimData`](@ref).
+
+Use the `copy` argument to control whether or not the returned SimData will hold
+a reference to the given data array or its own copy.
 
 """
-function array2data(data::AbstractArray{Float64,2}, vars::AbstractArray{<:AbstractString,1}, start_date::MIT)
-    names = tuple(Symbol.(vars)...)
-    NamedTuple{names}([TSeries(start_date, data[:,i]) for i in 1:size(data, 2)])
-end
-
-function array2data(data::AbstractArray{Float64,2}, vars::AbstractArray{Symbol,1}, start_date::MIT)
-    NamedTuple{tuple(vars...)}([TSeries(start_date, data[:,i]) for i in 1:size(data, 2)])
+function array2data(data::AbstractArray{Float64,2}, vars::AbstractVector, start_date::MIT; copy=false)::SimData
+    SimData(start_date, vars, ifelse(copy, Base.copy(data), data))
 end
 
 export dict2array
+
+function _d2_vars(d, vars)
+    if keytype(d) <: AbstractString
+        vars = string.(vars)
+    else
+        vars = keytype(d).(vars)
+    end
+    missing_vars = setdiff(vars, keys(d))
+    if !isempty(missing_vars)
+        throw(ArgumentError("""Variables not found in data dictionary: $(join(missing_vars, ", "))"""))
+    end
+    return vars
+end
+
+function _d2_rng(d, vars, range)
+    ranges = [mitrange(d[v]) for v in vars]
+    fs = first.(ranges)
+    ls = last.(ranges)
+    if isempty(range)
+        f = maximum(fs)
+        l = minimum(ls)
+        range = f:l
+        if !(all(f .== fs) && all(l .== ls))
+            @warn "Variable ranges are not all the same. Specify `range=` to avoid this warning. Using intersection range: $(range)"
+        end
+    else
+        missing_data = (first(range) .< fs) .| (last(range) .> ls)
+        if any(missing_data)
+            throw(ArgumentError("""Data is not available for the full range $(range) for some variables: $(join(vars[missing_data], ", "))"""))
+        end
+    end
+    return range
+end
+
 """
     dict2array(d, vars; range)
 
 Convert a dictionary of [`TSeries`](@ref) to a 2d array of simulation data for
-the given range.  The `range` argument is optional and defaults to `nothing`.
+the given range. If the `range` argument is not provided, the effective range is
+the intersection of the ranges of available data for the given list of
+variables.
 
 """
-function dict2array(d::Dict{<:AbstractString,<:Any}, vars::AbstractArray{<:AbstractString,1}; range::Union{Nothing,AbstractUnitRange} = nothing)::Array{Float64,2}
-    # Number of variables to consider
-    vars_l = length(vars)
-    # If the range is not provided, we check that the TSeries
-    # all have the same range
-    if range == nothing
-        ranges = [mitrange(d[string(var)]) for var in vars]
-        test_ranges = all([isequal(ranges[1], x) for x in ranges])
-        # Issue an error message if necessary
-        if test_ranges
-            range = ranges[1];
-        else
-            error("The TSeries in the dictionary do not have the same range. Provide a range.")
-        end
-    end
-    # Length of the range
-    range_l = length(range)
-    # Pre-allocate the matrix
-    data = Array{Float64,2}(undef, range_l, length(vars))
-    # Variable to detect if the concatenation of the data has been successful
-    test_failed = false;
-    # Create array to store variables that have missing data
-    issues_var = Array{String,1}();
-    # Concatenate the data
-    for (col, var) in enumerate(vars)
-        # Get the vector
-        myvec = d[string(var)][range].values
-        # Check the dimensions
-        if length(myvec) == range_l
-            # Allocate the data
-            data[:,col] = myvec;
-        else
-            # We raise a flag and record which TSeries are incomplete
-            test_failed = true;
-            push!(issues_var, var);
-        end
-    end
-    # After the loop, we issue an error message if the test has failed.
-    if test_failed
-        error("Data is missing within the range $(range) for these variables:\n $(issues_var)")
+function dict2array(d::Dict, vars::AbstractVector; range::AbstractUnitRange=1:0)::Array{Float64,2}
+    vars = _d2_vars(d, vars)
+    range = _d2_rng(d, vars, range)
+    data = Array{Float64,2}(undef, length(range), length(vars))
+    for i in eachindex(vars)
+        data[:, i] .= d[vars[i]][range].values
     end
     return data
 end
 
-function dict2array(d::Dict{String,<:Any}, vars::Array{Symbol,1}; range::Union{Nothing,AbstractUnitRange} = nothing)::Array{Float64,2}
-    return dict2array(d, string.(vars); range = range)
+export dict2data
+"""
+    dict2data(d, vars; range)
+
+Convert a dictionary of [`TSeries`](@ref) to a `SimData`` for the given range.
+If the `range` argument is not provided, the effective range is the intersection
+of the ranges of available data for the given list of variables.
+
+"""
+function dict2data(d::Dict, vars::AbstractVector; range::AbstractUnitRange=1:0)::SimData
+    vars = _d2_vars(d, vars)
+    range = _d2_rng(d, vars, range)
+    data = Array{Float64,2}(undef, length(range), length(vars))
+    for i in eachindex(vars)
+        data[:, i] .= d[vars[i]][range].values
+    end
+    return SimData(first(range), vars, data)
 end
 
+export data2dict
+"""
+    data2dict(sd::SimData; copy=false)::Dict{String, Any}
+
+Convert a [`SimData`](@ref) to a dictionary containing the same data as
+individual [`TSeries`](@ref).
+
+Use the `copy` argument to control whether the TSeries in the returned Dict will
+hold references to the columns of `sd` or copies of that data.
+
+"""
+function data2dict(sd::SimData; copy=false)
+    transform = ifelse(copy, Base.copy, Base.identity)
+    Dict{String,Any}(string(n) => transform(v) for (n, v) in pairs(sd))
+end
+
+export data2array
+"""
+    data2array(sd::SimData; copy=false)::Array{Float64,2}
+
+Convert a [`SimData`](@ref) to an Array. The `copy` argument controls whether
+the returned Array holds a copy of the data or a reference to the data in `sd`.
+
+"""
+function data2array(sd::SimData; copy=false)
+    return ifelse(copy, Base.copy(rawdata(sd)), rawdata(sd))
+end
