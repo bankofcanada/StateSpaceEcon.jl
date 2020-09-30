@@ -358,6 +358,21 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 zerodata(::Model, p::Plan) = SimData(firstdate(p), keys(p.varsshks), zeros(length(p), length(p.varsshks)))
 zerodata(m::Model, rng::AbstractUnitRange) = zerodata(m, Plan(m, rng))
 
+
+function _ss_series(m, ind::Int, len)
+    v = m.allvars[ind]
+    lvl, slp = m.sstate[v]
+    if v.type ∈ (:steady, :shock)
+        return fill(lvl, len)
+    else
+        ret = lvl .+ Float64[0:len-1;] .* slp
+        if v.type == :log
+            ret .= exp.(ret)
+        end
+        return ret
+    end
+end
+
 """
     steadystatearray(model, plan)
     steadystatearray(model, range)
@@ -373,7 +388,9 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatearray(m::Model, rng::AbstractUnitRange) = steadystatearray(m, Plan(m, rng))
-steadystatearray(m::Model, p::Plan) = Float64[i <= ModelBaseEcon.nvariables(m) ? m.sstate[v].level : 0.0 for _ in p.range, (v, i) = pairs(p.varsshks)]
+steadystatearray(m::Model, p::Plan) = hcat((
+    _ss_series(m, i, length(p.range)) for i in 1:length(m.allvars)
+)...)
 
 """
     steadystatearray(model, plan)
@@ -390,7 +407,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatedict(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
-steadystatedict(m::Model, p::Plan) = Dict(string(v) => TSeries(p.range, i <= ModelBaseEcon.nvariables(m) ? m.sstate[v].level : 0.0) for (v, i) in pairs(p.varsshks))
+steadystatedict(m::Model, p::Plan) = Dict(string(v) => TSeries(firstdate(p), _ss_series(m, i, length(p))) for (i, v) in enumerate(m.allvars))
 
 """
     steadystatedata(model, plan)
@@ -407,10 +424,8 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatedata(m::Model, rng::AbstractUnitRange) = steadystatedata(m, Plan(m, rng))
-steadystatedata(m::Model, p::Plan) = hcat(
-    SimData(firstdate(p), (), zeros(length(p), 0)); 
-    (v => (i <= ModelBaseEcon.nvariables(m) ? m.sstate[v].level : 0) for (v, i) in pairs(p.varsshks))...
-)
+steadystatedata(m::Model, p::Plan) = 
+    SimData(firstdate(p), m.allvars, steadystatearray(m, p))
 
 #######################################
 # The internal interface to simulations code.
