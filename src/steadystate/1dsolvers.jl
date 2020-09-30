@@ -48,7 +48,7 @@ The `tol` value is used for a stopping criterion and also for diagnosing problem
     This is an internal function used by the steady state solver. In the future it might be
     removed or modified.
 """
-function newton1!(F::Function, vals::AbstractVector{T}, ind::Integer; maxiter = 5, tol = sqrt(eps(T)))::Bool where T <: AbstractFloat
+function newton1!(F::Function, vals::AbstractVector{T}, ind::Integer; maxiter=5, tol=sqrt(eps(T)))::Bool where T <: AbstractFloat
     fval, Jval = F(vals)
     err = tol * abs(fval) + tol
     for iter = 1:maxiter
@@ -90,7 +90,7 @@ Other entries of `x` are not accessed at all. Return `true` upon success, or `fa
     This is an internal function used by the steady state solver. In the future it might be
     removed or modified.
 """
-function bisect!(F::Function, vals::AbstractVector{T}, ind::Int64, deriv::T; maxiter = 500, tol = sqrt(eps(T)))::Bool where T <: AbstractFloat
+function bisect!(F::Function, vals::AbstractVector{T}, ind::Int64, deriv::T; maxiter=500, tol=sqrt(eps(T)))::Bool where T <: AbstractFloat
     # This code is a mess. Someone please clean it up!
 
     # Convenience wrapper - evaluate F as if it were a univariate function
@@ -138,19 +138,21 @@ function bisect!(F::Function, vals::AbstractVector{T}, ind::Int64, deriv::T; max
     # in the direction in which the function approaches zero.)
     # if the derivative is zero at the initial point, that's an argument error
     abs(deriv) < 1e-10 && return false
+    isnan(deriv) && return false
 
     # First point - that's easy
     x0 = vals[ind]
     f0 = f(x0)
     # is x0 the solution? 
     abs(f0) < tol && return true
+    isnan(f0) && return false
 
     # Try a line search in the Newton direction
     step = -f0 / deriv
     x1 = x0 + step
     f1 = f(x1)
     while isnan(f1) || abs(f1) > 1e5 * abs(f0)
-        # If x1 is inadmissible or too far off to infininty try a smaller step
+        # If x1 is inadmissible or too far off to infinity try a smaller step
         step *= 0.5
         step < eps(T) && return false
         x1 = x0 + step
