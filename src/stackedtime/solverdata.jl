@@ -361,13 +361,17 @@ end
     return x
 end
 
-@inline function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcnatural})
-    last_T = sd.TT[end][1] - 1
+function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcnatural})
+    last_TT = sd.TT[end]
+    if isempty(last_TT)
+        return x
+    end
+    last_T = last_TT[1] - 1
     SLP = x[last_T, : ] .- x[last_T - 1, :]
     Vinds = 1:sd.NV  # indices of variables
     Sinds = sd.NV + 1:sd.NV + sd.NS  # indices of shocks
     Ainds = sd.NV + sd.NS + 1:sd.NU  # indices of aux variables
-    for t in sd.TT[end]
+    for t in last_TT
         x[t,Vinds] = x[t - 1,Vinds] .+ SLP[Vinds]
         x[t,Sinds] .= 0.0  # shocks are always 0 in final conditions using steady state
         x[t,Ainds] = x[t - 1,Ainds] .+ SLP[Ainds]
