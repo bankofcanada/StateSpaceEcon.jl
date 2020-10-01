@@ -9,37 +9,41 @@ The data structure used in the stacked time algorithm.
 """
 struct StackedTimeSolverData <: AbstractSolverData
     "Number of time periods"
-    NT::Int64
+    NT::Int
     "Number of variables"
-    NV::Int64
+    NV::Int
     "Number of shocks"
-    NS::Int64
+    NS::Int
     "Number of unknowns = variables + shocks + aux variables"
-    NU::Int64
+    NU::Int
     "Final condition type: `fcgiven` or `fclevel` or `fcslope`."
     FC::FCType
     "List of vectors for the time indexes of blocks of the matrix."
-    TT::Vector{Vector{Int64}}
+    TT::Vector{Vector{Int}}
     "List of vectors for the row indexes of each block."
-    II::Vector{Vector{Int64}}
+    II::Vector{Vector{Int}}
     "List of vectors for the column indexes of each block."
-    JJ::Vector{Vector{Int64}}
+    JJ::Vector{Vector{Int}}
     "Inverse lookup for the column indexes."
-    BI::Vector{Vector{Int64}}
+    BI::Vector{Vector{Int}}
     "Jacobian matrix cache."
-    J::SparseMatrixCSC{Float64,Int64}
+    J::SparseMatrixCSC{Float64,Int}
     "Correction to J in case FC == fcslope. See description of algorithm."
-    CiSc::SparseMatrixCSC{Float64,Int64}   # Correction to J to account for FC in the case of fcslope
+    CiSc::SparseMatrixCSC{Float64,Int}   # Correction to J to account for FC in the case of fcslope
     "The steady state data, used for FC ∈ (fclevel, fcslope)."
-    SSV::AbstractVector{Float64}
+    SS::AbstractArray{Float64,2}
+    "Mask of variables with constant growth rate in the steady state"
+    log_mask::AbstractVector{Bool}
+    "Mask of variables with constant change in the steady state"
+    lin_mask::AbstractVector{Bool}
     "The `evaldata` from the model, used to evaluate RJ and R!"
     evaldata::ModelBaseEcon.AbstractModelEvaluationData
     "Keep track of which variables are set by exogenous constraints."
-    exog_mask::Vector{Bool}
+    exog_mask::AbstractVector{Bool}
     "Keep track of which variables are set by final conditions."
-    fc_mask::Vector{Bool}
+    fc_mask::AbstractVector{Bool}
     "Keep track of which variables are \"active\" for the solver."
-    solve_mask::Vector{Bool}
+    solve_mask::AbstractVector{Bool}
     "Cache the LU decomposition of the active part of J"
     luJ::Ref{Any}
 end
@@ -144,7 +148,7 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=fals
         # sd.CiSc .= sparse(IIfoo, JJfoo, fill(Float64(-1), length(JJfoo)), NTFC * sd.NU, size(sd.J, 1))
         # sd.CiSc.nzval .= -1
     end
-        # Update the Jacobian correction matrix, if exogenous plan changed
+    # Update the Jacobian correction matrix, if exogenous plan changed
     if changed && (sd.FC == fcnatural)
         # Matrix C is composed of blocks looking like this:
         #    -1  0  0  0  0
@@ -217,11 +221,11 @@ Prepares the `BI` array for the solver data. Called from the constructor of
 `StackedTimeSolverData`.
 
 """
-function make_BI(JMAT::SparseMatrixCSC{Float64,Int64}, II::AbstractVector{<:AbstractVector{Int64}})
+function make_BI(JMAT::SparseMatrixCSC{Float64,Int}, II::AbstractVector{<:AbstractVector{Int}})
     # Computes the set of indexes in JMAT.nzval corresponding to blocks of equations in II
 
     # Bar is the inverse map of II, i.e. Bar[j] = i <=> II[i] contains j
-    local Bar = zeros(Int64, size(JMAT, 1))
+    local Bar = zeros(Int, size(JMAT, 1))
     for i in axes(II, 1)
         Bar[II[i]] .= i
     end
@@ -267,26 +271,26 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
     # @assert NTIC+NTSIM+NTFC == NT
     # @assert isempty((collect(init)∩collect(sim))∪(collect(init)∩collect(sim))∪(collect(sim)∩collect(term)))
 
-    unknowns = ModelBaseEcon.allvars(m)
+    unknowns = m.allvars
     nunknowns = length(unknowns)
 
-    nvars = ModelBaseEcon.nvariables(m)
-    nshks = ModelBaseEcon.nshocks(m)
-    nauxs = ModelBaseEcon.nauxvars(m)
+    nvars = length(m.variables)
+    nshks = length(m.shocks)
+    nauxs = length(m.auxvars)
 
-    equations = ModelBaseEcon.alleqns(m)
+    equations = m.alleqns
     nequations = length(equations)
 
     # LinearIndices used for indexing the columns of the global matrix
     LI = LinearIndices((p.range, 1:nunknowns))
 
     # Initialize empty arrays
-    TT = Vector{Int64}[] # the time indexes of the block, used when updating values in global_RJ
-    II = Vector{Int64}[] # the row indexes
-    JJ = Vector{Int64}[] # the the column indexes
+    TT = Vector{Int}[] # the time indexes of the block, used when updating values in global_RJ
+    II = Vector{Int}[] # the row indexes
+    JJ = Vector{Int}[] # the column indexes
 
     # Prep the Jacobian matrix
-    neq::Int64 = 0 # running counter of equations added to matrix
+    neq = 0 # running counter of equations added to matrix
     # Model equations are the same for each sim period, just shifted according to t
     Jblock = [ti + NT * (vi - 1) for eqn in equations for (ti, vi) in eqn.vinds]
     Iblock = [i for (i, eqn) in enumerate(equations) for _ in eqn.vinds]
@@ -297,7 +301,7 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
         push!(JJ, t .+ Jblock)
         neq += nequations
     end
-    # Construct the
+    # Construct the 
     @timer begin
         I = vcat(II...)
         J = vcat(JJ...)
@@ -306,7 +310,7 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
 
     # We no longer need the exact indexes of all non-zero entires in the Jacobian matrix.
     # We do however need the set of equation indexes for each sim period
-    @timer foreach(sort! ∘ unique!, II)
+    @timer foreach(unique! ∘ sort!, II)
 
     # BI holds the indexes in JMAT.nzval for each block of equations
     BI = make_BI(JMAT, II)  # same as the two lines above, but faster
@@ -315,13 +319,13 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
     push!(TT, term)
 
     # 
-    exog_mask::Vector{Bool} = falses(nunknowns * NT)
+    exog_mask = falses(nunknowns * NT)
     # Initial conditions are set as exogenous values
     exog_mask[vec(LI[init,:])] .= true
     # The exogenous values during sim are set in update_plan!() call below.
 
     # Final conditions are complicated
-    fc_mask::Vector{Bool} = falses(nunknowns * NT)
+    fc_mask = falses(nunknowns * NT)
     fc_mask[vec(LI[term,:])] .= true
 
     # The solve_mask is redundant. We pre-compute and store it for speed
@@ -329,7 +333,8 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
 
     sd = StackedTimeSolverData(NT, nvars, nshks, nunknowns, fctype, TT, II, JJ, BI, JMAT,
                              sparse([], [], Float64[], NTFC * nunknowns, size(JMAT, 1)),
-                             m.sstate.values, m.evaldata, exog_mask, fc_mask, solve_mask,
+                             steadystatearray(m, p), islog.(m.allvars), islin.(m.allvars),
+                             m.evaldata, exog_mask, fc_mask, solve_mask,
                              Ref{Any}(nothing))
 
     return update_plan!(sd, m, p; changed=true)
@@ -348,20 +353,23 @@ end
 end
 
 @inline function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fclevel})
-    for t in sd.TT[end]
-        x[t,:] = sd.SSV[1:2:end]
-    end
+    x[sd.TT[end],:] = sd.SS[sd.TT[end],:]
     return x
 end
 
 @inline function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcrate})
     for t in sd.TT[end]
-        x[t,:] = x[t-1,:] .+ sd.SSV[2:2:end]
+        x[t,:] = x[t - 1,:]
+        @. x[t, sd.lin_mask] += sd.SS[t, sd.lin_mask] - sd.SS[t - 1, sd.lin_mask]
+        @. x[t, sd.log_mask] *= sd.SS[t, sd.log_mask] / sd.SS[t - 1, sd.log_mask]
     end
     return x
 end
 
 function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcnatural})
+    if any(sd.log_mask)
+        throw(NotImplementedError("Log variables with fcnatural"))
+    end
     last_TT = sd.TT[end]
     if isempty(last_TT)
         return x
@@ -392,6 +400,15 @@ function global_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64},
     return res
 end
 
+@inline update_CiSc(x::AbstractArray{Float64,2}, sd::StackedTimeSolverData) = any(sd.log_mask) ? update_CiSc(x, sd, Val(sd.FC)) : nothing
+
+@inline update_CiSc(x, sd, ::Val{fcgiven}) = nothing
+@inline update_CiSc(x, sd, ::Val{fclevel}) = nothing
+@inline update_CiSc(x, sd, ::Val{fcnatural}) = throw(NotImplementedError("fcnatural with log variables"))
+function update_CiSc(x, sd, ::Val{fcslope}) 
+    throw(NotImplementedError("fcslope with log variables"))
+end
+
 function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
     nunknowns = sd.NU
     point = reshape(point, sd.NT, nunknowns)
@@ -413,6 +430,7 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
             RES[sd.II[i]] .= R
             JAC.nzval[sd.BI[i]] .= J.nzval
         end
+        update_CiSc(point, sd)
         haveLU = false
     end
     if !haveLU
