@@ -407,7 +407,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 
 """
 steadystatedict(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
-steadystatedict(m::Model, p::Plan) = Dict(string(v) => TSeries(firstdate(p), _ss_series(m, i, length(p))) for (i, v) in enumerate(m.allvars))
+steadystatedict(m::Model, p::Plan) = Dict(string(v) => TSeries(firstdate(p), _ss_series(m, i, length(p))) for (i, v) in enumerate(Symbol.(m.allvars)))
 
 """
     steadystatedata(model, plan)
