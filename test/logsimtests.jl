@@ -47,9 +47,15 @@
     # initial 
     ed[firstdate(p)] = k[firstdate(p)]
 
-    for fc in instances(FCType)
-        @test simulate(m, ed, p, fctype=fc) ≈ k
-    end
+    @test simulate(m, ed, p, fctype=fcgiven) ≈ k
+    @test simulate(m, ed, p, fctype=fclevel) ≈ k
 
+    exogenize!(p, m.variables, firstdate(p))
+    endogenize!(p, m.shocks, lastdate(p) - 1)
+    ed[firstdate(p)] = k[firstdate(p)]
+    ed[lastdate(p),1:2] .= rand(2)
+
+    @test simulate(m, ed, p, fctype=fcslope) ≈ k
+    @test simulate(m, ed, p, fctype=fcnatural) ≈ k
 
 end

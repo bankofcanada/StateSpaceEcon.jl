@@ -359,7 +359,7 @@ end
 
 @inline function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcrate})
     for t in sd.TT[end]
-        x[t,:] = x[t - 1,:]
+        x[t,:] .= x[t - 1,:]
         @. x[t, sd.lin_mask] += sd.SS[t, sd.lin_mask] - sd.SS[t - 1, sd.lin_mask]
         @. x[t, sd.log_mask] *= sd.SS[t, sd.log_mask] / sd.SS[t - 1, sd.log_mask]
     end
@@ -367,22 +367,18 @@ end
 end
 
 function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcnatural})
-    if any(sd.log_mask)
-        throw(NotImplementedError("Log variables with fcnatural"))
-    end
-    last_TT = sd.TT[end]
-    if isempty(last_TT)
+    term_Ts = sd.TT[end]
+    if isempty(term_Ts)
         return x
     end
-    last_T = last_TT[1] - 1
-    SLP = x[last_T, : ] .- x[last_T - 1, :]
-    Vinds = 1:sd.NV  # indices of variables
-    Sinds = sd.NV + 1:sd.NV + sd.NS  # indices of shocks
-    Ainds = sd.NV + sd.NS + 1:sd.NU  # indices of aux variables
-    for t in last_TT
-        x[t,Vinds] = x[t - 1,Vinds] .+ SLP[Vinds]
-        x[t,Sinds] .= 0.0  # shocks are always 0 in final conditions using steady state
-        x[t,Ainds] = x[t - 1,Ainds] .+ SLP[Ainds]
+    last_T = term_Ts[1] - 1
+    SLP = zeros(size(x, 2))
+    @. SLP[sd.lin_mask] = x[last_T,sd.lin_mask] - x[last_T - 1, sd.lin_mask]
+    @. SLP[sd.log_mask] = x[last_T,sd.log_mask] / x[last_T - 1, sd.log_mask]
+    for t = term_Ts
+        x[t,:] .= x[t - 1,:]
+        @. x[t, sd.lin_mask] += SLP[sd.lin_mask]
+        @. x[t, sd.log_mask] *= SLP[sd.log_mask]
     end
     return x
 end
@@ -400,13 +396,108 @@ function global_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64},
     return res
 end
 
-@inline update_CiSc(x::AbstractArray{Float64,2}, sd::StackedTimeSolverData) = any(sd.log_mask) ? update_CiSc(x, sd, Val(sd.FC)) : nothing
+@inline update_CiSc!(x::AbstractArray{Float64,2}, sd::StackedTimeSolverData) = any(sd.log_mask) ? update_CiSc!(x, sd, Val(sd.FC)) : nothing
 
-@inline update_CiSc(x, sd, ::Val{fcgiven}) = nothing
-@inline update_CiSc(x, sd, ::Val{fclevel}) = nothing
-@inline update_CiSc(x, sd, ::Val{fcnatural}) = throw(NotImplementedError("fcnatural with log variables"))
-function update_CiSc(x, sd, ::Val{fcslope}) 
-    throw(NotImplementedError("fcslope with log variables"))
+@inline update_CiSc!(x, sd, ::Val{fcgiven}) = nothing
+@inline update_CiSc!(x, sd, ::Val{fclevel}) = nothing
+function update_CiSc!(x, sd::StackedTimeSolverData, ::Val{fcslope}) 
+    # LinearIndices used for indexing the columns of the global matrix
+    local LI = LinearIndices((1:sd.NT, 1:sd.NU))
+    # The last simulation period
+    local term_Ts = sd.TT[end]
+    if isempty(term_Ts)
+        return 
+    end
+    local last_T = term_Ts[1] - 1
+    local NTFC = length(term_Ts)
+    
+    # @info "last_T = $(last_T), NTFC = $(NTFC)"
+
+    # Iterate over the non-zero values of CiSc and update
+    # values as necessary
+    local rows = rowvals(sd.CiSc)
+    local vals = nonzeros(sd.CiSc)
+    local ncols = size(sd.CiSc, 2)
+    for col = 1:ncols
+        nzr = nzrange(sd.CiSc, col)
+        if isempty(nzr)
+            continue
+        end
+        # Compute variable and time index from column index
+        var, tm = divrem(LI[sd.solve_mask][col] - 1, sd.NT)  .+ 1
+        
+        # @info "var = $(var), tm = $(tm)"
+        
+        if !sd.log_mask[var]
+            continue
+        end
+        if tm != last_T
+            error("Last simulation times don't match")
+        end
+        for j = nzr
+            row = rows[j]
+            # update vals[j]
+            local T = rem(row - 1, NTFC) + 1 + last_T
+
+            # @info "Updating $((row, col)) with T=$(T), x[T, var] = $(x[T, var]), x[last_T, var] = $(x[last_T, var])"
+            
+            vals[j] = - x[T, var] / x[last_T, var]
+        end
+    end
+    return nothing
+end
+
+function update_CiSc!(x, sd, ::Val{fcnatural})
+    # LinearIndices used for indexing the columns of the global matrix
+    local LI = LinearIndices((1:sd.NT, 1:sd.NU))
+    # The last simulation period
+    local term_Ts = sd.TT[end]
+    if isempty(term_Ts)
+        return 
+    end
+    local last_T = term_Ts[1] - 1
+    local NTFC = length(term_Ts)
+
+    # @info "last_T = $(last_T), NTFC = $(NTFC)"
+
+    # Iterate over the non-zero values of CiSc and update
+    # values as necessary
+    local rows = rowvals(sd.CiSc)
+    local vals = nonzeros(sd.CiSc)
+    local ncols = size(sd.CiSc, 2)
+    for col = 1:ncols
+        nzr = nzrange(sd.CiSc, col)
+        if isempty(nzr)
+            continue
+        end
+        # Compute variable and time index from column index
+        var, tm = divrem(LI[sd.solve_mask][col] - 1, sd.NT)  .+ 1
+    
+        # @info "var = $(var), tm = $(tm)"
+    
+        if !sd.log_mask[var]
+            continue
+        end
+        if tm == last_T
+            s = -1
+            c = 2
+        elseif tm == last_T - 1
+            s = +1
+            c = 1
+        else
+            error("Last simulation times don't match")
+        end
+        for j = nzr
+            row = rows[j]
+            # update vals[j]
+            local T = rem(row - 1, NTFC) + 1 + last_T
+
+            # @info "Updating $((row, col)) with T=$(T), x[T, var] = $(x[T, var]), x[last_T, var] = $(x[last_T, var])"
+        
+            vals[j] = s * (c + T - last_T - 1 ) * x[T, var] / x[tm, var]
+        end
+    end
+    return nothing
 end
 
 function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
@@ -430,7 +521,7 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
             RES[sd.II[i]] .= R
             JAC.nzval[sd.BI[i]] .= J.nzval
         end
-        update_CiSc(point, sd)
+        update_CiSc!(point, sd)
         haveLU = false
     end
     if !haveLU
@@ -444,9 +535,10 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
             @timer "LU decomposition" sd.luJ[] = lu(JJ)
         catch e
             if e isa SingularException
-                error("The system is underdetermined with the given set of equations and final conditions.")
+                @error("The system is underdetermined with the given set of equations and final conditions.")
             end
-            rethrow()
+            # rethrow()
+            return RES, deepcopy(JJ)
         end
     end
     return RES, sd.luJ[]
@@ -456,6 +548,11 @@ function assign_update_step!(x::AbstractArray{Float64}, λ::Float64, Δx::Abstra
     x[sd.solve_mask] .+= λ .* Δx
     if nnz(sd.CiSc) > 0
         x[sd.fc_mask] .-= λ .* (sd.CiSc * Δx)
+        if sd.FC == fcnatural && any(sd.log_mask) && !isempty(sd.TT[end])
+            for t = sd.TT[end]
+                @. x[t, sd.log_mask] = x[t - 1, sd.log_mask]^2 / x[t - 2,sd.log_mask]
+            end
+        end
         # assign_final_condition!(x, zeros(0,0), sd, Val(fcslope))
     end
     return x
