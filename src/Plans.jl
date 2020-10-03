@@ -267,8 +267,8 @@ range or an iterable or a container.
 
 """
 function exog_endo!(p::Plan, exog, endo, date)
-    setplanvalue!(p, true, exog, date)
-    setplanvalue!(p, false, endo, date)
+    setplanvalue!(p, true, Symbol[exog...], date)
+    setplanvalue!(p, false, Symbol[endo...], date)
 end
 
 """
@@ -294,8 +294,8 @@ iterable, or a container.
 
 """
 function autoexogenize!(p::Plan, m::Model, date)
-    auto_vars = collect(keys(m.autoexogenize))
-    auto_shks = collect(values(m.autoexogenize))
+    auto_vars = keys(m.autoexogenize)
+    auto_shks = values(m.autoexogenize)
     exog_endo!(p, auto_vars, auto_shks, date)
 end
 
