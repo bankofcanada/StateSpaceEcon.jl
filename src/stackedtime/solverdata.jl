@@ -537,8 +537,8 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
             if e isa SingularException
                 @error("The system is underdetermined with the given set of equations and final conditions.")
             end
-            # rethrow()
-            return RES, deepcopy(JJ)
+            rethrow()
+            # return RES, deepcopy(JJ)
         end
     end
     return RES, sd.luJ[]
