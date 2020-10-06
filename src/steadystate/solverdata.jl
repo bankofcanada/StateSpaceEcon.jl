@@ -212,7 +212,7 @@ function global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Floa
         rr = try
             eqn.eval_resid(sd.point[eqn.vinds]) 
         catch
-            (NaN64, fill(NaN64, size(eqn.vinds)))
+            NaN64
         end
         (isnan(rr) || isinf(rr)) && inadmissible_error(i, eqn, sd.point, rr)
         resid[ind] = rr
