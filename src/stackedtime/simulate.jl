@@ -105,7 +105,14 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     if !isempty(initial_guess) && size(initial_guess) != (NT, length(m.varshks))
         error("Incorrect dimensions of initial_guess. Expected $((NT, length(m.varshks))), got $(size(exog_data)).")
     end
-    exog_data = hcat(exog_data, zeros(size(exog_data, 1), nauxs))
+
+    if deviation
+        exog_data = copy(exog_data)
+        local logvars = islog.(m.varshks)
+        local ss_data = steadystatearray(m, p)
+        exog_data[:, logvars] .*= ss_data[:, logvars]
+        exog_data[:, .! logvars] .+= ss_data[:, .! logvars]
+    end
     if !isempty(initial_guess)
         x = @timer ModelBaseEcon.update_auxvars(initial_guess, m)
     else
@@ -230,7 +237,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 # if it didn't reach T, then yes
                 # if the final condition is not fcnatural, then yes
                 if (last_t + expectation_horizon < T) || (fctype != fcnatural)
-                    psim = Plan(m, min(last_t + 1,T):T)
+                    psim = Plan(m, min(last_t + 1, T):T)
                     # there are no unanticipated shocks in this simulation
                     sdata = StackedTimeSolverData(m, psim, fctype)
                     # the initial conditions and the exogenous data are already in x
@@ -253,40 +260,30 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     if linearize
         m.evaldata = org_med
     end
-    return x[:,1:end - nauxs]
+    x = x[:,1:end - nauxs]
+    if deviation
+        x[:, logvars] ./= ss_data[:, logvars]
+        x[:, .! logvars] .-= ss_data[:, .! logvars]
+    end
+    return x
 end
 
 # The versions of simulate with Dict
 
+# Simulate command, IRIS style with a range
+@inline simulate(m::Model, data, rng, p::Plan=Plan(m, rng); kwargs...) = simulate(m, data, p[rng, m]; kwargs...)
+
 # Simulate command, IRIS style but without a range
 function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, plan::Plan; 
-    deviation::Bool=false, overlay::Bool=false, kwargs...)::Dict{String,<:Any}
+    overlay::Bool=false, kwargs...)::Dict{String,<:Any}
     # Convert dictionary to Array{Float64,2}
     data01 = dict2array(D1, m.varshks, range=plan.range)
-    # Adjust array with steady state values if necessary
-    if deviation
-        # Check that the steady state has been solved for
-        if all(m.sstate.mask) && !any(isnan.(m.sstate.values)) && !any(isinf.(m.sstate.values))
-            # Add steady state values to data01
-            datass = sstatearray(m, plan);
-            data01 = data01 .+ datass;
-        else
-            # The SS is not solved. We issue an error message.
-            error("The steady state is not solved.")
-        end
+    ig = get(kwargs, :initial_guess, zeros(0, 0))
+    if ig isa Dict
+        ig = dict2array(ig, m.varshks, range=plan.range)
     end
-    ig = zeros(0, 0)
-    if :initial_guess ∈ keys(kwargs)
-        if kwargs[:initial_guess] isa Dict
-            ig = dict2array(kwargs[:initial_guess], m.varshks, range=plan.range)
-        end
-    end
-    # Call native simulate commmand with Array{Float64,2}
+    # Call native simulate command with Array{Float64,2}
     data02 = simulate(m, plan, data01; kwargs..., initial_guess=ig)
-    # Remove steady state values from data02
-    if deviation
-        data02 = data02 .- datass;
-    end
     # Reconvert Array{Float64,2} to Dict{String,Any}
     D2 = array2dict(data02, m.varshks, plan.range[1])
     # Overlay D1 and D2
@@ -298,28 +295,9 @@ function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, plan::Plan;
     return D3
 end
 
-# Simulate command, IRIS style with a range
-function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, rng::AbstractUnitRange, plan::Plan=Plan(m, rng); kwargs...)::Dict{String,<:Any}
-    # If we have a range, we just take a slice of the plan to enforce the range,
-    # but taking into account the model max lag and max lead.
-    plan = plan[rng,m];
-    # We simulate as usual, but this time, with just plan properly adjusted
-    # for the range
-    return simulate(m, D1, plan; kwargs...)
-end
-
-# Simulate command with one date, just in case
-function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, rng::MIT, plan::Plan=Plan(m, rng:rng); kwargs...)::Dict{String,<:Any}
-    # return simulate(m,D1,rng:rng, plan; kwargs...)
-    return simulate(m, D1, plan[rng:rng,m]; kwargs...)
-end
-
 import ..SimData
 
-simulate(m::Model, D1::SimData, rng, plan::Plan=Plan(m, rng); kwargs...) = simulate(m, D1, plan[rng, m]; kwargs...)
-
-function simulate(m::Model, D1::SimData, plan::Plan;
-    deviation::Bool=false, overlay::Bool=false, kwargs...)::typeof(D1)
+function simulate(m::Model, D1::SimData, plan::Plan; overlay::Bool=false, kwargs...)::typeof(D1)
     ret = copy(D1)
     ig = get(kwargs, :initial_guess, zeros(0, 0))
     if ig isa SimData
