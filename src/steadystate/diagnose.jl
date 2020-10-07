@@ -83,13 +83,23 @@ function diagnose_sstate(point::AbstractVector{Float64}, model::Model)
     bad[bad_res .> tol] .= true
     bad = sort(findall(bad), lt = (a, b)->bad_res[a] > bad_res[b])
     bad_eqn = tuple(("E$(be)  residual=$(bad_res[be])  $(geteqn(be, model.sstate))" for be in bad)...)
-    vars = model.sstate.vars
-    bad_var_mask = falses(size(vars))
+    vsyms = Symbol[ModelBaseEcon.ss_symbol(model.sstate, vi) for vi = 1:nvars]
+    bad_var_mask = falses(size(vsyms))
     bad_var_mask[ff.p[rj + 1:end]] .= true
     if model.flags.ssZeroSlope
         bad_var_mask[2:2:end] .= false
     end
-    bad_var = vars[filter(i->i <= nvars, findall(bad_var_mask))]
+    for (vi, v) ∈ enumerate(model.allvars)
+        if issteady(v)
+            bad_var_mask[2vi] = false
+        end
+        if isshock(v)
+            bad_var_mask[2vi-1] = false
+            bad_var_mask[2vi] = false
+        end
+    end
+    # bad_var = vsyms[filter(i->i <= nvars, findall(bad_var_mask))]
+    bad_var = vsyms[bad_var_mask]
     return bad_eqn, bad_var
 end
 @assert precompile(diagnose_sstate, (Vector{Float64}, Model))

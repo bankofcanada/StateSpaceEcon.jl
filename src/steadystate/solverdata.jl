@@ -87,7 +87,7 @@ function SolverData(model::Model; presolve::Bool=true,
     local sstate = model.sstate
     local alleqns = ModelBaseEcon.alleqns(sstate)
     local neqns = length(alleqns)
-    local nvars = length(sstate.vars)
+    local nvars = length(sstate.values)
     sd = SolverData(copy(model.sstate.values), Vector{Float64}(undef, neqns),   # point and resid
                     Vector{Bool}(undef, nvars), Vector{Bool}(undef, neqns),     # solve_var and solve_eqn
                     Vector{Int64}(undef, nvars), Vector{Bool}(undef, neqns),    # vars_index and eqns_index

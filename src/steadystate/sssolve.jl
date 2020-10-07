@@ -38,8 +38,8 @@ function sssolve!(model::Model;
     end
 
     ss = model.sstate
-    vars = ss.vars[sd.solve_var]
-    ss_nvars = length(ss.vars)
+    # vars = ss.vars[sd.solve_var]
+    ss_nvars = 2*length(ss.vars)
     ss_neqns = ModelBaseEcon.neqns(ss)
 
     lm = LMData(model, sd; lmopts...)
@@ -125,15 +125,15 @@ function sssolve!(model::Model;
     if verbose && nf > tol 
         bad_eqn, bad_var = diagnose_sstate(model)
         lbva = length(bad_var)
-        bad_var = join(bad_var, ",")
-        vars_str = lbva > 0 ? "Unable to solve for $(lbva) variables:\n   $bad_var" : ""
-        if length(vars_str) > 0
+        if lbva > 0
+            bad_var = join(bad_var, ",")
+            vars_str = "Unable to solve for $(lbva) variables:\n   $bad_var"
             @warn vars_str
         end
         lbeq = length(bad_eqn)
-        bad_eqn = (lbeq > 10) ? (join(bad_eqn[1:10], "\n   ") * "\n   . . .") : join(bad_eqn, "\n   ")
-        eqns_str = lbeq > 0 ? "System may be inconsistent. Couldn't solve $(lbeq) equations to the required accuracy:\n   $bad_eqn" : ""
-        if length(eqns_str) > 0
+        if lbeq > 0
+            bad_eqn = (lbeq > 10) ? (join(bad_eqn[1:10], "\n   ") * "\n   . . .") : join(bad_eqn, "\n   ")
+            eqns_str = "System may be inconsistent. Couldn't solve $(lbeq) equations to the required accuracy:\n   $bad_eqn"
             @warn eqns_str 
         end
     end
@@ -141,8 +141,9 @@ function sssolve!(model::Model;
     ss.values[sd.solve_var] .= xx
     ss.mask[sd.solve_var] .= true
     if run_nr
-        foo = eachindex(ss.vars)[sd.solve_var]
+        foo = (1:ss_nvars)[sd.solve_var] # global indexes of active unknowns
         for v in findall(.!nr.updated)
+            # mark unknowns that were not updated as not solved
             ss.mask[foo[v]] = false
         end
     end
