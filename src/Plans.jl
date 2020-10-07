@@ -52,11 +52,12 @@ each period.
 """
 struct Plan{T <: MIT} <: AbstractVector{Vector{Symbol}}
     range::AbstractUnitRange{T}
-    varsshks::NamedTuple
+    varshks::NamedTuple
     exogenous::BitArray{2}
 end
 
-Plan(model::Model, r::MIT) = Plan(model, r:r)
+Plan(model::Model, r::Union{MIT,Int}) = Plan(model, r:r)
+
 """
     Plan(model, range)
 
@@ -74,13 +75,10 @@ function Plan(model::Model, range::AbstractUnitRange)
         range = UnitRange{MIT{Unit}}(range)
     end
     range = (first(range) - model.maxlag):(last(range) + model.maxlead)
-    nvars = ModelBaseEcon.nvariables(model)
-    nshks = ModelBaseEcon.nshocks(model)
-    # force conversion of variables and shocks to Symbol
-    vs_names = Symbol[ModelBaseEcon.variables(model)..., ModelBaseEcon.shocks(model)...]
-    vs_names = tuple(vs_names...)
-    varsshks = NamedTuple{vs_names}(1:(nvars + nshks))
-    return Plan{eltype(range)}(range, varsshks, BitArray(var > nvars for _ in range, var = 1:(nvars + nshks)))
+    local varshks = model.varshks
+    local N = length(varshks)
+    local names = NTuple{N,Symbol}(varshks) # force conversion of Vector{ModelSymbol} to NTuple{N,Symbol}
+    return Plan(range, NamedTuple{names}(1:N), BitArray(isshock(var) for _ = range, var = varshks))
 end
 
 #######################################
@@ -100,7 +98,7 @@ Base.getindex(p::Plan, idx::AbstractUnitRange{Int}) = p[p.range[idx]]
 Base.getindex(p::Plan, idx::Int, ::Val{:inds}) = findall(p.exogenous[idx,:])
 
 # Index of the frequency type returns the list of exogenous symbols
-Base.getindex(p::Plan{T}, idx::T) where T <: MIT = [keys(p.varsshks)[p[_offset(p, idx),Val(:inds)]]...,]
+Base.getindex(p::Plan{T}, idx::T) where T <: MIT = [keys(p.varshks)[p[_offset(p, idx),Val(:inds)]]...,]
 function Base.getindex(p::Plan{T}, idx::T, ::Val{:inds}) where T <: MIT
     first(p.range) ≤ idx ≤ last(p.range) || throw(BoundsError(p, idx))
     return p[_offset(p, idx), Val(true)]
@@ -111,7 +109,7 @@ Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}) = p[UnitRange{MIT
 function Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}) where T <: MIT
     rng.start < p.range.start && throw(BoundsError(p, rng.start))
     rng.stop > p.range.stop && throw(BoundsError(p, rng.stop))
-    return Plan{T}(rng, p.varsshks, p.exogenous[_offset(p, rng), :])
+    return Plan{T}(rng, p.varshks, p.exogenous[_offset(p, rng), :])
 end
 
 # A range with a model returns a plan trimmed over that range and extended for initial and final conditions.
@@ -158,7 +156,7 @@ function Base.show(io::IO, p::Plan)
     limit = get(io, :limit, true)
     cp = collapsed_range(p)
     # find the longest string left of "=>" for padding
-    maxl = maximum(length("$k") for (k,v) in cp)
+    maxl = maximum(length("$k") for (k, v) in cp)
     if limit
         dcol = ncol - maxl - 6
     else
@@ -169,7 +167,7 @@ function Base.show(io::IO, p::Plan)
             print(io, "∅")
             return
         end
-        lens = cumsum(map(x->length("$x, "), names))
+        lens = cumsum(map(x -> length("$x, "), names))
         show = lens .< dcol
         show[1] = true
         print(io, join(names[show], ", "))
@@ -213,7 +211,7 @@ function setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::Abstr
     firstindex(p) ≤ first(date) && last(date) ≤ lastindex(p) || throw(BoundsError(p, date))
     idx1 = date .- firstindex(p) .+ 1
     for v in vars
-        idx2 = get(p.varsshks, v, 0)
+        idx2 = get(p.varshks, v, 0)
         if idx2 == 0
             throw(ArgumentError("Unknown variable or shock name: $v"))
         end
@@ -302,9 +300,9 @@ end
 #######################################
 # The user interface to prepare data for simulation.
 
-TimeSeriesEcon.frequencyof(p::Plan) = frequencyof(p.range)
-TimeSeriesEcon.firstdate(p::Plan) = first(p.range)
-TimeSeriesEcon.lastdate(p::Plan) = last(p.range)
+@inline TimeSeriesEcon.frequencyof(p::Plan) = frequencyof(p.range)
+@inline TimeSeriesEcon.firstdate(p::Plan) = first(p.range)
+@inline TimeSeriesEcon.lastdate(p::Plan) = last(p.range)
 import ..SimData
 
 """
@@ -320,8 +318,13 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-zeroarray(::Model, p::Plan) = zeros(Float64, size(p.exogenous))
-zeroarray(m::Model, rng::AbstractUnitRange) = zeroarray(m, Plan(m, rng))
+function zeroarray end
+@inline zeroarray(m::Model, rng::AbstractUnitRange) = zeroarray(m, Plan(m, rng))
+function zeroarray(m::Model, p::Plan) 
+    data = zeros(Float64, size(p.exogenous))
+    data[:, islog.(m.varshks)] .= 1.0
+    return data
+end
 
 """
     zerodict(model, plan)
@@ -338,8 +341,19 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-zerodict(::Model, p::Plan) = Dict(string(v) => TSeries(p.range, 0.0) for v in keys(p.varsshks))
-zerodict(m::Model, rng::AbstractUnitRange) = zerodict(m, Plan(m, rng))
+function zerodict end
+@inline zerodict(m::Model, rng::AbstractUnitRange) = zerodict(m, Plan(m, rng))
+function zerodict(m::Model, p::Plan) 
+    data = Dict{String,Any}()
+    for v in m.varshks
+        if islog(v)
+            push!(data, string(v.name) => TSeries(p.range, 1.0))
+        else
+            push!(data, string(v.name) => TSeries(p.range, 0.0))
+        end
+    end
+    return data
+end
 
 """
     zerodata(model, plan)
@@ -355,23 +369,15 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-zerodata(::Model, p::Plan) = SimData(firstdate(p), keys(p.varsshks), zeros(length(p), length(p.varsshks)))
-zerodata(m::Model, rng::AbstractUnitRange) = zerodata(m, Plan(m, rng))
-
-
-function _ss_series(m, ind::Int, len)
-    v = m.allvars[ind]
-    lvl, slp = m.sstate[v]
-    if v.type ∈ (:steady, :shock)
-        return fill(lvl, len)
-    else
-        ret = lvl .+ Float64[0:len-1;] .* slp
-        if v.type == :log
-            ret .= exp.(ret)
-        end
-        return ret
-    end
+function zerodata end
+@inline zerodata(m::Model, rng::AbstractUnitRange) = zerodata(m, Plan(m, rng))
+function zerodata(m::Model, p::Plan) 
+    data = SimData(firstdate(p), m.varshks, zeros(length(p), length(m.varshks)))
+    data[:, islog.(m.varshks)] .= 1.0
+    return data
 end
+
+##################
 
 """
     steadystatearray(model, plan)
@@ -387,10 +393,16 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-steadystatearray(m::Model, rng::AbstractUnitRange) = steadystatearray(m, Plan(m, rng))
-steadystatearray(m::Model, p::Plan) = hcat((
-    _ss_series(m, i, length(p.range)) for i in 1:length(m.allvars)
-)...)
+function steadystatearray end
+@inline steadystatearray(m::Model, rng::AbstractUnitRange; ref=first(rng)) = steadystatearray(m, Plan(m, rng), ref=ref)
+function steadystatearray(m::Model, p::Plan; ref=firstdate(p) + m.maxlag)
+    vs = keys(p.varshks) 
+    data = Matrix{Float64}(undef, length(p), length(vs))
+    for (vi, v) ∈ enumerate(vs)
+        data[:, vi] = m.sstate.:($v)[p.range, ref=ref]
+    end
+    return data
+end
 
 """
     steadystatearray(model, plan)
@@ -406,8 +418,15 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-steadystatedict(m::Model, rng::AbstractUnitRange) = steadystatedict(m, Plan(m, rng))
-steadystatedict(m::Model, p::Plan) = Dict(string(v) => TSeries(firstdate(p), _ss_series(m, i, length(p))) for (i, v) in enumerate(Symbol.(m.allvars)))
+function steadystatedict end
+@inline steadystatedict(m::Model, rng::AbstractUnitRange; ref=first(rng)) = steadystatedict(m, Plan(m, rng), ref=ref)
+function steadystatedict(m::Model, p::Plan; ref=firstdate(p) + m.maxlag)
+    data = Dict{String,Any}()
+    for v ∈ keys(p.varshks)
+        push!(data, string(v) => m.sstate.:($v)[p.range, ref=ref])
+    end
+    return data
+end
 
 """
     steadystatedata(model, plan)
@@ -423,9 +442,11 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 [`steadystatedict`](@ref)
 
 """
-steadystatedata(m::Model, rng::AbstractUnitRange) = steadystatedata(m, Plan(m, rng))
-steadystatedata(m::Model, p::Plan) = 
-    SimData(firstdate(p), m.allvars, steadystatearray(m, p))
+function steadystatedata end
+@inline steadystatedata(m::Model, rng::AbstractUnitRange; ref=first(rng)) = steadystatedata(m, Plan(m, rng), ref=ref)
+function steadystatedata(m::Model, p::Plan; ref=firstdate(p) + m.maxlag) 
+    return SimData(firstdate(p), m.varshks, steadystatearray(m, p, ref=ref))
+end
 
 #######################################
 # The internal interface to simulations code.
