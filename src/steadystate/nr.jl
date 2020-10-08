@@ -16,6 +16,7 @@ Internal use. Do not call directly.
 """
 struct NRData
     sd::SolverData
+    ss::SteadyStateData
     v_buffer::Vector{Float64}
     r_buffer::Vector{Float64}
     updated::BitArray{1}
@@ -23,7 +24,7 @@ struct NRData
 end
 
 @inline NRData(model::Model; kwargs...) = NRData(model, SolverData(model); kwargs...)
-@inline NRData(::Model, sd::SolverData; linesearch::Bool = false) = NRData(sd, 
+@inline NRData(model::Model, sd::SolverData; linesearch::Bool = false) = NRData(sd, model.sstate,
                     Array{Float64}(undef, sd.nvars), Array{Float64}(undef, sd.neqns), 
                     trues(sd.nvars), linesearch)
 
@@ -48,7 +49,7 @@ function step_nr!(xx::AbstractArray{Float64,1}, dx::AbstractArray{Float64,1},
     nr.updated[ff.p[rj + 1:end]] .= false
     dx .= ff \ rr
     if verbose && any(.!nr.updated)
-        problem_vars = join((ModelBaseEcon.ss_symbol(nr.sd, vi) for vi in findall(nr.sd.solve_var)[.!nr.updated]), ", ")
+        problem_vars = join((ModelBaseEcon.ss_symbol(nr.ss, vi) for vi in findall(nr.sd.solve_var)[.!nr.updated]), ", ")
         @warn "Unable to update $(problem_vars)."
     end
     nf = norm(rr)
