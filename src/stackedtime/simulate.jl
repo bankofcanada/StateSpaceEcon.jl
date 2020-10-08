@@ -119,9 +119,14 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         x = @timer ModelBaseEcon.update_auxvars(exog_data, m)
     end
     if linearize
+        throw(ErrorException("Linearization is disabled."))
         org_med = m.evaldata
         linearize!(m; deviation=deviation)
     end
+
+    log_transform!(exog_data, m, :to_internal)
+    log_transform!(x, m, :to_internal)
+
     if anticipate
         @timer gdata = StackedTimeSolverData(m, p, fctype)
         @timer assign_exog_data!(x, exog_data, gdata)
@@ -261,6 +266,9 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         m.evaldata = org_med
     end
     x = x[:,1:end - nauxs]
+
+    log_transform!(x, m, :from_internal)
+
     if deviation
         x[:, logvars] ./= ss_data[:, logvars]
         x[:, .! logvars] .-= ss_data[:, .! logvars]

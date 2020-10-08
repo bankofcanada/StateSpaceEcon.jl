@@ -19,8 +19,8 @@ using TimeSeriesEcon
 using ..Plans
 
 include("stackedtime/abstract.jl")
-include("stackedtime/solverdata.jl")
 include("stackedtime/misc.jl")
+include("stackedtime/solverdata.jl")
 include("stackedtime/simulate.jl")
 
 end # module

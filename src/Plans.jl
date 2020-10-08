@@ -423,7 +423,7 @@ function steadystatedict end
 function steadystatedict(m::Model, p::Plan; ref=firstdate(p) + m.maxlag)
     data = Dict{String,Any}()
     for v ∈ keys(p.varshks)
-        push!(data, string(v) => m.sstate.:($v)[p.range, ref=ref])
+        push!(data, string(v) => TSeries(p.range, m.sstate.:($v)[p.range, ref=ref]))
     end
     return data
 end

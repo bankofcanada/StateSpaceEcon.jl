@@ -301,7 +301,7 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
         push!(JJ, t .+ Jblock)
         neq += nequations
     end
-    # Construct the 
+    # Construct the
     @timer begin
         I = vcat(II...)
         J = vcat(JJ...)
@@ -333,14 +333,15 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
 
     sd = StackedTimeSolverData(NT, nvars, nshks, nunknowns, fctype, TT, II, JJ, BI, JMAT,
                              sparse([], [], Float64[], NTFC * nunknowns, size(JMAT, 1)),
-                             steadystatearray(m, p), islog.(m.allvars), islin.(m.allvars),
+                             log_transform!(steadystatearray(m, p), m, :to_internal),
+                             islog.(m.allvars), islin.(m.allvars),
                              m.evaldata, exog_mask, fc_mask, solve_mask,
                              Ref{Any}(nothing))
 
     return update_plan!(sd, m, p; changed=true)
 end
 
-@inline function assign_exog_data!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
+function assign_exog_data!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
     # @assert size(x,1) == size(exog,1) == sd.NT
     x[sd.exog_mask] = exog[sd.exog_mask]
     assign_final_condition!(x, exog, sd, Val(sd.FC))
@@ -348,20 +349,23 @@ end
 end
 
 @inline function assign_final_condition!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcgiven})
+    # We assume that exog data has been transformed for log-variables
     x[sd.TT[end],:] = exog[sd.TT[end],:]
     return x
 end
 
 @inline function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fclevel})
+    # We assume that SS data has been transformed for log-variables
     x[sd.TT[end],:] = sd.SS[sd.TT[end],:]
     return x
 end
 
 @inline function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcrate})
+    # We assume that SS data has been transformed for log-variables
+    slp_vars = sd.lin_mask .| sd.log_mask
     for t in sd.TT[end]
-        x[t,:] .= x[t - 1,:]
-        @. x[t, sd.lin_mask] += sd.SS[t, sd.lin_mask] - sd.SS[t - 1, sd.lin_mask]
-        @. x[t, sd.log_mask] *= sd.SS[t, sd.log_mask] / sd.SS[t - 1, sd.log_mask]
+        x[t,:] = x[t - 1,:]
+        @. x[t, slp_vars] += sd.SS[t, slp_vars] - sd.SS[t - 1, slp_vars]
     end
     return x
 end
@@ -372,13 +376,12 @@ function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Fl
         return x
     end
     last_T = term_Ts[1] - 1
+    slp_vars = sd.lin_mask .| sd.log_mask
     SLP = zeros(size(x, 2))
-    @. SLP[sd.lin_mask] = x[last_T,sd.lin_mask] - x[last_T - 1, sd.lin_mask]
-    @. SLP[sd.log_mask] = x[last_T,sd.log_mask] / x[last_T - 1, sd.log_mask]
+    @. SLP[slp_vars] = x[last_T,slp_vars] - x[last_T - 1, slp_vars]
     for t = term_Ts
         x[t,:] .= x[t - 1,:]
-        @. x[t, sd.lin_mask] += SLP[sd.lin_mask]
-        @. x[t, sd.log_mask] *= SLP[sd.log_mask]
+        @. x[t, slp_vars] += SLP[slp_vars]
     end
     return x
 end
@@ -396,21 +399,23 @@ function global_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64},
     return res
 end
 
+#= disable - this is not necessary with log-transformed variables
+
 @inline update_CiSc!(x::AbstractArray{Float64,2}, sd::StackedTimeSolverData) = any(sd.log_mask) ? update_CiSc!(x, sd, Val(sd.FC)) : nothing
 
 @inline update_CiSc!(x, sd, ::Val{fcgiven}) = nothing
 @inline update_CiSc!(x, sd, ::Val{fclevel}) = nothing
-function update_CiSc!(x, sd::StackedTimeSolverData, ::Val{fcslope}) 
+function update_CiSc!(x, sd::StackedTimeSolverData, ::Val{fcslope})
     # LinearIndices used for indexing the columns of the global matrix
     local LI = LinearIndices((1:sd.NT, 1:sd.NU))
     # The last simulation period
     local term_Ts = sd.TT[end]
     if isempty(term_Ts)
-        return 
+        return
     end
     local last_T = term_Ts[1] - 1
     local NTFC = length(term_Ts)
-    
+
     # @info "last_T = $(last_T), NTFC = $(NTFC)"
 
     # Iterate over the non-zero values of CiSc and update
@@ -425,9 +430,9 @@ function update_CiSc!(x, sd::StackedTimeSolverData, ::Val{fcslope})
         end
         # Compute variable and time index from column index
         var, tm = divrem(LI[sd.solve_mask][col] - 1, sd.NT)  .+ 1
-        
+
         # @info "var = $(var), tm = $(tm)"
-        
+
         if !sd.log_mask[var]
             continue
         end
@@ -440,7 +445,7 @@ function update_CiSc!(x, sd::StackedTimeSolverData, ::Val{fcslope})
             local T = rem(row - 1, NTFC) + 1 + last_T
 
             # @info "Updating $((row, col)) with T=$(T), x[T, var] = $(x[T, var]), x[last_T, var] = $(x[last_T, var])"
-            
+
             vals[j] = - x[T, var] / x[last_T, var]
         end
     end
@@ -453,7 +458,7 @@ function update_CiSc!(x, sd, ::Val{fcnatural})
     # The last simulation period
     local term_Ts = sd.TT[end]
     if isempty(term_Ts)
-        return 
+        return
     end
     local last_T = term_Ts[1] - 1
     local NTFC = length(term_Ts)
@@ -472,9 +477,9 @@ function update_CiSc!(x, sd, ::Val{fcnatural})
         end
         # Compute variable and time index from column index
         var, tm = divrem(LI[sd.solve_mask][col] - 1, sd.NT)  .+ 1
-    
+
         # @info "var = $(var), tm = $(tm)"
-    
+
         if !sd.log_mask[var]
             continue
         end
@@ -493,12 +498,12 @@ function update_CiSc!(x, sd, ::Val{fcnatural})
             local T = rem(row - 1, NTFC) + 1 + last_T
 
             # @info "Updating $((row, col)) with T=$(T), x[T, var] = $(x[T, var]), x[last_T, var] = $(x[last_T, var])"
-        
+
             vals[j] = s * (c + T - last_T - 1 ) * x[T, var] / x[tm, var]
         end
     end
     return nothing
-end
+end =#
 
 function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
     nunknowns = sd.NU
@@ -521,7 +526,7 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
             RES[sd.II[i]] .= R
             JAC.nzval[sd.BI[i]] .= J.nzval
         end
-        update_CiSc!(point, sd)
+        # update_CiSc!(point, sd)
         haveLU = false
     end
     if !haveLU
@@ -548,11 +553,11 @@ function assign_update_step!(x::AbstractArray{Float64}, λ::Float64, Δx::Abstra
     x[sd.solve_mask] .+= λ .* Δx
     if nnz(sd.CiSc) > 0
         x[sd.fc_mask] .-= λ .* (sd.CiSc * Δx)
-        if sd.FC == fcnatural && any(sd.log_mask) && !isempty(sd.TT[end])
-            for t = sd.TT[end]
-                @. x[t, sd.log_mask] = x[t - 1, sd.log_mask]^2 / x[t - 2,sd.log_mask]
-            end
-        end
+        # if sd.FC == fcnatural && any(sd.log_mask) && !isempty(sd.TT[end])
+        #     for t = sd.TT[end]
+        #         @. x[t, sd.log_mask] = x[t - 1, sd.log_mask]^2 / x[t - 2,sd.log_mask]
+        #     end
+        # end
         # assign_final_condition!(x, zeros(0,0), sd, Val(fcslope))
     end
     return x

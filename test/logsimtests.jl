@@ -16,12 +16,12 @@
 
         clear_sstate!(m)
         sssolve!(m)
-        @test m.sstate.X.level + 1 ≈ log(1.0) + 1 
-        @test m.sstate.X.slope + 1 ≈ log(m.rate) + 1 
+        @test m.sstate.X.level ≈ 1.0 
+        @test m.sstate.X.slope ≈ m.rate
         @test m.sstate.Y.level + 1 ≈ 0.0 + 1 
         @test m.sstate.Y.slope + 1 ≈ m.rate + 1 
 
-        p = Plan(m, 1:10)
+        p = Plan(m, 1U:10U)
 
         # make sure the steadystate data is built correctly
         a = steadystatearray(m, p)
@@ -32,8 +32,8 @@
         for s in Symbol.(m.allvars)
             @test k.:($s) == d[string(s)]
         end
-        @test k.X[1] ≈ 1.0
-        @test k.Y[1] + 1 ≈ 1.0 
+        @test k.X[1U] ≈ 1.0
+        @test k.Y[1U] + 1 ≈ 1.0 
         @test pct(k.X, -1) ≈ TSeries(p.range, (m.rate - 1) * 100)
         @test diff(k.Y) ≈ TSeries(p.range, m.rate)
 
@@ -69,12 +69,12 @@
 
         clear_sstate!(m)
         sssolve!(m)
-        @test m.sstate.X.level + 1 ≈ log(1.0) + 1 
-        @test m.sstate.X.slope + 1 ≈ log(m.rate) + 1 
+        @test m.sstate.X.level + 1 ≈ 1.0 + 1
+        @test m.sstate.X.slope + 1 ≈ m.rate + 1
         @test m.sstate.Y.level + 1 ≈ 0.0 + 1 
         @test m.sstate.Y.slope + 1 ≈ m.rate + 1 
 
-        p = Plan(m, 1:10)
+        p = Plan(m, 1U:10U)
 
         # make sure the steadystate data is built correctly
         a = steadystatearray(m, p)
@@ -85,8 +85,8 @@
         for s in Symbol.(m.allvars)
             @test k.:($s) == d[string(s)]
         end
-        @test k.X[1] ≈ 1.0
-        @test k.Y[1] + 1 ≈ 1.0 
+        @test k.X[1U] + 1 ≈ 1.0 + 1
+        @test k.Y[1U] + 1 ≈ 0.0 + 1
         @test pct(k.X, -1) ≈ TSeries(p.range, (m.rate - 1) * 100)
         @test diff(k.Y) ≈ TSeries(p.range, m.rate)
 
