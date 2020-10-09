@@ -133,3 +133,4 @@ using StateSpaceEcon.StackedTimeSolver: dict2array, dict2data, array2dict, array
 end
 
 include("simtests.jl")
+include("logsimtests.jl")

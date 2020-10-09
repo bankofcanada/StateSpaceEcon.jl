@@ -18,7 +18,7 @@ TimeSeriesEcon = "8b6756d2-c55c-11ea-2998-5f67ea17da60"
 [compat]
 DiffResults = "1.0"
 ForwardDiff = "0.10"
-ModelBaseEcon = "0.3"
+ModelBaseEcon = "0.3.2"
 Plots = "1.4"
 Suppressor = "0.2"
 TimeSeriesEcon = "0.2.1"

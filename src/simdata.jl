@@ -96,8 +96,9 @@ function Base.setproperty!(sd::SimData,  col::Symbol, val)
     setindex!(col, val, :)
 end
 
-Base.getindex(sd::SimData, cols::AbstractVector) = getindex(sd, tuple(map(Symbol, cols)...))
-Base.getindex(sd::SimData, cols::Tuple) = getindex(sd, tuple(map(Symbol, cols)...))
+@inline Base.getindex(sd::SimData, cols::AbstractVector{<:Number}) = getindex(sd, (_names(sd)[cols])...)
+@inline Base.getindex(sd::SimData, cols::AbstractVector) = getindex(sd, tuple(map(Symbol, cols)...))
+@inline Base.getindex(sd::SimData, cols::Tuple) = getindex(sd, tuple(map(Symbol, cols)...))
 
 function Base.getindex(sd::SimData, cols::NTuple{N,Symbol}) where N
     SimData(firstdate(sd), tuple(cols...), hcat((getproperty(sd, c) for c in cols)...))

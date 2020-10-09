@@ -11,25 +11,22 @@ Newton-Raphson step of the steady state solver.
 A data structure that holds the necessary buffers and internal data for
 performing a step of the Newton-Raphson algorithm
 
-!!! warning
-    Internal use. Do not call directly
+Internal use. Do not call directly.
+
 """
 struct NRData
     sd::SolverData
-    vars::AbstractArray{Symbol,1}
-    v_buffer::AbstractArray{Float64,1}
-    r_buffer::AbstractArray{Float64,1}
-    updated::AbstractArray{Bool,1}
+    ss::SteadyStateData
+    v_buffer::Vector{Float64}
+    r_buffer::Vector{Float64}
+    updated::BitArray{1}
     linesearch::Bool
 end
-NRData(model::Model; kwargs...) = NRData(model, SolverData(model); kwargs...)
-NRData(model::Model, sd::SolverData; linesearch::Bool = false) = NRData(sd, 
-                                                                        view(model.sstate.vars, sd.solve_var),
-                                                                        Array{Float64}(undef, sd.nvars),
-                                                                        Array{Float64}(undef, sd.neqns),
-                                                                        trues(sd.nvars),
-                                                                        linesearch
-)
+
+@inline NRData(model::Model; kwargs...) = NRData(model, SolverData(model); kwargs...)
+@inline NRData(model::Model, sd::SolverData; linesearch::Bool = false) = NRData(sd, model.sstate,
+                    Array{Float64}(undef, sd.nvars), Array{Float64}(undef, sd.neqns), 
+                    trues(sd.nvars), linesearch)
 
 """
     step_nr!(x, dx, resid, J, nr::NRData; verbose=false)
@@ -51,11 +48,9 @@ function step_nr!(xx::AbstractArray{Float64,1}, dx::AbstractArray{Float64,1},
     nr.updated[ff.p[1:rj]] .= true
     nr.updated[ff.p[rj + 1:end]] .= false
     dx .= ff \ rr
-    if any(.!nr.updated)
-        problem_vars = join(nr.vars[.!nr.updated], ", ")
-        if verbose
-            @warn "Unable to update $(problem_vars)."
-        end
+    if verbose && any(.!nr.updated)
+        problem_vars = join((ModelBaseEcon.ss_symbol(nr.ss, vi) for vi in findall(nr.sd.solve_var)[.!nr.updated]), ", ")
+        @warn "Unable to update $(problem_vars)."
     end
     nf = norm(rr)
     if nr.linesearch

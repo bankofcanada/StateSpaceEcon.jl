@@ -1,5 +1,5 @@
 
-
+using LinearAlgebra
 
 @testset "E1.simple" begin
     m = E1.model
@@ -319,7 +319,7 @@ end
         p = Plan(m, 3:17)
         ed = zerodata(m, p)
         ed .= rand(Float64, size(ed))
-        @test_throws ErrorException simulate(m, ed, p, fctype=fcnatural)
+        @test_logs (:error, r"The system is underdetermined.*") (@test_throws SingularException simulate(m, ed, p, fctype=fcnatural))
         sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
         @test_throws ErrorException StateSpaceEcon.StackedTimeSolver.update_plan!(sd, m, Plan(m, 3:8))
         x = rand(Float64, size(ed))

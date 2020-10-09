@@ -51,7 +51,7 @@ function presolve_sstate!(model::Model, mask::AbstractVector{Bool}, values::Abst
                 # There is exactly one variable in this equation that's not solved yet.
                 ind = findall(unsolved)[1]
                 vals = view(values, sseqn.vinds)
-                sym = model.sstate.vars[sseqn.vinds[ind]]
+                sym = ModelBaseEcon.ss_symbol(model.sstate, sseqn.vinds[ind])
                 # store the current value, so we can restore it if 1d solver fails.
                 foo = vals[ind]
 

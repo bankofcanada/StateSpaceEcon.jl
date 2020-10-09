@@ -87,7 +87,7 @@ function SolverData(model::Model; presolve::Bool=true,
     local sstate = model.sstate
     local alleqns = ModelBaseEcon.alleqns(sstate)
     local neqns = length(alleqns)
-    local nvars = length(sstate.vars)
+    local nvars = length(sstate.values)
     sd = SolverData(copy(model.sstate.values), Vector{Float64}(undef, neqns),   # point and resid
                     Vector{Bool}(undef, nvars), Vector{Bool}(undef, neqns),     # solve_var and solve_eqn
                     Vector{Int64}(undef, nvars), Vector{Bool}(undef, neqns),    # vars_index and eqns_index
@@ -212,7 +212,7 @@ function global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Floa
         rr = try
             eqn.eval_resid(sd.point[eqn.vinds]) 
         catch
-            (NaN64, fill(NaN64, size(eqn.vinds)))
+            NaN64
         end
         (isnan(rr) || isinf(rr)) && inadmissible_error(i, eqn, sd.point, rr)
         resid[ind] = rr
