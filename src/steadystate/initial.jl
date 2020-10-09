@@ -55,10 +55,10 @@ function _do_update_auxvars_presolve!(model::Model; verbose::Bool)
     ss = model.sstate
     # set shocks (level and slope) and steady slopes to 0.0 presolved
     for (i, v) in enumerate(model.allvars)
-        if v isa ModelSymbol && v.type == :shock
+        if isshock(v)
             ss.values[2 * i .+ (-1:0)] .= 0.0
             ss.mask[2 * i .+ (-1:0)] .= true
-        elseif v isa ModelSymbol && v.type == :steady
+        elseif issteady(v)
             ss.values[2 * i] = 0.0
             ss.mask[2 * i] = true
         end
