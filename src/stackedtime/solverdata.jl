@@ -1,3 +1,9 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 # export StackedTimeSolverData
 """
@@ -214,6 +220,8 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=fals
     return sd
 end
 
+import ..steadystatearray
+
 """
     make_BI(J, II)
 
@@ -333,8 +341,8 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
 
     sd = StackedTimeSolverData(NT, nvars, nshks, nunknowns, fctype, TT, II, JJ, BI, JMAT,
                              sparse([], [], Float64[], NTFC * nunknowns, size(JMAT, 1)),
-                             log_transform!(steadystatearray(m, p), m, :to_internal),
-                             islog.(m.allvars), islin.(m.allvars),
+                             transform(steadystatearray(m, p), m),
+                             islog.(m.allvars) .| isneglog.(m.allvars), islin.(m.allvars),
                              m.evaldata, exog_mask, fc_mask, solve_mask,
                              Ref{Any}(nothing))
 

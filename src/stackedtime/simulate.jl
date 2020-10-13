@@ -1,3 +1,9 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 """
     sim_nr!(x, sd, maxiter, tol, verbose [, sparse_solver])
@@ -108,7 +114,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
 
     if deviation
         exog_data = copy(exog_data)
-        local logvars = islog.(m.varshks)
+        local logvars = islog.(m.varshks) .| lsneglog.(m.varshks)
         local ss_data = steadystatearray(m, p)
         exog_data[:, logvars] .*= ss_data[:, logvars]
         exog_data[:, .! logvars] .+= ss_data[:, .! logvars]
@@ -124,8 +130,8 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         linearize!(m; deviation=deviation)
     end
 
-    log_transform!(exog_data, m, :to_internal)
-    log_transform!(x, m, :to_internal)
+    exog_data .= transform(exog_data, m)
+    x .= transform(x, m)
 
     if anticipate
         @timer gdata = StackedTimeSolverData(m, p, fctype)
@@ -267,7 +273,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     end
     x = x[:,1:end - nauxs]
 
-    log_transform!(x, m, :from_internal)
+    x .= inverse_transform(x, m)
 
     if deviation
         x[:, logvars] ./= ss_data[:, logvars]

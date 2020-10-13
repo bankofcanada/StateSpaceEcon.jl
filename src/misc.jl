@@ -1,3 +1,9 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 using Printf
 
@@ -41,4 +47,20 @@ printmatrix(mat, args...) = printmatrix(mat, Val(12.7), args...)
 end
 export printmatrix
 
+import ModelBaseEcon: transform, inverse_transform
 
+function transform(data::AbstractMatrix{Float64}, m::Model) 
+    tdata = similar(data)
+    for (i, v) in enumerate(m.varshks)
+        tdata[:, i] .= transform(data[:, i], v)
+    end
+    return tdata
+end
+
+function inverse_transform(data::AbstractMatrix{Float64}, m::Model) 
+    idata = similar(data)
+    for (i, v) in enumerate(m.varshks)
+        idata[:, i] .= inverse_transform(data[:, i], v)
+    end
+    return idata
+end
