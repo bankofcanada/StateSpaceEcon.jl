@@ -112,10 +112,6 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         error("Incorrect dimensions of initial_guess. Expected $((NT, length(m.varshks))), got $(size(exog_data)).")
     end
 
-    if fctype isa FinalCondition
-        fctype = setfc(m, fctype)
-    end
-
     if deviation
         exog_data = copy(exog_data)
         local logvars = islog.(m.varshks) .| lsneglog.(m.varshks)
@@ -138,7 +134,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     x .= transform(x, m)
 
     if anticipate
-        @timer gdata = StackedTimeSolverData(m, p, fctype)
+        @timer gdata = StackedTimeSolverData(m, p, setfc(m, fctype))
         @timer assign_exog_data!(x, exog_data, gdata)
         if verbose
             @info "Simulating $(p.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
@@ -166,7 +162,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                     continue
                 end
                 setexog!(psim, t0, exog_inds)
-                @timer gdata = StackedTimeSolverData(m, psim, fctype)
+                @timer gdata = StackedTimeSolverData(m, psim, setfc(m, fctype))
                 x[t,exog_inds] = exog_data[t,exog_inds]
                 # @timer assign_exog_data!(x[psim.range,:], exog_data[psim.range,:], gdata)
                 sim_range = UnitRange{Int}(psim.range)
@@ -199,7 +195,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 exog_inds = p[t, Val(:inds)]
                 psim = Plan(m, t:T)
                 setexog!(psim, t0, exog_inds)
-                @timer sdata = StackedTimeSolverData(m, psim, fctype)
+                @timer sdata = StackedTimeSolverData(m, psim, setfc(m, fctype))
                 x[t,exog_inds] = exog_data[t,exog_inds]
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
@@ -215,7 +211,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
             # intermediate simulations
             last_t::Int64 = t0
             psim = Plan(m, 0:expectation_horizon - 1)
-            sdata = StackedTimeSolverData(m, psim, fcnatural)
+            sdata = StackedTimeSolverData(m, psim, setfc(m, fcnatural))
             for t in sim[2:end]
                 exog_inds = p[t, Val(:inds)]
                 # we need to run a simulation if a variable is exogenous, or if a shock value is not zero
@@ -236,7 +232,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 # In other words, we only need to impose the first period here
                 xx[t0, exog_inds] = exog_data[t, exog_inds]
                 # Update the final conditions
-                @timer assign_final_condition!(xx, zeros(0, 0), sdata)
+                @timer assign_final_condition!(xx, similar(xx), sdata)
                 if verbose
                     @info "Simulating $(p.range[t] .+ (0:expectation_horizon - 1))" # anticipate expectation_horizon sdata.FC
                 end
@@ -254,7 +250,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 if (last_t + expectation_horizon < T) || (fctype != fcnatural)
                     psim = Plan(m, min(last_t + 1, T):T)
                     # there are no unanticipated shocks in this simulation
-                    sdata = StackedTimeSolverData(m, psim, fctype)
+                    sdata = StackedTimeSolverData(m, psim, setfc(m, fctype))
                     # the initial conditions and the exogenous data are already in x
                     # we only need the final conditions
                     sim_range = UnitRange(psim.range)
