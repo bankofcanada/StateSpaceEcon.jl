@@ -83,7 +83,7 @@ function Plan(model::Model, range::AbstractUnitRange)
     local varshks = model.varshks
     local N = length(varshks)
     local names = NTuple{N,Symbol}(varshks) # force conversion of Vector{ModelSymbol} to NTuple{N,Symbol}
-    return Plan(range, NamedTuple{names}(1:N), BitArray(isshock(var) for _ = range, var = varshks))
+    return Plan(range, NamedTuple{names}(1:N), BitArray(isshock(var) || isexog(var) for _ = range, var = varshks))
 end
 
 #######################################

@@ -20,7 +20,7 @@ Solve the simulation problem.
     x = b for x. Defaults to A\\b
 
 """
-function sim_nr!(x::AbstractArray{Float64}, sd::AbstractSolverData,
+function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
                 maxiter::Int64, tol::Float64, verbose::Bool,
                 sparse_solver::Function=(A, b) -> A \ b)
     for it = 1:maxiter
@@ -99,7 +99,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                     verbose::Bool=m.options.verbose,
                     tol::Float64=m.options.tol,
                     maxiter::Int64=m.options.maxiter,
-                    fctype::FCType=getoption(m, :fctype, fcgiven),
+                    fctype=getoption(m, :fctype, fcgiven),
                     expectation_horizon::Union{Nothing,Int64}=nothing,
                     sparse_solver::Function=(A, b) -> A \ b
     )
@@ -110,6 +110,10 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     end
     if !isempty(initial_guess) && size(initial_guess) != (NT, length(m.varshks))
         error("Incorrect dimensions of initial_guess. Expected $((NT, length(m.varshks))), got $(size(exog_data)).")
+    end
+
+    if fctype isa FinalCondition
+        fctype = setfc(m, fctype)
     end
 
     if deviation
