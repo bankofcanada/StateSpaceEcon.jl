@@ -47,7 +47,7 @@
         # initial 
         ed[firstdate(p)] = k[firstdate(p)]
 
-        for fc in instances(FCType)
+        for fc in (fcgiven, fclevel, fcslope, fcnatural)
             @test simulate(m, ed, p, fctype=fc) ≈ k
         end
 

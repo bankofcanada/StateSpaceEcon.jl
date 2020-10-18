@@ -67,8 +67,7 @@ function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCNone)
 end
 
 function assign_fc!(x::AbstractVector{Float64}, exog::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCNone)
-    # values given exogenously
-    x[sd.TT[end]] .= exog[sd.TT[end]]
+    # nothing to see here
     return x
 end
 
@@ -293,6 +292,7 @@ end
     StackedTimeSolverData(model, plan, fctype)
 
 """
+@inline StackedTimeSolverData(m::Model, p::Plan, fctype::FinalCondition) = StackedTimeSolverData(m, p, setfc(m, fctype))
 function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCondition})
 
     NT = length(p.range)
