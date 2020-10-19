@@ -82,8 +82,14 @@ function Plan(model::Model, range::AbstractUnitRange)
     range = (first(range) - model.maxlag):(last(range) + model.maxlead)
     local varshks = model.varshks
     local N = length(varshks)
-    local names = NTuple{N,Symbol}(varshks) # force conversion of Vector{ModelSymbol} to NTuple{N,Symbol}
-    return Plan(range, NamedTuple{names}(1:N), BitArray(isshock(var) || isexog(var) for _ = range, var = varshks))
+    local names = tuple(Symbol.(varshks)...) # force conversion of Vector{ModelSymbol} to NTuple{N,Symbol}
+    p = Plan(range, NamedTuple{names}(1:N), falses(length(range), length(varshks)))
+    for (ind, var) = enumerate(varshks)
+        if isshock(var) || isexog(var)
+            p.exogenous[:, ind] .= [true]
+        end
+    end
+    return p
 end
 
 #######################################

@@ -1,3 +1,9 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 export SimData
 
@@ -19,7 +25,7 @@ struct SimData{F <: Frequency,N <: NamedTuple,C <: AbstractMatrix{Float64}} <: A
     values::C
 
     # inner constructor enforces constraints.
-    function SimData(fd, names::NTuple{N, Symbol}, values) where {N}
+    function SimData(fd, names::NTuple{N,Symbol}, values) where {N}
         if N != size(values, 2)
             throw(ArgumentError("Number of names and columns don't match: $N ≠ $(size(values, 2))."))
         end
@@ -56,7 +62,7 @@ Base.size(sd::SimData) = size(_values(sd))
 Base.IndexStyle(sd::SimData) = IndexStyle(_values(sd))
 
 # Indexing with integers falls back to AbstractArray
-const FallbackType = Union{Integer, Colon, AbstractUnitRange{<:Integer}, AbstractVector{<:Integer}, CartesianIndex}
+const FallbackType = Union{Integer,Colon,AbstractUnitRange{<:Integer},AbstractVector{<:Integer},CartesianIndex}
 Base.getindex(sd::SimData, i1::FallbackType...) = getindex(_values(sd), i1...)
 Base.setindex!(sd::SimData, val, i1::FallbackType...) = setindex!(_values(sd), val, i1...)
 
@@ -137,7 +143,7 @@ function Base.getindex(sd::SimData, i1::MIT)
 end
 
 # Modifying a row in a table -> one must pass in a vector
-Base.setindex!(sd::SimData, val, i1::MIT, ::Colon) = sd[i1-firstdate(sd)+1, :] = val
+Base.setindex!(sd::SimData, val, i1::MIT, ::Colon) = sd[i1 - firstdate(sd) + 1, :] = val
 function Base.setindex!(sd::SimData, val::AbstractVector{<:Real}, i1::MIT) 
     check_frequency(sd, i1)
     if firstdate(sd) <= i1 <= lastdate(sd)
