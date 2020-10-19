@@ -26,7 +26,7 @@ See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
 """
 function zeroarray end
 @inline zeroarray(m::Model, rng::AbstractUnitRange) = zeroarray(m, Plan(m, rng))
-@inline zeroarray(m::Model, p::Plan) = transform(zeros(Float64, size(p.exogenous)), m)
+@inline zeroarray(m::Model, p::Plan) = inverse_transform(zeros(Float64, size(p.exogenous)), m)
 
 """
     zerodict(model, plan)
@@ -48,7 +48,7 @@ function zerodict end
 function zerodict(m::Model, p::Plan) 
     data = Dict{String,Any}()
     for v in m.varshks
-        push!(data, string(v.name) => TSeries(p.range, transform(0.0, v)))
+        push!(data, string(v.name) => TSeries(p.range, inverse_transform(0.0, v)))
     end
     return data
 end
