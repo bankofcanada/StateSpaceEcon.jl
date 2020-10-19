@@ -519,7 +519,8 @@ function update_CiSc!(x, sd, ::Val{fcnatural})
     return nothing
 end =#
 
-function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
+function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData; 
+        debugging=false)
     nunknowns = sd.NU
     point = reshape(point, sd.NT, nunknowns)
     exog_data = reshape(exog_data, sd.NT, nunknowns)
@@ -556,8 +557,10 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
             if e isa SingularException
                 @error("The system is underdetermined with the given set of equations and final conditions.")
             end
+            if debugging
+                return RES, deepcopy(JJ)
+            end
             rethrow()
-            # return RES, deepcopy(JJ)
         end
     end
     return RES, sd.luJ[]
