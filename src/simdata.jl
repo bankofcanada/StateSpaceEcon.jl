@@ -19,18 +19,18 @@ could extend beyond that. It must contain time series for all variables and
 shocks in the model, although it might contain other time series.
 
 """
-struct SimData{F <: Frequency,N <: NamedTuple,C <: AbstractMatrix{Float64}} <: AbstractMatrix{Float64}
+struct SimData{F <: Frequency,C <: AbstractMatrix{Float64}} <: AbstractMatrix{Float64}
     firstdate::MIT{F}
-    columns::N
+    columns::NamedTuple
     values::C
 
     # inner constructor enforces constraints.
-    function SimData(fd, names::NTuple{N,Symbol}, values) where {N}
+    function SimData(fd::MIT, names::NTuple{N,Symbol}, values::AbstractMatrix) where {N}
         if N != size(values, 2)
             throw(ArgumentError("Number of names and columns don't match: $N ≠ $(size(values, 2))."))
         end
         columns = NamedTuple{names}([TSeries(fd, view(values, :, i)) for i in 1:N ])
-        new{frequencyof(fd),typeof(columns),typeof(values)}(fd, columns, values)
+        new{frequencyof(fd),typeof(values)}(fd, columns, values)
     end
 end
 
@@ -77,8 +77,10 @@ rawdata(sd::SimData) = _values(sd)
 colnames(sd::SimData) = keys(_columns(sd))
 Base.pairs(sd::SimData) = pairs(_columns(sd))
 
+const ColumnTypes = Union{Symbol,ModelVariable,AbstractString}
 # Define dot access to columns
 Base.propertynames(sd::SimData) = _names(sd)
+Base.getproperty(sd::SimData, col::ColumnTypes) = getproperty(sd, Symbol(col))
 function Base.getproperty(sd::SimData, col::Symbol)
     if col in _names(sd)
         return getfield(_columns(sd), col)
@@ -88,9 +90,11 @@ function Base.getproperty(sd::SimData, col::Symbol)
 end
 
 # Access to columns by [:xyz] notation
-Base.getindex(sd::SimData, col) = getproperty(sd, Symbol(col))
+Base.getindex(sd::SimData, col::ColumnTypes) = getproperty(sd, col)
+Base.setindex!(sd::SimData, val, col::ColumnTypes) = setproperty!(sd, col, val)
 
-function Base.setproperty!(sd::SimData,  col::Symbol, val)
+Base.setproperty!(sd::SimData, col::ColumnTypes, val) = setproperty!(sd, Symbol(col), val)
+function Base.setproperty!(sd::SimData, col::Symbol, val)
     try
         col = getproperty(sd, col)
     catch BoundsError
@@ -99,11 +103,15 @@ function Base.setproperty!(sd::SimData,  col::Symbol, val)
     if Base.mightalias(col, val)
         val = copy(val)
     end
-    setindex!(col, val, :)
+    if val isa TSeries && frequencyof(val) == frequencyof(sd)
+        return setindex!(col.values, val[mitrange(sd)], :)
+    else
+        return setindex!(col.values, val, :)
+    end
 end
 
 @inline Base.getindex(sd::SimData, cols::AbstractVector{<:Number}) = getindex(sd, (_names(sd)[cols])...)
-@inline Base.getindex(sd::SimData, cols::AbstractVector) = getindex(sd, tuple(map(Symbol, cols)...))
+# @inline Base.getindex(sd::SimData, cols::AbstractVector) = getindex(sd, tuple(map(Symbol, cols)...))
 @inline Base.getindex(sd::SimData, cols::Tuple) = getindex(sd, tuple(map(Symbol, cols)...))
 
 function Base.getindex(sd::SimData, cols::NTuple{N,Symbol}) where N
@@ -143,7 +151,7 @@ function Base.getindex(sd::SimData, i1::MIT)
 end
 
 # Modifying a row in a table -> one must pass in a vector
-Base.setindex!(sd::SimData, val, i1::MIT, ::Colon) = sd[i1 - firstdate(sd) + 1, :] = val
+Base.setindex!(sd::SimData, val, i1::MIT, ::Colon) = begin sd[i1 - firstdate(sd) + 1, :] = val end
 function Base.setindex!(sd::SimData, val::AbstractVector{<:Real}, i1::MIT) 
     check_frequency(sd, i1)
     if firstdate(sd) <= i1 <= lastdate(sd)
@@ -189,10 +197,11 @@ function Base.setindex!(sd::SimData, val, i1::AbstractUnitRange{<:MIT})
     end
 end
 
+# Base.getindex(sd::SimData, ::Colon, c) = getindex(sd, mitrange(sd), c)
 
 Base.getindex(sd::SimData, r, c) = getproperty(sd, Symbol(c))[r]
 Base.getindex(sd::SimData, r, c::AbstractVector) = getindex(sd, r, tuple(map(Symbol, c)...))
-Base.getindex(sd::SimData, r, c::Tuple) = getindex(sd, r, tuple(map(Symbol, c)...))
+# Base.getindex(sd::SimData, r, c::Tuple) = getindex(sd, r, tuple(map(Symbol, c)...))
 
 Base.getindex(sd::SimData, r::MIT, c::NTuple{N,Symbol}) where N = (a = sd[r]; NamedTuple{c}([a[cc] for cc in c]))
 function Base.getindex(sd::SimData, r::AbstractUnitRange{<:MIT}, c::NTuple{N,Symbol}) where N 
@@ -210,7 +219,7 @@ function Base.getindex(sd::SimData, r::AbstractUnitRange{<:MIT}, c::NTuple{N,Sym
     end
 end
 
-Base.setindex!(sd::SimData, v, r, c) = setindex!(getproperty(sd, Symbol(c)), v, r)
+Base.setindex!(sd::SimData, v, r, c::ColumnTypes) = setindex!(getproperty(sd, c), v, r)
 Base.setindex!(sd::SimData, v, r, c::AbstractVector) = setindex!(sd, v, r, tuple(map(Symbol, c)...))
 Base.setindex!(sd::SimData, v, r, c::Tuple) = setindex!(sd, v, r, tuple(map(Symbol, c)...))
 
