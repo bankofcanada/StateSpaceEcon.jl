@@ -119,19 +119,20 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         exog_data[:, logvars] .*= ss_data[:, logvars]
         exog_data[:, .! logvars] .+= ss_data[:, .! logvars]
     end
+
+    exog_data = @timer ModelBaseEcon.update_auxvars(transform(exog_data, m), m)
+
     if !isempty(initial_guess)
-        x = @timer ModelBaseEcon.update_auxvars(initial_guess, m)
+        x = @timer ModelBaseEcon.update_auxvars(transform(initial_guess, m), m)
     else
-        x = @timer ModelBaseEcon.update_auxvars(exog_data, m)
+        x = copy(exog_data)
     end
+
     if linearize
         throw(ErrorException("Linearization is disabled."))
         org_med = m.evaldata
         linearize!(m; deviation=deviation)
     end
-
-    exog_data .= transform(exog_data, m)
-    x .= transform(x, m)
 
     if anticipate
         @timer gdata = StackedTimeSolverData(m, p, fctype)
@@ -146,10 +147,13 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         sim = 1 + m.maxlag:NT - m.maxlead
         nvars = length(m.variables)
         nshks = length(m.shocks)
+        nauxs = length(m.auxvars)
         shkinds = nvars .+ (1:nshks)
+        auxinds = nvars .+ nshks .+ (1:nauxs)
         varshkinds = 1:(nvars + nshks)
-        x[init, varshkinds] .= exog_data[init, varshkinds]
-        # x[term, varshkinds] .= exog_data[term, varshkinds]
+        allvarinds = 1:(nvars + nshks + nauxs)
+        x[init, allvarinds] .= exog_data[init, allvarinds]
+        # x[term, allvarinds] .= exog_data[term, allvarinds]
         x[sim, shkinds] .= 0.0
         t0 = first(sim)
         T = last(sim)
@@ -271,14 +275,14 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     if linearize
         m.evaldata = org_med
     end
+    
     x = x[:,1:end - nauxs]
-
     x .= inverse_transform(x, m)
-
     if deviation
         x[:, logvars] ./= ss_data[:, logvars]
         x[:, .! logvars] .-= ss_data[:, .! logvars]
     end
+
     return x
 end
 
