@@ -45,7 +45,8 @@ columns in `data`. The names must be String or Symbol or anything that converts
 to Symbol.
 
 """
-SimData(fd, vars, data) = SimData(fd, tuple(Symbol.(vars)...), data)
+SimData(fd, vars=(), data=zeros(0,0)) = SimData(fd, tuple(Symbol.(vars)...), data)
+SimData(rng::AbstractUnitRange{<:Integer}) = SimData(first(rng), (), zeros(length(rng),0))
 
 TimeSeriesEcon.firstdate(sd::SimData) = getfield(sd, :firstdate)
 TimeSeriesEcon.lastdate(sd::SimData) = (firstdate(sd) - 1) + size(_values(sd), 1) 
@@ -190,11 +191,15 @@ function Base.setindex!(sd::SimData, val, i1::AbstractUnitRange{<:MIT})
     check_frequency(sd, i1)
     if firstdate(sd) <= minimum(i1) <= maximum(i1) <= lastdate(sd)
         rows = i1 .- firstdate(sd) .+ 1
-        setindex!(_values_view(sd, rows, :), val, :, :)
-        return sd[rows,:]
     else
         throw(BoundsError(sd, i1))
     end
+    if val isa Number
+        fill!(_values_view(sd, rows, :), val)
+    else
+        setindex!(_values_view(sd, rows, :), val, :, :)
+    end
+    return sd[rows,:]
 end
 
 # Base.getindex(sd::SimData, ::Colon, c) = getindex(sd, mitrange(sd), c)

@@ -99,6 +99,8 @@ Base.size(p::Plan) = size(p.range)
 Base.axes(p::Plan) = (p.range,)
 Base.length(p::Plan) = length(p.range)
 Base.IndexStyle(::Plan) = IndexLinear()
+Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
+Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
 
 @inline _offset(p::Plan{T}, idx::T) where T = idx - first(p.range) + 1
 @inline _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where T = idx .- first(p.range) .+ 1
