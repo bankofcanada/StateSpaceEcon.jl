@@ -105,7 +105,8 @@ function Base.setproperty!(sd::SimData, col::Symbol, val)
         val = copy(val)
     end
     if val isa TSeries && frequencyof(val) == frequencyof(sd)
-        return setindex!(col.values, val[mitrange(sd)], :)
+        rng = intersect(mitrange(sd), mitrange(val))
+        col[rng] = val[rng].values
     else
         return setindex!(col.values, val, :)
     end
