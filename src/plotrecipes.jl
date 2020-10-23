@@ -1,28 +1,62 @@
 
 using Plots
-@recipe plot(sd::SimData...; vars=nothing, names=nothing) = begin
-    if vars === nothing
-        error("Must specify variables to plot")
-    elseif vars == :all
-        vars = StateSpaceEcon._names(sd[1])
+@recipe plot(sd::SimData; nrow=nothing, ncol=nothing, title=:(Default_Title)) = begin
+
+    vars = StateSpaceEcon._names(sd)
+
+    varswithtitle = (title, vars...)
+
+    @series begin
+        grid := :none
+        showaxis := false
+        legend --> false
+        # foreground_color_subplot --> :white
+
+        zeros(1)
     end
-    if length(vars) > 10
-        error("Too many variables. Split into pages.")
+
+    # nrow and ncol conditional check 
+    if nrow === nothing && ncol === nothing
+        nrow, ncol = length(vars), 1
+        layout := (nrow + 1, ncol)
+
+        sizex, sizey = 600, nrow * 250
+        size   := (sizex, sizey)
+    elseif nrow === nothing && ncol isa Number
+        nrow = length(vars) / ncol |> ceil |> Int
+        layout := (nrow + 1, ncol)
+
+        sizex, sizey = 600, nrow * 200
+        size   := (sizex, sizey)
+    elseif nrow isa Number && ncol === nothing
+        ncol = length(vars) / nrow |> ceil |> Int
+        layout := (nrow + 1, ncol)
+
+        sizex, sizey = 600, nrow * 200
+        size   := (sizex, sizey)
+    else
+        layout := (nrow + 1, ncol)
+
+        sizex, sizey = 600, nrow * 200
+        size   := (sizex, sizey)
     end
-    if names === nothing
-        names = ["data$i" for i = 1:length(sd)]
-    end
-    layout --> length(vars)
-    title --> reshape(map(string, [vars...]), 1, :)
-    titlefont --> font(10, :bold)
-    label --> repeat(reshape([names...], 1, :), inner=(1, length(vars)))
-    linewidth --> 1.5
-    left_margin --> 4 * Plots.mm
-    for s in sd
-        for v in vars
-            @series begin
-                s[v]
-            end
+    
+    # general settings
+    
+
+    for colname in vars
+        @series begin
+            title  := reshape(map(string, [varswithtitle...]), 1, :)
+            titlefont --> font(10, :bold)
+            linewidth --> 1.5
+            label --> false
+            xrotation --> 45
+            left_margin --> 4 * Plots.mm
+
+            sd[colname]
         end
     end
 end
+
+
+
