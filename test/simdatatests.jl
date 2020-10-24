@@ -1,3 +1,9 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 @testset "SimData" begin
     @test_throws ArgumentError SimData(1M10, (:a, :b, :c), rand(10, 2))

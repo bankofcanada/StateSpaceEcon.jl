@@ -155,3 +155,10 @@ end
 
 include("simtests.jl")
 include("logsimtests.jl")
+
+@testset "misc" begin
+    io = IOBuffer()
+    printmatrix(io, rand(3,4))
+    seekstart(io)
+    @test length(readlines(io)) == 3
+end

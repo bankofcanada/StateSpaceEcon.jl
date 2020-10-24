@@ -22,8 +22,9 @@ optionally showing the column names.
     truncated and so the display will not be aligned properly. Sorry about that!
 
 """
-printmatrix(mat, args...) = printmatrix(mat, Val(12.7), args...)
-@generated function printmatrix(mat, ::Val{N}, cols = nothing) where N
+@inline printmatrix(mat::AbstractMatrix, args...) = printmatrix(stdout, mat, args...)
+@inline printmatrix(io::IO, mat::AbstractMatrix, args...) = printmatrix(io, mat, Val(12.7), args...)
+@generated function printmatrix(io::IO, mat::AbstractMatrix, ::Val{N}, cols = nothing) where N
     fmts = "% $(N)s "
     fmtn = "% $(N)f "
     return quote
@@ -33,14 +34,14 @@ printmatrix(mat, args...) = printmatrix(mat, Val(12.7), args...)
             for j ∈ 1:n
                 s *= Printf.@sprintf($fmts, cols[j])
             end
-            println(s)
+            println(io, s)
         end
         for i in 1:m
             s = ""
             for j in 1:n
                 s *= Printf.@sprintf($fmtn, mat[i,j])
             end
-            println(s)
+            println(io, s)
         end
         return nothing
     end

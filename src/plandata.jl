@@ -5,8 +5,6 @@
 # All rights reserved.
 ##################################################################################
 
-
-
 # the following functions use the Plan object to create simulation data
 
 export zeroarray, zerodict, zerodata, steadystatearray, steadystatedict, steadystatedata
