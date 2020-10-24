@@ -1,3 +1,9 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 @inline ModelBaseEcon.geteqn(i::Integer, m::Model) = geteqn(i, m.sstate)
 
@@ -141,12 +147,13 @@ function SolverData(model::Model; presolve::Bool=true,
         else
             sd.solve_var .= true
         end
-        # all shocks are zero and pre-solved
+        # all shocks and exogenous are pre-solved
         for (i,v) in enumerate(model.allvars)
-            if v.type == :shock 
+            if isshock(v) || isexog(v)
                 sd.solve_var[2i .+ (-1:0)] .= false
-            elseif v.type == :steady
-                sd.solve_eqn[2i] = false
+            elseif issteady(v)
+                # steady have presolved slopes
+                sd.solve_var[2i] = false
             end
         end
         # all equations are active regardless.

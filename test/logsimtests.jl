@@ -1,3 +1,9 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 @testset "logeqn" begin
     let m = Model()
@@ -47,7 +53,7 @@
         # initial 
         ed[firstdate(p)] = k[firstdate(p)]
 
-        for fc in instances(FCType)
+        for fc in (fcgiven, fclevel, fcslope, fcnatural)
             @test simulate(m, ed, p, fctype=fc) ≈ k
         end
 

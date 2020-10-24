@@ -1,3 +1,9 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 @testset "SimData" begin
     @test_throws ArgumentError SimData(1M10, (:a, :b, :c), rand(10, 2))
@@ -81,7 +87,7 @@
         # assign new column
         sd1 = hcat(sd, c=sd.a + 3.0)
         @test sd1[nms] == sd
-        @test sd1[[:a,:c]] == sd1[:,[1,3]]
+        @test sd1[(:a,:c)] == sd1[:,[1,3]]
         # access with 2 args MIT and Symbol
         @test sd[2001Q2, (:a, :b)] isa NamedTuple
         let foo = sd[2001Q2:2002Q1, (:a, :b)] 

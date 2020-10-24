@@ -1,3 +1,9 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 empty!(E1.model.sstate.constraints)
 @testset "E1.sstate" begin
@@ -124,5 +130,33 @@ end
         @test check_sstate(m) == 0
         @test all(m.sstate.mask)
         @test m.sstate.values ≈ [0.004, 0.0, 0.004, 0.0, 0.004, 0.0, 14.0, 0.004, 7.0, 0.004, 9.267287357063445, 0.004, 14.000911466453774, 0.004, 0, 0, 0 ,0, 14.000911466453774, 0.004, 9.267287357063445, 0.004]
+    end
+end
+
+##
+
+using ModelBaseEcon
+using TimeSeriesEcon
+using StateSpaceEcon
+
+module SSTEST
+using ModelBaseEcon
+model = Model()
+@steadyvariables model a b 
+@variables model c
+@equations model begin
+    a[t] = 0.95b[t] + 0.1
+    b[t+1] = 0.1b[t] + c[t]
+    c[t] = 1.2
+end
+@initialize model
+end
+
+@testset "SSTEST" begin
+    let m = SSTEST.model
+        @test sum(issteady.(m.allvars)) == 2
+        clear_sstate!(m)
+        @test issssolved(m)
+        @test check_sstate(m) == 0
     end
 end

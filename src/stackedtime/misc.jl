@@ -1,36 +1,12 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 import ..SimData
 import ..rawdata
-
-export log_transform!
-
-"""
-    log_transform!(data, model, dir)
-
-Transform data by either applying or inverting the log-transformation for the columns
-corresponding to log-variables (the ones declared with `@log` annotation).
-
-Internal function. Normally there's no need for the user to call this function
-directly.
-
-`data` must be a 2d Array with columns corresponding to the model variables in
-the same order as in `model.varshks`. 
-
-`dir` is either `:to_internal` or `:from_internal`. We do `:to_internal`
-in `simulate()` before solving the system. 
-The columns of log-variables are `log()`-ed.
-Before returning the simulation result, we do `:from_internal`, which 
-applies `exp()` to the log-variable columns.
-
-"""
-function log_transform!(data::AbstractArray{Float64,2}, m::Model, dir::Symbol)
-    transform = dir == :to_internal ? log : dir == :from_internal ? exp : throw(ArgumentError("`dir` must be either `:to_internal` or `:from_internal`."))
-    log_cols = findall(islog.(m.varshks))
-    if !isempty(log_cols)
-        data[:, log_cols] = transform.(data[:, log_cols])
-    end
-    return data
-end
 
 export seriesoverlay
 """

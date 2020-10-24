@@ -1,4 +1,9 @@
-
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 function inadmissible_error(eqind, eqn, point, val)
     vars = tuple(eqn.vsyms...)

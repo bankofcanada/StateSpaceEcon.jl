@@ -1,3 +1,10 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
+
 """
     StateSpaceEcon
 
@@ -12,9 +19,10 @@ using ModelBaseEcon
 # using ModelBaseEcon.Timer
 
 include("simdata.jl")
+include("misc.jl")
 include("SteadyStateSolver.jl")
 include("Plans.jl")
-include("misc.jl")
+include("plandata.jl")
 include("StackedTimeSolver.jl")
 include("plotrecipes.jl")
 

@@ -1,3 +1,9 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 """
     sim_nr!(x, sd, maxiter, tol, verbose [, sparse_solver])
@@ -14,7 +20,7 @@ Solve the simulation problem.
     x = b for x. Defaults to A\\b
 
 """
-function sim_nr!(x::AbstractArray{Float64}, sd::AbstractSolverData,
+function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
                 maxiter::Int64, tol::Float64, verbose::Bool,
                 sparse_solver::Function=(A, b) -> A \ b)
     for it = 1:maxiter
@@ -93,7 +99,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                     verbose::Bool=m.options.verbose,
                     tol::Float64=m.options.tol,
                     maxiter::Int64=m.options.maxiter,
-                    fctype::FCType=getoption(m, :fctype, fcgiven),
+                    fctype=getoption(m, :fctype, fcgiven),
                     expectation_horizon::Union{Nothing,Int64}=nothing,
                     sparse_solver::Function=(A, b) -> A \ b
     )
@@ -108,24 +114,25 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
 
     if deviation
         exog_data = copy(exog_data)
-        local logvars = islog.(m.varshks)
+        local logvars = islog.(m.varshks) .| lsneglog.(m.varshks)
         local ss_data = steadystatearray(m, p)
         exog_data[:, logvars] .*= ss_data[:, logvars]
         exog_data[:, .! logvars] .+= ss_data[:, .! logvars]
     end
+
+    exog_data = @timer ModelBaseEcon.update_auxvars(transform(exog_data, m), m)
+
     if !isempty(initial_guess)
-        x = @timer ModelBaseEcon.update_auxvars(initial_guess, m)
+        x = @timer ModelBaseEcon.update_auxvars(transform(initial_guess, m), m)
     else
-        x = @timer ModelBaseEcon.update_auxvars(exog_data, m)
+        x = copy(exog_data)
     end
+
     if linearize
         throw(ErrorException("Linearization is disabled."))
         org_med = m.evaldata
         linearize!(m; deviation=deviation)
     end
-
-    log_transform!(exog_data, m, :to_internal)
-    log_transform!(x, m, :to_internal)
 
     if anticipate
         @timer gdata = StackedTimeSolverData(m, p, fctype)
@@ -140,10 +147,13 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         sim = 1 + m.maxlag:NT - m.maxlead
         nvars = length(m.variables)
         nshks = length(m.shocks)
+        nauxs = length(m.auxvars)
         shkinds = nvars .+ (1:nshks)
+        auxinds = nvars .+ nshks .+ (1:nauxs)
         varshkinds = 1:(nvars + nshks)
-        x[init, varshkinds] .= exog_data[init, varshkinds]
-        # x[term, varshkinds] .= exog_data[term, varshkinds]
+        allvarinds = 1:(nvars + nshks + nauxs)
+        x[init, allvarinds] .= exog_data[init, allvarinds]
+        # x[term, allvarinds] .= exog_data[term, allvarinds]
         x[sim, shkinds] .= 0.0
         t0 = first(sim)
         T = last(sim)
@@ -226,7 +236,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 # In other words, we only need to impose the first period here
                 xx[t0, exog_inds] = exog_data[t, exog_inds]
                 # Update the final conditions
-                @timer assign_final_condition!(xx, zeros(0, 0), sdata)
+                @timer assign_final_condition!(xx, similar(xx), sdata)
                 if verbose
                     @info "Simulating $(p.range[t] .+ (0:expectation_horizon - 1))" # anticipate expectation_horizon sdata.FC
                 end
@@ -265,14 +275,14 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     if linearize
         m.evaldata = org_med
     end
+    
     x = x[:,1:end - nauxs]
-
-    log_transform!(x, m, :from_internal)
-
+    x .= inverse_transform(x, m)
     if deviation
         x[:, logvars] ./= ss_data[:, logvars]
         x[:, .! logvars] .-= ss_data[:, .! logvars]
     end
+
     return x
 end
 

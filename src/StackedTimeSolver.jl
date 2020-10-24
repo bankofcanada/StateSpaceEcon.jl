@@ -1,3 +1,10 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
+
 """
     StackedTimeSolver
 
@@ -19,6 +26,7 @@ using TimeSeriesEcon
 using ..Plans
 
 include("stackedtime/abstract.jl")
+include("stackedtime/fctypes.jl")
 include("stackedtime/misc.jl")
 include("stackedtime/solverdata.jl")
 include("stackedtime/simulate.jl")
@@ -26,7 +34,17 @@ include("stackedtime/simulate.jl")
 end # module
 
 using .StackedTimeSolver
-export FCType, fcgiven, fclevel, fcslope, fcrate, fcnatural
+
+export FinalCondition
+export NoFinalCondition
+export HasFinalCondition
+export FCNone, fcnone
+export FCGiven, fcgiven
+export FCMatchSSLevel, fclevel
+export FCMatchSSRate, fcslope, fcrate
+export FCConstRate, fcnatural
+export setfc
+
 export simulate
 export seriesoverlay, dictoverlay
 export dict2array, array2dict, array2data

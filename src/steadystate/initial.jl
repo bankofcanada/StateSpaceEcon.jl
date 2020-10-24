@@ -1,3 +1,9 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 """
     update_auxvars_ss(point, model)
@@ -55,12 +61,14 @@ function _do_update_auxvars_presolve!(model::Model; verbose::Bool)
     ss = model.sstate
     # set shocks (level and slope) and steady slopes to 0.0 presolved
     for (i, v) in enumerate(model.allvars)
-        if v isa ModelSymbol && v.type == :shock
-            ss.values[2 * i .+ (-1:0)] .= 0.0
-            ss.mask[2 * i .+ (-1:0)] .= true
-        elseif v isa ModelSymbol && v.type == :steady
-            ss.values[2 * i] = 0.0
-            ss.mask[2 * i] = true
+        if isshock(v)
+            ss.values[2i .+ (-1:0)] .= 0.0
+            ss.mask[2i .+ (-1:0)] .= true
+        elseif issteady(v)
+            ss.values[2i] = 0.0
+            ss.mask[2i] = true
+        elseif isexog(v)
+            ss.mask[2i .+ (-1:0)] .= true
         end
     end
     # if all slopes are zero, make it so

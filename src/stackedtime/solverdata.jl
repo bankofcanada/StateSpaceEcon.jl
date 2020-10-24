@@ -1,13 +1,19 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 # export StackedTimeSolverData
 """
-    StackedTimeSolverData <: AbstractSolverData
+    StackedTimeSolverData
 
 The data structure used in the stacked time algorithm.
 
 **TODO** Add all the details here.
 """
-struct StackedTimeSolverData <: AbstractSolverData
+struct StackedTimeSolverData # <: AbstractSolverData
     "Number of time periods"
     NT::Int
     "Number of variables"
@@ -17,7 +23,7 @@ struct StackedTimeSolverData <: AbstractSolverData
     "Number of unknowns = variables + shocks + aux variables"
     NU::Int
     "Final condition type: `fcgiven` or `fclevel` or `fcslope`."
-    FC::FCType
+    FC::Vector{<:FinalCondition}
     "List of vectors for the time indexes of blocks of the matrix."
     TT::Vector{Vector{Int}}
     "List of vectors for the row indexes of each block."
@@ -48,6 +54,117 @@ struct StackedTimeSolverData <: AbstractSolverData
     luJ::Ref{Any}
 end
 
+#############################################################################
+
+# var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FinalCondition) = error("Missing var_CiSc for $(typeof(fc))")
+# assign_fc!(::AbstractVector{Float64}, ::AbstractVector{Float64}, ::Int, fc::FinalCondition) = error("Missing assign_fc! for $(typeof(fc))")
+
+#######
+
+function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCNone)
+    # No Jacobian correction 
+    return Dict{Int,Vector{Float64}}()
+end
+
+function assign_fc!(x::AbstractVector{Float64}, exog::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCNone)
+    # nothing to see here
+    return x
+end
+
+#######
+
+function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCGiven)
+    # No Jacobian correction 
+    return Dict{Int,Vector{Float64}}()
+end
+
+function assign_fc!(x::AbstractVector{Float64}, exog::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCGiven)
+    # values given exogenously
+    x[sd.TT[end]] .= exog[sd.TT[end]]
+    return x
+end
+
+#######
+
+function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCMatchSSLevel)
+    # No Jacobian correction 
+    return Dict{Int,Vector{Float64}}()
+end
+
+function assign_fc!(x::AbstractVector{Float64}, ::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCMatchSSLevel)
+    # values come from the steady state
+    x[sd.TT[end]] .= sd.SS[sd.TT[end],vind]
+    return x
+end
+
+#######
+
+function var_CiSc(sd::StackedTimeSolverData, ::ModelVariable, ::FCMatchSSRate)
+    # Matrix C is composed of blocks looking like this:
+    #    1  0  0  0
+    #   -1  1  0  0
+    #    0 -1  1  0
+    #    0  0 -1  1
+    # The corresponding rows in Sc look like this
+    #   0 0 0 0 0 -1
+    #   0 0 0 0 0  0
+    #   0 0 0 0 0  0
+    #   0 0 0 0 0  0
+    # The C^{-1} * Sc matrix then looks like this
+    #   0 0 0 0 0 -1
+    #   0 0 0 0 0 -1
+    #   0 0 0 0 0 -1
+    #   0 0 0 0 0 -1
+    # The number of rows equals NTFC (the number of final condition periods)
+    # The column with the -1 is the one corresponding to the last simulation period of the variable.
+    return Dict{Int,Vector{Float64}}(0 => fill(Float64(-1.0), length(sd.TT[end])))
+end
+
+function assign_fc!(x::AbstractVector{Float64}, ::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCMatchSSRate)
+    # compute values using the slope from the steady state
+    for t in sd.TT[end]
+        x[t] = x[t - 1] + sd.SS[t, vind] - sd.SS[t - 1, vind]
+    end
+    return x
+end
+
+#######
+
+function var_CiSc(sd::StackedTimeSolverData, ::ModelVariable, ::FCConstRate)
+    # Matrix C is composed of blocks looking like this:
+    #    -1  0  0  0  0
+    #     2 -1  1  0  0
+    #    -1  2 -1  0  0
+    #     0 -1  2 -1  0
+    #     0  0 -1  2 -1
+    # The corresponding rows in Sc look like this
+    #     0 ..  0 -1  2
+    #     0 ..  0  0 -1
+    #     0 ..  0  0  0
+    #     0 ..  0  0  0
+    #     0 ..  0  0  0
+    # The C^{-1} * Sc matrix then looks like this
+    #     0 ..  0  1 -2
+    #     0 ..  0  2 -3
+    #     0 ..  0  3 -4
+    #     0 ..  0  4 -5
+    #     0 ..  0  5 -6
+
+    # The number of rows equals sd.TT[end] (the number of final condition periods)
+    # The column with -2,-3,-4... has offset 0 -- the last simulation period.
+    # The column with  1, 2, 3... has offset -1 -- the period before the last simulation period.
+    foo = Float64[1:length(sd.TT[end])...]
+    return Dict{Int,Vector{Float64}}(-1 => foo, 0 => -1.0 .- foo)
+end
+
+function assign_fc!(x::AbstractVector{Float64}, ::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCConstRate)
+    # compute values using the slope at the end of the simulation
+    for t in sd.TT[end]
+        x[t] = 2x[t - 1] - x[t - 2]
+    end
+    return x
+end
+
 
 """
     update_plan!(sd::StackedTimeSolverData, model, plan; changed=false)
@@ -73,8 +190,7 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=fals
 
     # Assume initial conditions are set correctly to exogenous in the constructor
     # We only update the masks during the simulation periods
-    # unknowns = m.allvars
-    foo = falses(sd.NU)
+    foo = BitArray(undef, sd.NU)
     for t in sim
         # s = p[t]
         # si = indexin(s, unknowns)
@@ -92,127 +208,54 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=fals
         @. sd.solve_mask = !(sd.fc_mask | sd.exog_mask)
         @assert !any(sd.exog_mask .& sd.fc_mask)
         @assert sum(sd.solve_mask) == size(sd.J, 1)
-    end
 
-    # Update the Jacobian correction matrix, if exogenous plan changed
-    if changed && (sd.FC == fcslope)
-        # Matrix C is composed of blocks looking like this:
-        #    1  0  0  0
-        #   -1  1  0  0
-        #    0 -1  1  0
-        #    0  0 -1  1
-        # The corresponding rows in Sc look like this
-        #   0 0 0 0 0 -1
-        #   0 0 0 0 0  0
-        #   0 0 0 0 0  0
-        #   0 0 0 0 0  0
-        # The C^{-1} * Sc matrix then looks like this
-        #   0 0 0 0 0 -1
-        #   0 0 0 0 0 -1
-        #   0 0 0 0 0 -1
-        #   0 0 0 0 0 -1
-        # The number of rows equals NTFC (the number of final condition periods)
-        # The column with the -1 is the one corresponding to the last simulation period of the variable.
-
-        # # foo is a mask array with foo[i] = true if i is a column  index for the last simulation period of a variable and foo[i] = false otherwise.
-        # foo = falses(sd.NU * sd.NT)                 # all false
-        # foo[LI[last(sim),1:sd.NV]] .= true          # true at last sim period of variables
-        # foo[LI[last(sim),sd.NV + sd.NS + 1:sd.NU]] .= true  # true at last sim period of aux variables
-        # # no final conditions for shocks - their final condition is always 0 (the expectation of the shock).
-
-        # # The column indices - findall(foo) returns the indexes of the elements that are true.
-        # #   then we repeat each NTFC times, since this is the number of rows we need
-        # JJfoo = repeat(findall(foo[sd.solve_mask]), inner=NTFC)
-
-        # The row indices
-        #   the block for variable 1 gets row indexes 1 .. NTFC
-        #   the block for variable 2 gets row indexes NTFC+1 .. 2*NTFC
-        #   the block for variable vi gets row indexes (vi-1)*NTFC+1 .. vi*NTFC
-        # IIfoo = vcat((NTFC * (vi - 1) .+ (1:NTFC) for vi in Iterators.flatten((1:sd.NV, sd.NV + sd.NS + 1:sd.NU)) if sd.solve_mask[LI[last(sim),vi]])...)
-        IIfoo = Int[]
-        JJfoo = Int[]
-        VVfoo = Float64[]
-        for vi in Iterators.flatten((1:sd.NV, (sd.NV + sd.NS + 1):sd.NU))
-            colind = LI[last(sim), vi]
-            if sd.solve_mask[colind]
-                # if the variable is exogenous in the last period, then Sc doesn't have a column for it.
-                append!(IIfoo, ((vi - 1) * NTFC + 1):(vi * NTFC))
-                append!(VVfoo, fill(-1.0, NTFC))
-                foo = falses(sd.NU * sd.NT)
-                foo[colind] = true
-                append!(JJfoo, repeat(findall(foo[sd.solve_mask]), NTFC))
-            end
-        end
-        # Construct the sparse matrix
-        sd.CiSc .= sparse(IIfoo, JJfoo, VVfoo, NTFC * sd.NU, size(sd.J, 1))
-        # sd.CiSc .= sparse(IIfoo, JJfoo, fill(Float64(-1), length(JJfoo)), NTFC * sd.NU, size(sd.J, 1))
-        # sd.CiSc.nzval .= -1
-    end
-    # Update the Jacobian correction matrix, if exogenous plan changed
-    if changed && (sd.FC == fcnatural)
-        # Matrix C is composed of blocks looking like this:
-        #    -1  0  0  0  0
-        #     2 -1  1  0  0
-        #    -1  2 -1  0  0
-        #     0 -1  2 -1  0
-        #     0  0 -1  2 -1
-        # The corresponding rows in Sc look like this
-        #     0 ..  0 -1  2
-        #     0 ..  0  0 -1
-        #     0 ..  0  0  0
-        #     0 ..  0  0  0
-        #     0 ..  0  0  0
-        # The C^{-1} * Sc matrix then looks like this
-        #     0 ..  0  1 -2
-        #     0 ..  0  2 -3
-        #     0 ..  0  3 -4
-        #     0 ..  0  4 -5
-        #     0 ..  0  5 -6
-
-        # The number of rows equals NTFC (the number of final condition periods)
-        # The column with the -2,-3,-4... is the one corresponding to the last simulation period of the variable.
-        # The column with the 1,2,3... is the one corresponding to the period before the last simulation period of the variable.
-
-        # The row indices
-        #   the block for variable 1 gets row indexes 1 .. NTFC
-        #   the block for variable 2 gets row indexes NTFC+1 .. 2*NTFC
-        #   the block for variable vi gets row indexes (vi-1)*NTFC+1 .. vi*NTFC
-        # IIfoo = vcat((NTFC * (vi - 1) .+ (1:NTFC) for vi in Iterators.flatten((1:sd.NV, sd.NV + sd.NS + 1:sd.NU)) if sd.solve_mask[LI[last(sim),vi]])...)
-        IIfoo = Int[]
-        JJfoo = Int[]
-        VVfoo = Float64[]
-        for vi in Iterators.flatten((1:sd.NV, (sd.NV + sd.NS + 1):sd.NU))
-            let col1 = LI[last(sim) - 1, vi]
-                if sd.solve_mask[col1]
-                    append!(IIfoo, ((vi - 1) * NTFC + 1):(vi * NTFC))
-                    append!(VVfoo, 1:NTFC)
-                    foo = falses(sd.NU * sd.NT)
-                    foo[col1] = true
-                    append!(JJfoo, repeat(findall(foo[sd.solve_mask]), NTFC))
+        # Update the Jacobian correction matrix, if exogenous plan changed
+        II, JJ, VV = Int[], Int[], Float64[]
+        last_sim_t = last(sim)
+        for (vi, (v, fc)) in enumerate(zip(m.allvars, sd.FC))
+            @assert vi == v.index
+            # var_CiSc returns a Dict with keys equal to the column offset relative to last_sim_t
+            # and values containing the column values.
+            for (offset, values) in var_CiSc(sd, v, fc)
+                # col_ind is the column index in the global matrix
+                col_ind = LI[last_sim_t + offset, vi]
+                if !sd.solve_mask[col_ind]
+                    # this value is exogenous, no column for it in Sc
+                    continue
                 end
-            end
-            let col2 = LI[last(sim), vi]
-                if sd.solve_mask[col2]
-                # if the variable is exogenous in the last period, then Sc doesn't have a column for it.
-                    append!(IIfoo, ((vi - 1) * NTFC + 1):(vi * NTFC))
-                    append!(VVfoo, -1.0 .- (1:NTFC))   # -2, -3, ..., -NTFC-1
+                # The column index in the active matrix
+                JJvar = let
+                    # Full matrix has sd.NU*sd.NT columns
+                    # We take a vector with this many `false`s and put a `true` only in `col_ind` position
+                    # Then we select only the active positions in this vector (that's foo[sd.solve_mask])
+                    # Then we find the index of the `true` value - that's the column index in the active sub-matrix.
                     foo = falses(sd.NU * sd.NT)
-                    foo[col2] = true
-                    append!(JJfoo, repeat(findall(foo[sd.solve_mask]), NTFC))
+                    foo[col_ind] = true
+                    ind = findall(foo[sd.solve_mask])
+                    repeat(ind, NTFC)
                 end
+                # The row indices for this block
+                #   the block for variable 1 gets row indexes 1 .. NTFC
+                #   the block for variable 2 gets row indexes NTFC+1 .. 2*NTFC
+                #   the block for variable vi gets row indexes (vi-1)*NTFC+1 .. vi*NTFC
+                IIvar = ((vi - 1) * NTFC + 1):(vi * NTFC)
+                # The values in this column came from the var_CiSc call above
+                VVvar = values
+                append!(II, IIvar)
+                append!(JJ, JJvar)
+                append!(VV, VVvar)
             end
+            # Construct the sparse matrix
+            sd.CiSc .= sparse(II, JJ, VV, NTFC * sd.NU, size(sd.J, 1))
         end
-        # Construct the sparse matrix
-        sd.CiSc .= sparse(IIfoo, JJfoo, VVfoo, NTFC * sd.NU, size(sd.J, 1))
-    end
-
-    if changed
         # cached lu is no longer valid, since active columns have changed
         sd.luJ[] = nothing
     end
 
     return sd
 end
+
+import ..steadystatearray
 
 """
     make_BI(J, II)
@@ -249,12 +292,8 @@ end
     StackedTimeSolverData(model, plan, fctype)
 
 """
-function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
-
-    # NOTE: we do not verify the steady state, just make sure it's been assigned
-    if fctype ∈ (fclevel, fcslope) && !issssolved(m)
-        throw(ArgumentError("Steady state must be solved for `$(fctype)`."))
-    end
+@inline StackedTimeSolverData(m::Model, p::Plan, fctype::FinalCondition) = StackedTimeSolverData(m, p, setfc(m, fctype))
+function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCondition})
 
     NT = length(p.range)
     init = 1:m.maxlag
@@ -264,12 +303,20 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
     NTSIM = length(sim)
     NTIC = length(init)
 
-    if (fctype == fcnatural) && (length(sim) + length(init) < 2)
-        throw(ArgumentError("Simulation must include at least 2 periods for `fcnatural`."))
+    need_SS = false
+    for fc in fctype
+        if (fc === fclevel || fc === fcslope) 
+            need_SS = true
+        end
+        if (fc === fcnatural) && (length(sim) + length(init) < 2)
+            throw(ArgumentError("Simulation must include at least 2 periods for `fcnatural`."))
+        end
     end
 
-    # @assert NTIC+NTSIM+NTFC == NT
-    # @assert isempty((collect(init)∩collect(sim))∪(collect(init)∩collect(sim))∪(collect(sim)∩collect(term)))
+    if need_SS && !issssolved(m)
+        # NOTE: we do not verify the steady state, just make sure it's been assigned
+        throw(ArgumentError("Steady state must be solved for `fclevel` or `fcslope`."))
+    end
 
     unknowns = m.allvars
     nunknowns = length(unknowns)
@@ -333,8 +380,8 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::FCType)
 
     sd = StackedTimeSolverData(NT, nvars, nshks, nunknowns, fctype, TT, II, JJ, BI, JMAT,
                              sparse([], [], Float64[], NTFC * nunknowns, size(JMAT, 1)),
-                             log_transform!(steadystatearray(m, p), m, :to_internal),
-                             islog.(m.allvars), islin.(m.allvars),
+                             need_SS ? transform(steadystatearray(m, p), m) : zeros(0, 0),
+                             islog.(m.allvars) .| isneglog.(m.allvars), islin.(m.allvars),
                              m.evaldata, exog_mask, fc_mask, solve_mask,
                              Ref{Any}(nothing))
 
@@ -344,49 +391,16 @@ end
 function assign_exog_data!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
     # @assert size(x,1) == size(exog,1) == sd.NT
     x[sd.exog_mask] = exog[sd.exog_mask]
-    assign_final_condition!(x, exog, sd, Val(sd.FC))
+    assign_final_condition!(x, exog, sd)
     return x
 end
 
-@inline function assign_final_condition!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcgiven})
-    # We assume that exog data has been transformed for log-variables
-    x[sd.TT[end],:] = exog[sd.TT[end],:]
-    return x
-end
-
-@inline function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fclevel})
-    # We assume that SS data has been transformed for log-variables
-    x[sd.TT[end],:] = sd.SS[sd.TT[end],:]
-    return x
-end
-
-@inline function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcrate})
-    # We assume that SS data has been transformed for log-variables
-    slp_vars = sd.lin_mask .| sd.log_mask
-    for t in sd.TT[end]
-        x[t,:] = x[t - 1,:]
-        @. x[t, slp_vars] += sd.SS[t, slp_vars] - sd.SS[t - 1, slp_vars]
+function assign_final_condition!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
+    for (vi, fc) in enumerate(sd.FC)
+        assign_fc!(view(x, :, vi), exog[:,vi], vi, sd, fc)
     end
     return x
 end
-
-function assign_final_condition!(x::AbstractArray{Float64,2}, ::AbstractArray{Float64,2}, sd::StackedTimeSolverData, ::Val{fcnatural})
-    term_Ts = sd.TT[end]
-    if isempty(term_Ts)
-        return x
-    end
-    last_T = term_Ts[1] - 1
-    slp_vars = sd.lin_mask .| sd.log_mask
-    SLP = zeros(size(x, 2))
-    @. SLP[slp_vars] = x[last_T,slp_vars] - x[last_T - 1, slp_vars]
-    for t = term_Ts
-        x[t,:] .= x[t - 1,:]
-        @. x[t, slp_vars] += SLP[slp_vars]
-    end
-    return x
-end
-
-@inline assign_final_condition!(x, e, sd::StackedTimeSolverData) = assign_final_condition!(x, e, sd, Val(sd.FC))
 
 function global_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
     point = reshape(point, sd.NT, sd.NU)
@@ -505,7 +519,8 @@ function update_CiSc!(x, sd, ::Val{fcnatural})
     return nothing
 end =#
 
-function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
+function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData; 
+        debugging=false)
     nunknowns = sd.NU
     point = reshape(point, sd.NT, nunknowns)
     exog_data = reshape(exog_data, sd.NT, nunknowns)
@@ -542,8 +557,8 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
             if e isa SingularException
                 @error("The system is underdetermined with the given set of equations and final conditions.")
             end
+            debugging && return RES, deepcopy(JJ)
             rethrow()
-            # return RES, deepcopy(JJ)
         end
     end
     return RES, sd.luJ[]
