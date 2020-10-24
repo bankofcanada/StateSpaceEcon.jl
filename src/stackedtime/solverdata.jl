@@ -56,8 +56,8 @@ end
 
 #############################################################################
 
-var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FinalCondition) = error("Missing var_CiSc for $(typeof(fc))")
-assign_fc!(::AbstractVector{Float64}, ::AbstractVector{Float64}, ::Int, fc::FinalCondition) = error("Missing assign_fc! for $(typeof(fc))")
+# var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FinalCondition) = error("Missing var_CiSc for $(typeof(fc))")
+# assign_fc!(::AbstractVector{Float64}, ::AbstractVector{Float64}, ::Int, fc::FinalCondition) = error("Missing assign_fc! for $(typeof(fc))")
 
 #######
 
@@ -557,9 +557,7 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
             if e isa SingularException
                 @error("The system is underdetermined with the given set of equations and final conditions.")
             end
-            if debugging
-                return RES, deepcopy(JJ)
-            end
+            debugging && return RES, deepcopy(JJ)
             rethrow()
         end
     end

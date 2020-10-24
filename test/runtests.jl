@@ -88,10 +88,17 @@ using StateSpaceEcon.StackedTimeSolver: dict2array, dict2data, array2dict, array
     p = Plan(m, sim)
 
     # random data
+    d1 = zerodict(m, sim)
     d = zerodict(m, p)
+    for  v in keys(d1)
+        @test d[v] == d1[v]
+    end
     for v in values(d)
         v .= rand(Float64, size(v))
     end
+
+    @test dict2array(d1, m.allvars) == zeroarray(m, sim)
+    @test dict2array(d1, m.allvars) == zerodata(m, sim)
 
     @test size(dict2array(d, [:pinf, :ygap])) == (length(p.range), 2)
     @test size(dict2array(d, ["pinf", "ygap"])) == (length(p.range), 2)
@@ -137,6 +144,13 @@ using StateSpaceEcon.StackedTimeSolver: dict2array, dict2data, array2dict, array
     ad = array2dict(a, m.allvars, first(p.range))
     @test length(ad) == size(a, 2)
     @test all(ad[string(v)].values == a[:,i] for (i, v) in enumerate(m.allvars))
+end
+
+@testset "overlay" begin
+    t1 = seriesoverlay(TSeries(1U, ones(6)), TSeries(3U, 3ones(2)))
+    @test t1 == TSeries(1U, [1,1,3,3,1,1])
+    t1 = seriesoverlay(t1, TSeries(4U, 5ones(5)))
+    @test t1 == TSeries(1U, [1,1,3,5,5,5,5,5])
 end
 
 include("simtests.jl")
