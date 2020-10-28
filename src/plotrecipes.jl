@@ -1,16 +1,26 @@
 
 using Plots
-@recipe plot(sd::SimData; nrow=nothing, ncol=nothing, title=:(Default_Title)) = begin
+@recipe plot(sd::SimData; nrow=nothing, ncol=nothing, title=:(Default_Title), vars=nothing) = begin
 
-    vars = StateSpaceEcon._names(sd)
+    
 
-    varswithtitle = (title, vars...)
+    if vars === nothing
+        error("Must specify variables to plot")
+    elseif vars == :all
+        vars = StateSpaceEcon._names(sd)
+    end
+    if length(vars) > 31
+        error("Too many variables. Split into pages.")
+    end
+    # if names === nothing
+    #     names = ["data$i" for i = 1:length(sd)]
+    # end
 
     @series begin
+        framestyle := :none
         grid := :none
         showaxis := false
         legend --> false
-        # foreground_color_subplot --> :white
 
         zeros(1)
     end
@@ -30,7 +40,7 @@ using Plots
         size   := (sizex, sizey)
     elseif nrow isa Number && ncol === nothing
         ncol = length(vars) / nrow |> ceil |> Int
-        layout := (nrow + 1, ncol)
+        layout := (nrow, ncol + 1)
 
         sizex, sizey = 600, nrow * 200
         size   := (sizex, sizey)
@@ -40,12 +50,11 @@ using Plots
         sizex, sizey = 600, nrow * 200
         size   := (sizex, sizey)
     end
-    
-    # general settings
-    
 
     for colname in vars
         @series begin
+            varswithtitle = (title, vars...)
+
             title  := reshape(map(string, [varswithtitle...]), 1, :)
             titlefont --> font(10, :bold)
             linewidth --> 1.5
