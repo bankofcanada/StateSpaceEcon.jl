@@ -404,7 +404,8 @@ end
 
 function global_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
     point = reshape(point, sd.NT, sd.NU)
-    exog_data = reshape(point, sd.NT, sd.NU)
+    exog_data = reshape(exog_data, sd.NT, sd.NU)
+    @assert(length(res) == size(sd.J, 1), "Length of residual vector doesn't match.")
     @timer "global_R!" begin
         for (ii, tt) in zip(sd.II, sd.TT)
             eval_R!(view(res, ii), point[tt,:], sd.evaldata)

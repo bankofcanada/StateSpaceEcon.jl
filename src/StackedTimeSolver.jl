@@ -47,4 +47,4 @@ export setfc
 
 export simulate
 export seriesoverlay, dictoverlay
-export dict2array, array2dict, array2data
+export dict2array, dict2data, array2dict, array2data, data2dict, data2array

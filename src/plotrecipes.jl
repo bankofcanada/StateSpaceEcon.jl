@@ -23,6 +23,13 @@ using Plots
     titlefont --> font(10, :bold)
     label --> repeat(reshape([names...], 1, :), inner=(1, length(vars)))
     linewidth --> 1.5
+    for linesym in (:linestyle, :linewidth, :linecolor)
+        val = get(plotattributes, linesym, nothing)
+        if val !== nothing && length(val) == length(names)
+            plotattributes[linesym] = 
+                repeat(reshape([val...], 1, :), inner=(1, length(vars)))
+        end
+    end
     left_margin --> 4 * Plots.mm
     for s in sd
         for v in vars
