@@ -103,9 +103,13 @@ end
 
 export dict2array
 
+@inline _to_string(a::AbstractString) = a
+@inline _to_string(a::Symbol) = string(a)
+@inline _to_string(a::ModelVariable) = string(a.name)
+
 function _d2_vars(d, vars)
     if keytype(d) <: AbstractString
-        vars = string.(vars)
+        vars = _to_string.(vars)
     else
         vars = keytype(d).(vars)
     end
