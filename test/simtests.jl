@@ -336,8 +336,8 @@ end
     let m = E3.model
         p = Plan(m, 3:177)
         ed = zerodata(m, p)
-        ed[3, 4:6] .= 0.2 * rand(3)
-        ed[3:end, 1:3] .= rand(178, 3)
+        ed[3U, m.shocks] .= 0.2 * rand(1,3)
+        ed[3U:end, m.variables] .= rand(178, 3)
         empty!(m.sstate.constraints)
         clear_sstate!(m)
         @test_throws ArgumentError simulate(m, ed, p, fctype=fclevel)

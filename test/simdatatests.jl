@@ -57,7 +57,7 @@
         @test sd[:,1] == sd[:,2]
         sd.a = zeros(size(dta, 1))
         @test sum(abs, sd.a.values) == 0
-        @test_throws DimensionMismatch sd.a = ones(length(sd.a) + 5)
+        @test_throws BoundsError sd.a = ones(length(sd.a) + 5)
         # access to rows by MIT
         sd[:] = dta[:]
         @test sd[2000Q1] isa NamedTuple{nms,NTuple{length(nms),Float64}}

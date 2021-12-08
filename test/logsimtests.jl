@@ -34,7 +34,7 @@
         d = steadystatedict(m, p)
         k = steadystatedata(m, p)
 
-        @test a == k
+        @test all(a .== k)
         for s in Symbol.(m.allvars)
             @test k.:($s) == d[string(s)]
         end
@@ -87,7 +87,7 @@
         d = steadystatedict(m, p)
         k = steadystatedata(m, p)
 
-        @test a == k
+        @test all(a .== k)
         for s in Symbol.(m.allvars)
             @test k.:($s) == d[string(s)]
         end

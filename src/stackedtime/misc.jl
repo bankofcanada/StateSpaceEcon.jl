@@ -22,9 +22,9 @@ function seriesoverlay(ts1::TSeries, ts2::TSeries)
     # Make a copy of the output sries
     tsout = deepcopy(ts2);
     # Range of the first TSeries
-    Rng1 = mitrange(ts1);
+    Rng1 = rangeof(ts1);
     # Range of the second TSeries
-    Rng2 = mitrange(ts2);
+    Rng2 = rangeof(ts2);
     if Rng1.start < Rng2.start
         tsout[Rng1.start:Rng2.start - 1] = ts1;
     end
@@ -121,7 +121,7 @@ function _d2_vars(d, vars)
 end
 
 function _d2_rng(d, vars, range)
-    ranges = [mitrange(d[v]) for v in vars]
+    ranges = [rangeof(d[v]) for v in vars]
     fs = first.(ranges)
     ls = last.(ranges)
     if isempty(range)

@@ -102,8 +102,9 @@ Base.IndexStyle(::Plan) = IndexLinear()
 Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
 Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
 
-@inline _offset(p::Plan{T}, idx::T) where T = idx - first(p.range) + 1
-@inline _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where T = idx .- first(p.range) .+ 1
+@inline _offset(p::Plan{T}, idx::T) where {T <: MIT} = convert(Int, idx - first(p.range) + 1)
+@inline _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where {T <: MIT} = 
+    _offset(p, first(idx)):_offset(p, last(idx))
 
 ## Integer index is taken as is
 Base.getindex(p::Plan, idx::Int) = p[p.range[idx]]
@@ -222,7 +223,7 @@ Modify the status of the given variable(s) on the given date(s). If `value` is
 """
 function setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::AbstractUnitRange{T}) where T <: MIT
     firstindex(p) ≤ first(date) && last(date) ≤ lastindex(p) || throw(BoundsError(p, date))
-    idx1 = date .- firstindex(p) .+ 1
+    idx1 = _offset(p, date)
     for v in vars
         idx2 = get(p.varshks, v, 0)
         if idx2 == 0
@@ -233,7 +234,7 @@ function setplanvalue!(p::Plan{T}, val::Bool, vars::Array{Symbol,1}, date::Abstr
     return p
 end
 setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::AbstractArray{Symbol,1}, date::AbstractUnitRange{Int}) = setplanvalue!(p, val, vars, UnitRange{MIT{Unit}}(date))
-setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::AbstractArray{Symbol,1}, date::Integer) = setplanvalue!(p, val, vars, ii(date):ii(date))
+setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::AbstractArray{Symbol,1}, date::Integer) = setplanvalue!(p, val, vars, date*U:date*U)
 setplanvalue!(p::Plan{MIT{Unit}}, val::Bool, vars::AbstractArray{Symbol,1}, date::MIT{Unit}) = setplanvalue!(p, val, vars, date:date)
 setplanvalue!(p::Plan{T}, val::Bool, vars::AbstractArray{Symbol,1}, date::T) where T <: MIT = setplanvalue!(p, val, vars, date:date)
 setplanvalue!(p::Plan, val::Bool, vars::AbstractArray{Symbol,1}, date) = (foreach(d -> setplanvalue!(p, val, vars, d), date); p)

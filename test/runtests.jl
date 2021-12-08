@@ -48,23 +48,23 @@ end
 @testset "Plans" begin
     m = E1.model
     p = Plan(m, 1:3)
-    @test first(p.range) == ii(0)
-    @test last(p.range) == ii(4)
+    @test first(p.range) == 0U
+    @test last(p.range) == 4U
     out = @capture_out print(p)
     @test length(split(out, '\n')) == 2
     @test p[1] == [:y_shk]
-    @test p[ii(1)] == [:y_shk]
-    endogenize!(p, :y_shk, ii(1))
-    @test isempty(p[ii(1)])
-    endogenize!(p, :y_shk, ii(1):ii(3))
-    exogenize!(p, :y, ii(2))
-    exogenize!(p, :y, ii(4))
+    @test p[1U] == [:y_shk]
+    endogenize!(p, :y_shk, 1U)
+    @test isempty(p[1U])
+    endogenize!(p, :y_shk, 1U:3U)
+    exogenize!(p, :y, 2U)
+    exogenize!(p, :y, 4U)
     # make sure indexing with integers works as well
-    @test p[ii(0)] == p[1] == [:y_shk]
-    @test p[ii(1)] == p[2] == []
-    @test p[ii(2)] == p[3] == [:y]
-    @test p[ii(3)] == p[4] == []
-    @test p[ii(4)] == p[5] == [:y, :y_shk]
+    @test p[0U] == p[1] == [:y_shk]
+    @test p[1U] == p[2] == []
+    @test p[2U] == p[3] == [:y]
+    @test p[3U] == p[4] == []
+    @test p[4U] == p[5] == [:y, :y_shk]
     out = @capture_out print(p)
     @test length(split(out, '\n')) == 6
     out = @capture_out print(IOContext(stdout, :displaysize => (7, 80)), p)
@@ -78,7 +78,7 @@ end
     end
 end
 
-include("simdatatests.jl")
+# include("simdatatests.jl")
 include("sstests.jl")
 
 using StateSpaceEcon.StackedTimeSolver: dict2array, dict2data, array2dict, array2data, data2dict, data2array
@@ -98,7 +98,7 @@ using StateSpaceEcon.StackedTimeSolver: dict2array, dict2data, array2dict, array
     end
 
     @test dict2array(d1, m.allvars) == zeroarray(m, sim)
-    @test dict2array(d1, m.allvars) == zerodata(m, sim)
+    @test dict2array(d1, m.allvars) == rawdata(zerodata(m, sim))
 
     @test size(dict2array(d, [:pinf, :ygap])) == (length(p.range), 2)
     @test size(dict2array(d, ["pinf", "ygap"])) == (length(p.range), 2)
@@ -120,26 +120,26 @@ using StateSpaceEcon.StackedTimeSolver: dict2array, dict2data, array2dict, array
     @test b[:,2] == d["wrong_var"][3U:12U].values
 
     s = dict2data(d, m.allvars)
-    @test s == a
+    @test all(s .== a)
 
-    sa = data2array(s)
-    @test sa == s
+    sa = data2array(s)  # copy=false, so s and sa point to the same matrix
+    @test all(sa .== s)
     s.pinf[3U:5U] = 3:5
-    @test sa == s
+    @test all(sa .== s)
 
     sd = data2dict(s)
     @test Set(keys(sd)) == Set(string.(colnames(s)))
 
     as = array2data(a, m.allvars, first(p.range))
-    @test as == a
+    @test all(as .== a)
     a[1,2] = 2.5
-    @test as == a
+    @test all(as .== a)
     as = array2data(a, m.allvars, first(p.range), copy=true)
-    @test as == a
+    @test all(as .== a)
     a[1,2] = 3.0
-    @test as != a
+    @test !all(as .== a)
     as[1,2] = 3.0
-    @test as == a
+    @test all(as .== a)
 
     ad = array2dict(a, m.allvars, first(p.range))
     @test length(ad) == size(a, 2)

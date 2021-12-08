@@ -229,7 +229,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 update_plan!(sdata, m, psim)
                 # note that the range always goes from 0 to expectation_horizon-1, 
                 # so we need to add t in order to get the correct set of rows of x
-                sim_range = t .+ UnitRange(psim.range)
+                sim_range = t .+ UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
                 # The initial conditions are already set
                 # The exogenous values are already set as well, except for the first period
@@ -257,7 +257,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                     sdata = StackedTimeSolverData(m, psim, fctype)
                     # the initial conditions and the exogenous data are already in x
                     # we only need the final conditions
-                    sim_range = UnitRange(psim.range)
+                    sim_range = UnitRange{Int}(psim.range)
                     xx = view(x, sim_range, :)
                     assign_final_condition!(xx, exog_data[sim_range, :], sdata)
                     if verbose
@@ -276,7 +276,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         m.evaldata = org_med
     end
     
-    x = x[:,1:end - nauxs]
+    x = x[axes(exog_data)...]
     x .= inverse_transform(x, m)
     if deviation
         x[:, logvars] ./= ss_data[:, logvars]
