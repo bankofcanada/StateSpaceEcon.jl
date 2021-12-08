@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/bankofcanada/StateSpaceEcon.jl.svg?branch=master)](https://travis-ci.org/bankofcanada/StateSpaceEcon.jl)
+[![build](https://github.com/bankofcanada/StateSpaceEcon.jl/actions/workflows/main.yml/badge.svg)](https://github.com/bankofcanada/StateSpaceEcon.jl/actions/workflows/main.yml)
 [![codecov](https://codecov.io/gh/bankofcanada/StateSpaceEcon.jl/branch/master/graph/badge.svg?token=BSC8PUGLPD)](https://codecov.io/gh/bankofcanada/StateSpaceEcon.jl)
 
 # StateSpaceEcon
