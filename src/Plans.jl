@@ -282,6 +282,10 @@ function exog_endo!(p::Plan, exog, endo, date)
     setplanvalue!(p, true, Symbol[exog...], date)
     setplanvalue!(p, false, Symbol[endo...], date)
 end
+function exog_endo!(p::Plan, exog::Union{AbstractString,Symbol,ModelVariable}, endo::Union{AbstractString,Symbol,ModelVariable}, date)
+    setplanvalue!(p, true,Symbol[exog], date)
+    setplanvalue!(p, false,Symbol[endo], date)
+end
 
 """
     endo_exog!(plan, endo_vars, exog_vars, date)
