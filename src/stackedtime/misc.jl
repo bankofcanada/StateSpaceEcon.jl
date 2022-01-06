@@ -80,13 +80,23 @@ export array2data, array2workspace, data2array, data2workspace, workspace2array,
 @inline array2workspace(matrix::AbstractMatrix, model::Model, plan::Plan; copy = false) = array2workspace(matrix, model.varshks, plan.range; copy = copy)
 @inline array2workspace(matrix::AbstractMatrix, vars, range; copy = false) = Workspace(Symbol(v) => TSeries(range, copy ? Base.copy(matrix[:, i]) : matrix[:, i]) for (i, v) = enumerate(vars))
 
+@inline data2array(simdata::SimData, m::Model, p::Plan; copy = false) = data2array(simdata, m.varshks, p.range; copy = copy)
 @inline data2array(simdata::SimData; copy = false) = copy ? Base.copy(rawdata(simdata)) : rawdata(simdata)
-@inline data2workspace(simdata::SimData; copy = false) = copy ? Workspace(k => Base.copy(v) for (k, v) in pairs(simdata)) : Workspace(pairs(simdata))
+@inline data2array(simdata::SimData, vars, range; copy = false) = copy ? Base.copy(rawdata(simdata[range, vars])) : rawdata(simdata[range, vars])
+@inline data2workspace(simdata::SimData, m::Model, p::Plan; copy = false) = data2workspace(simdata, m.varshks, p.range; copy = copy)
+@inline data2workspace(simdata::SimData; copy = false) = data2workspace(simdata, axes(simdata,2), rangeof(simdata); copy = copy)
+@inline data2workspace(simdata::SimData, vars, range; copy = false) = Workspace(Symbol(v) => copy ? Base.copy(simdata[range, v]) : simdata[range, v] for v in vars)
 
 @inline workspace2array(w::Workspace, vars, range::AbstractUnitRange; copy = false) = hcat((w[Symbol(v)][range] for v in vars)...)
 @inline workspace2array(w::Workspace, model::Model, plan::Plan; copy = false) = workspace2array(w, model.varshks, plan.range; copy = copy)
 
-@inline workspace2data(w::Workspace, vars, range::AbstractUnitRange; copy = false) = SimData(range, vars, hcat((w[Symbol(v)][range] for v in vars)...))
+function workspace2data(w::Workspace, vars, range::AbstractUnitRange; copy = false)
+    ret = SimData(range, vars)
+    for v in vars
+        copyto!(ret[v], range, w[Symbol(v)])
+    end
+    return ret
+end
 @inline workspace2data(w::Workspace, model::Model, plan::Plan; copy = false) = workspace2data(w, model.varshks, plan.range; copy = copy)
 
 @inline workspace2data(w::Workspace, model::Model; copy = false) = workspace2data(w, model.varshks; copy = copy)

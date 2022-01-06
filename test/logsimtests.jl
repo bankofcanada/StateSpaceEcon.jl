@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -54,7 +54,7 @@
         ed[firstdate(p)] = k[firstdate(p)]
 
         for fc in (fcgiven, fclevel, fcslope, fcnatural)
-            @test simulate(m, ed, p, fctype=fc) ≈ k
+            @test simulate(m, p, ed, fctype=fc) ≈ k
         end
 
     end
@@ -106,8 +106,8 @@
         # Initial conditions don't matter. We set final conditions
         ed[lastdate(p)] = k[lastdate(p)]
 
-        @test simulate(m, ed, p, fctype=fcgiven) ≈ k
-        @test simulate(m, ed, p, fctype=fclevel) ≈ k
+        @test simulate(m, p, ed, fctype=fcgiven) ≈ k
+        @test simulate(m, p, ed, fctype=fclevel) ≈ k
 
         # system is inconsistent for fcslope and fcnatural
         # we do some exo-endo juggling to get unique solution
@@ -121,8 +121,8 @@
         ed[firstdate(p)] = k[firstdate(p)]
         ed[lastdate(p),1:2] .= rand(2)
 
-        @test simulate(m, ed, p, fctype=fcslope) ≈ k
-        @test simulate(m, ed, p, fctype=fcnatural) ≈ k
+        @test simulate(m, p, ed, fctype=fcslope) ≈ k
+        @test simulate(m, p, ed, fctype=fcnatural) ≈ k
 
     end
 

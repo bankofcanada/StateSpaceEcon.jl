@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -80,7 +80,9 @@ end
 
 @inline function assign_fc!(x::AbstractVector{Float64}, exog::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCGiven)
     # values given exogenously
-    x[sd.TT[end]] .= exog[sd.TT[end]]
+    if x !== exog
+        x[sd.TT[end]] .= exog[sd.TT[end]]
+    end
     return x
 end
 
