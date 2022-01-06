@@ -81,15 +81,14 @@ end
 # include("simdatatests.jl")
 include("sstests.jl")
 
-using StateSpaceEcon.StackedTimeSolver: dict2array, dict2data, array2dict, array2data, data2dict, data2array
-@testset "dict2array" begin
+@testset "misc" begin
     m = E3.model
     sim = m.maxlag .+ (1:10)
     p = Plan(m, sim)
 
     # random data
-    d1 = zerodict(m, sim)
-    d = zerodict(m, p)
+    d1 = zeroworkspace(m, p)
+    d = zeroworkspace(m, p)
     for  v in keys(d1)
         @test d[v] == d1[v]
     end
@@ -97,29 +96,29 @@ using StateSpaceEcon.StackedTimeSolver: dict2array, dict2data, array2dict, array
         v .= rand(Float64, size(v))
     end
 
-    @test dict2array(d1, m.allvars) == zeroarray(m, sim)
-    @test dict2array(d1, m.allvars) == rawdata(zerodata(m, sim))
+    @test workspace2array(d1, m.allvars) == zeroarray(m, p)
+    @test workspace2array(d1, m.allvars) == rawdata(zerodata(m, p))
 
-    @test size(dict2array(d, [:pinf, :ygap])) == (length(p.range), 2)
-    @test size(dict2array(d, ["pinf", "ygap"])) == (length(p.range), 2)
-    @test size(dict2array(d, m.variables)) == (length(p.range), 3)
-    a = dict2array(d, m.allvars)
+    @test size(workspace2array(d, [:pinf, :ygap])) == (length(p.range), 2)
+    @test size(workspace2array(d, ["pinf", "ygap"])) == (length(p.range), 2)
+    @test size(workspace2array(d, m.variables)) == (length(p.range), 3)
+    a = workspace2array(d, m.allvars)
     @test size(a) == (length(p.range), 6)
-    @test a == hcat((d[string(v)] for v in m.allvars)...)
+    @test a == hcat((d[v] for v in m.allvars)...)
 
     # error variable missing from dictionary
-    @test_throws ArgumentError dict2array(d, [:pinf, :ygap, :nosuchvar])
+    @test_throws KeyError workspace2array(d, [:pinf, :ygap, :nosuchvar])
     # error out of range
-    @test_throws ArgumentError dict2array(d, [:pinf, :ygap], range=10U:20U)
+    @test_throws BoundsError workspace2array(d, [:pinf, :ygap], 10U:20U)
 
     # warning variables with different ranges
-    d["wrong_var"] = TSeries(3U, rand(10))
-    b = @test_logs (:warn, r".*Using\s+intersection\s+range: 3U:12U") dict2array(d, [:pinf, :wrong_var])
+    d.wrong_var = TSeries(3U, rand(10))
+    b = workspace2array(d, [:pinf, :wrong_var]) 
     @test size(b) == (10, 2)
-    @test b[:,1] == d["pinf"][3U:12U].values
-    @test b[:,2] == d["wrong_var"][3U:12U].values
+    @test b[:,1] == d.pinf[3U:12U].values
+    @test b[:,2] == d.wrong_var[3U:12U].values
 
-    s = dict2data(d, m.allvars)
+    s = workspace2data(d, m.allvars)
     @test all(s .== a)
 
     sa = data2array(s)  # copy=false, so s and sa point to the same matrix
@@ -127,10 +126,10 @@ using StateSpaceEcon.StackedTimeSolver: dict2array, dict2data, array2dict, array
     s.pinf[3U:5U] = 3:5
     @test all(sa .== s)
 
-    sd = data2dict(s)
-    @test Set(keys(sd)) == Set(string.(colnames(s)))
+    sd = data2workspace(s)
+    @test Set(keys(sd)) == Set(colnames(s))
 
-    as = array2data(a, m.allvars, first(p.range))
+    as = array2data(a, m.allvars, p.range)
     @test all(as .== a)
     a[1,2] = 2.5
     @test all(as .== a)
@@ -141,15 +140,15 @@ using StateSpaceEcon.StackedTimeSolver: dict2array, dict2data, array2dict, array
     as[1,2] = 3.0
     @test all(as .== a)
 
-    ad = array2dict(a, m.allvars, first(p.range))
+    ad = array2workspace(a, m.allvars, first(p.range))
     @test length(ad) == size(a, 2)
-    @test all(ad[string(v)].values == a[:,i] for (i, v) in enumerate(m.allvars))
+    @test all(ad[v].values == a[:,i] for (i, v) in enumerate(m.allvars))
 end
 
 @testset "overlay" begin
-    t1 = seriesoverlay(TSeries(1U, ones(6)), TSeries(3U, 3ones(2)))
+    t1 = overlay(TSeries(3U, 3ones(2)), TSeries(1U, ones(6)))
     @test t1 == TSeries(1U, [1,1,3,3,1,1])
-    t1 = seriesoverlay(t1, TSeries(4U, 5ones(5)))
+    t1 = overlay(TSeries(4U, 5ones(5)), t1)
     @test t1 == TSeries(1U, [1,1,3,5,5,5,5,5])
 end
 

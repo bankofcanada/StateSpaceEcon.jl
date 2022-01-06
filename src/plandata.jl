@@ -1,141 +1,110 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
 # the following functions use the Plan object to create simulation data
 
-export zeroarray, zerodict, zerodata, steadystatearray, steadystatedict, steadystatedata
+export zeroarray, zerodict, zerodata, zeroworkspace
+export steadystatearray, steadystatedict, steadystatedata, steadystateworkspace
 
 """
     zeroarray(model, plan)
-    zeroarray(model, range)
+    steadystatearray(model, plan; [ref=firstdate(plan) + m.maxlag)
 
-Create a matrix of the proper dimension for a simulation with the given model
-with the given plan or over the given range. If a range is given, the data is prepared for the
-default plan. This means that appropriate number of periods are added before and
-after the range to account for initial and final conditions.
+Create a `Matrix{Float64}` of the proper dimension for a simulation with the
+given model with the given plan. It is initialized to 0 or the steady state.
 
-See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
-[`steadystatedict`](@ref)
+This function returns a `Matrix`. We recommend using [`zerodata`](@ref). See
+also [`zeroworkspace`](@ref)
+
+* In the case of steady state solution that is not stationary in time (i.e.,
+  constant rate of change or constant rate of growth) use the `ref` option to
+  specify the period in which the steady state level is given. The default is
+  the first simulation period.
+
+!!! note "Deprecation Note"
+
+    `zeroarray(model, range)` will be removed in future versions. Always create
+    a simulation `Plan` explicitly.
 
 """
-function zeroarray end
-@inline zeroarray(m::Model, rng::AbstractUnitRange) = zeroarray(m, Plan(m, rng))
+function zeroarray end, function steadystatearray end
+
+@deprecate zeroarray(m::Model, rng::AbstractUnitRange) zeroarray(m, Plan(m, rng))
+@deprecate steadystatearray(m::Model, rng::AbstractUnitRange; ref = first(rng)) steadystatearray(m, Plan(m, rng), ref = ref)
+
 @inline zeroarray(m::Model, p::Plan) = inverse_transform(zeros(Float64, size(p.exogenous)), m)
-
-"""
-    zerodict(model, plan)
-    zerodict(model, range)
-
-Create a dictionary containing a [`TSeries`](@ref) of the appropriate range for
-each variable in the model for a simulation with the given plan or over the
-given range. If a range is given rather than a plan, the data is prepared for
-the default plan over that range. This means that appropriate number of periods
-are added before and after the range to account for initial and final
-conditions.
-
-See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
-[`steadystatedict`](@ref)
-
-"""
-function zerodict end
-@inline zerodict(m::Model, rng::AbstractUnitRange) = zerodict(m, Plan(m, rng))
-function zerodict(m::Model, p::Plan) 
-    data = Dict{String,Any}()
-    for v in m.varshks
-        push!(data, string(v.name) => TSeries(p.range, inverse_transform(0.0, v)))
-    end
-    return data
+function steadystatearray(m::Model, p::Plan; ref = firstdate(p) + m.maxlag)
+    return hcat((m.sstate[v][p.range, ref = ref] for v in m.varshks)...)
 end
-
-"""
-    zerodata(model, plan)
-    zerodata(model, range)
-
-Create a `NamedTuple` containing a [`TSeries`](@ref) of the appropriate range for each
-variable in the model for a simulation with the given plan or over the given
-range. If a range is given rather than a plan, the data is prepared for the
-default plan over that range. This means that appropriate number of periods are
-added before and after the range to account for initial and final conditions.
-
-See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
-[`steadystatedict`](@ref)
-
-"""
-function zerodata end
-@inline zerodata(m::Model, rng::AbstractUnitRange) = zerodata(m, Plan(m, rng))
-@inline zerodata(m::Model, p::Plan) = SimData(firstdate(p), m.varshks, zeroarray(m, p))
 
 ##################
 
 """
-    steadystatearray(model, plan)
-    steadystatearray(model, range)
+    zerodict(model, plan)
+    steadystatedict(model, plan; [ref=firstdate(plan) + m.maxlag))
 
-Create a matrix of the proper dimensions for a simulation with the given model
-with the given plan or over the given range. The matrix is initialized with the
-steady state level of each variable. If a range is given rather than a plan, it
-is augmented with periods before and after the given range in order to
-accommodate initial and final conditions.
+!!! note "Deprecation Note"
 
-See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
-[`steadystatedict`](@ref)
+    This function will be removed in a future version. Use
+    [`zeroworkspace`](@ref)`(model, plan)`.
 
 """
-function steadystatearray end
-@inline steadystatearray(m::Model, rng::AbstractUnitRange; ref=first(rng)) = steadystatearray(m, Plan(m, rng), ref=ref)
-function steadystatearray(m::Model, p::Plan; ref=firstdate(p) + m.maxlag)
-    vs = keys(p.varshks) 
-    data = Matrix{Float64}(undef, length(p), length(vs))
-    for (vi, v) ∈ enumerate(vs)
-        data[:, vi] = m.sstate.:($v)[p.range, ref=ref]
-    end
-    return data
+function zerodict end
+@deprecate zerodict(m::Model, rng::AbstractUnitRange) zeroworkspace(m, Plan(m, rng))
+@deprecate steadystatedict(m::Model, rng::AbstractUnitRange) steadystateworkspace(m, Plan(m, rng))
+@deprecate zerodict(m::Model, p::Plan) zeroworkspace(m, p)
+@deprecate steadystatedict(m::Model, p::Plan) steadystateworkspace(m, p)
+
+##################
+
+"""
+    zeroworkspace(model, plan)
+    steadystateworkspace(model, plan; [ref=firstdate(plan) + m.maxlag))
+
+Create a [`TimeSeriesEcon.Workspace`](@ref) containing a `TSeries` for each
+variable/shock in the given `model`. They are initialized to 0 or the steady state solution.
+
+* In the case of steady state solution that is not stationary in time (i.e.,
+  constant rate of change or constant rate of growth) use the `ref` option to
+  specify the period in which the steady state level is given. The default is
+  the first simulation period.
+
+We recommend using [`zerodata`](@ref). See also [`zeroarray`](@ref).
+"""
+function zeroworkspace(model::Model, plan::Plan)
+    rng = plan.range
+    return Workspace(v.name => TSeries(rng, inverse_transform(0.0, v)) for v = model.varshks)
+end
+function steadystateworkspace(model::Model, plan::Plan; ref = firstdate(plan) + model.maxlag)
+    rng = plan.range
+    return Workspace(v.name => TSeries(rng, model.sstate[v][rng, ref = ref]) for v = model.varshks)
 end
 
-"""
-    steadystatearray(model, plan)
-    steadystatearray(model, range)
-
-Create a dictionary containing a [`TSeries`](@ref) of the appropriate range for each
-variable in the model for a simulation with the given plan or over the given
-range. The matrix is initialized with the steady state level of each variable.
-If a range is given rather than a plan, it is augmented with periods before and
-after the given range in order to accommodate initial and final conditions.
-
-See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
-[`steadystatedict`](@ref)
+##################
 
 """
-function steadystatedict end
-@inline steadystatedict(m::Model, rng::AbstractUnitRange; ref=first(rng)) = steadystatedict(m, Plan(m, rng), ref=ref)
-function steadystatedict(m::Model, p::Plan; ref=firstdate(p) + m.maxlag)
-    data = Dict{String,Any}()
-    for v ∈ keys(p.varshks)
-        push!(data, string(v) => TSeries(p.range, m.sstate.:($v)[p.range, ref=ref]))
-    end
-    return data
-end
+    zerodata(model, plan)
 
+Create a [`SimData`] for a simulation with the given `model` and `plan`. Columns
+correspond to the model variables and shocks in the correct order. Data is initialized
+with 0 or the steady state. 
+
+* In the case of steady state solution that is not stationary in time (i.e.,
+  constant rate of change or constant rate of growth) use the `ref` option to
+  specify the period in which the steady state level is given. The default is
+  the first simulation period.
+
+See also [`zeroarray`](@ref) and [`zeroworkspace`](@ref)
 """
-    steadystatedata(model, plan)
-    steadystatedata(model, range)
+function zerodata end
+@deprecate zerodata(m::Model, rng::AbstractUnitRange) zerodata(m, Plan(m, rng))
+@inline zerodata(m::Model, p::Plan) = SimData(p.range, m.varshks, zeroarray(m, p))
+@deprecate steadystatedata(m::Model, rng::AbstractUnitRange; ref = firstdate(p) + m.maxlag) steadystatedata(m, Plan(m, rng); ref = ref)
+@inline steadystatedata(m::Model, p::Plan; ref = firstdate(p) + m.maxlag) = SimData(p.range, m.varshks, steadystatearray(m, p; ref = ref))
 
-Create a [`SimData`](@ref) containing a [`TSeries`](@ref) of the appropriate range for each
-variable in the model for a simulation with the given plan or over the given
-range. The matrix is initialized with the steady state level of each variable.
-If a range is given rather than a plan, it is augmented with periods before and
-after the given range in order to accommodate initial and final conditions.
+##################
 
-See also: [`zeroarray`](@ref), [`zerodict`](@ref), [`steadystatearray`](@ref),
-[`steadystatedict`](@ref)
-
-"""
-function steadystatedata end
-@inline steadystatedata(m::Model, rng::AbstractUnitRange; ref=first(rng)) = steadystatedata(m, Plan(m, rng), ref=ref)
-function steadystatedata(m::Model, p::Plan; ref=firstdate(p) + m.maxlag) 
-    return SimData(firstdate(p), m.varshks, steadystatearray(m, p, ref=ref))
-end

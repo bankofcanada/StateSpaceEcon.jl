@@ -114,7 +114,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
 
     if deviation
         exog_data = copy(exog_data)
-        local logvars = islog.(m.varshks) .| lsneglog.(m.varshks)
+        local logvars = islog.(m.varshks) .| isneglog.(m.varshks)
         local ss_data = steadystatearray(m, p)
         exog_data[:, logvars] .*= ss_data[:, logvars]
         exog_data[:, .!logvars] .+= ss_data[:, .!logvars]

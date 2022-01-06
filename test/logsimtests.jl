@@ -31,12 +31,12 @@
 
         # make sure the steadystate data is built correctly
         a = steadystatearray(m, p)
-        d = steadystatedict(m, p)
+        d = steadystateworkspace(m, p)
         k = steadystatedata(m, p)
 
         @test all(a .== k)
-        for s in Symbol.(m.allvars)
-            @test k.:($s) == d[string(s)]
+        for s in m.allvars
+            @test k[s] == d[s]
         end
         @test k.X[1U] ≈ 1.0
         @test k.Y[1U] + 1 ≈ 1.0 
@@ -84,12 +84,12 @@
 
         # make sure the steadystate data is built correctly
         a = steadystatearray(m, p)
-        d = steadystatedict(m, p)
+        d = steadystateworkspace(m, p)
         k = steadystatedata(m, p)
 
         @test all(a .== k)
-        for s in Symbol.(m.allvars)
-            @test k.:($s) == d[string(s)]
+        for s in m.allvars
+            @test k[s] == d[s]
         end
         @test k.X[1U] + 1 ≈ 1.0 + 1
         @test k.Y[1U] + 1 ≈ 0.0 + 1
