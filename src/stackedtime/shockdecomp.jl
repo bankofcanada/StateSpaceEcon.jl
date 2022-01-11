@@ -64,17 +64,13 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     # prepare the stacked-time
     gdata = StackedTimeSolverData(m, p, fctype)
 
-    # Run the "shocked" simulation with the given exogenous data.
-    shocked = copy(control)
-    assign_exog_data!(shocked, exog_data, gdata)
-    sim_nr!(shocked, gdata, maxiter, tol, verbose)
-
     # check the residual.           why are we doing this? we know it's 0!
+    shocked = copy(exog_data)
     res_shocked = Vector{Float64}(undef, size(gdata.J, 1))
-    global_R!(res_shocked, shocked, shocked, gdata)
+    global_R!(res_shocked, shocked, shocked, gdata)    # Run the "shocked" simulation with the given exogenous data.
     if norm(res_shocked, Inf) > tol
-        # What to do if it's not a solution? We just give a warning for now, but maybe we should error()?!
-        @warn "Shocked solution failed:" norm(res_shocked, Inf)
+        assign_exog_data!(shocked, exog_data, gdata)
+        sim_nr!(shocked, gdata, maxiter, tol, verbose)
     end
 
     # We need the Jacobian matrix evaluated at the control solution.
