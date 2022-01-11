@@ -155,6 +155,8 @@ end
 include("simtests.jl")
 include("logsimtests.jl")
 
+include("shockdecomp.jl")
+
 @testset "misc" begin
     io = IOBuffer()
     printmatrix(io, rand(3,4))

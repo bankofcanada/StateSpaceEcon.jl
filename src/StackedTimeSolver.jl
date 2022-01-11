@@ -30,6 +30,7 @@ include("stackedtime/fctypes.jl")
 include("stackedtime/misc.jl")
 include("stackedtime/solverdata.jl")
 include("stackedtime/simulate.jl")
+include("stackedtime/shockdecomp.jl")
 
 end # module
 
@@ -45,7 +46,7 @@ export FCMatchSSRate, fcslope, fcrate
 export FCConstRate, fcnatural
 export setfc
 
-export simulate
+export simulate, shockdecomp
 export array2data, array2workspace, data2array, data2workspace, workspace2array, workspace2data
 # the following are deprecated
 export seriesoverlay, dictoverlay
