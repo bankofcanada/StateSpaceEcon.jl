@@ -67,15 +67,9 @@ Run a simulation for the given model, simulation plan and exogenous data.
     algorithm. The default value is an empty array (`zeros(0,0)`), in which case
     we use the exogenous data for the initial condition. You can use the steady
     state solution using [`steadystatearray`](@ref).
-  * `linearize::Bool` - set to `true` to instruct the solver to use the
-    liearized model. If the model is already linearized, this option has the
-    effect that the model gets linearized about the current steady stat and with
-    the value of `deviation` given here. Otherwise the model is linearized about
-    the steady state. After the simulation is computed, the model is restored to
-    its original state. Default value is `false`.
-  * `deviation::Bool` - set to `true` if the `data` is in deviations from the
-    steady state. This is only relevant if the `linearize` option is set to
-    `true`. Default value is `false`.
+  * `deviation::Bool` - set to `true` if the `data` is given in deviations from
+    the steady state. In this case the simulation result is also returned as a
+    deviation from the steady state. Default value is `false`.
   * `anticipate::Bool` - set to `false` to instruct the solver that all shocks
     are unanticilated by the agents. Default value is `true`.
   * `verbose::Bool` - control whether or not to print progress information.
@@ -95,7 +89,6 @@ function simulate end
 
 function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     initial_guess::AbstractArray{Float64,2} = zeros(0, 0),
-    linearize::Bool = false,
     deviation::Bool = false,
     anticipate::Bool = true,
     verbose::Bool = m.options.verbose,
@@ -128,12 +121,6 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         x = @timer ModelBaseEcon.update_auxvars(transform(initial_guess, m), m)
     else
         x = copy(exog_data)
-    end
-
-    if linearize
-        throw(ErrorException("Linearization is disabled."))
-        org_med = m.evaldata
-        linearize!(m; deviation = deviation)
     end
 
     if anticipate
@@ -273,9 +260,6 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
             end
             # x = x[begin:end-expectation_horizon, :]
         end
-    end
-    if linearize
-        m.evaldata = org_med
     end
 
     x = x[axes(exog_data)...]
