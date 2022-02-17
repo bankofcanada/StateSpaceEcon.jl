@@ -321,9 +321,9 @@ function importplan(io::IO)
         error("unexpected line 4: ", line, ".")
     end
     exog_mark, endo_mark = m.captures
-    # parse line 5. Example "  NAMES,  2000Q1:2010Q1, 2010Q2, 2010Q2:2020Q4"
-    line = readline(io)
-    m = match(r"\s*NAME(.\S*)\s+(\w+:\w+(.\S*)\s+.*)", line)
+    # parse line 5. Example "  NAME,  2000Q1:2010Q1, 2010Q2, 2010Q2:2020Q4"
+    line = readline(io) * " "
+    m = match(r"\s*NAME(.\S*)\s+([\w:]+(.\S*)\s*.*)", line)
     if m === nothing
         error("unexpected line 5: ", line, ".")
     end
