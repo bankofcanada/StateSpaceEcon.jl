@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -21,8 +21,8 @@ Solve the simulation problem.
 
 """
 function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
-                maxiter::Int64, tol::Float64, verbose::Bool,
-                sparse_solver::Function=(A, b) -> A \ b)
+    maxiter::Int64, tol::Float64, verbose::Bool,
+    sparse_solver::Function = (A, b) -> A \ b)
     for it = 1:maxiter
         @timer Fx, Jx = global_RJ(x, x, sd)
         @timer nFx = norm(Fx, Inf)
@@ -34,7 +34,7 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
         end
         @timer Δx = sparse_solver(Jx, Fx)
         @timer nΔx = norm(vec(Δx), Inf)
-        assign_update_step!(x, -1.0, Δx, sd)
+        @timer assign_update_step!(x, -1.0, Δx, sd)
         if verbose
             @info "$it, || Fx || = $(nFx), || Δx || = $(nΔx)"
         end
@@ -67,15 +67,9 @@ Run a simulation for the given model, simulation plan and exogenous data.
     algorithm. The default value is an empty array (`zeros(0,0)`), in which case
     we use the exogenous data for the initial condition. You can use the steady
     state solution using [`steadystatearray`](@ref).
-  * `linearize::Bool` - set to `true` to instruct the solver to use the
-    liearized model. If the model is already linearized, this option has the
-    effect that the model gets linearized about the current steady stat and with
-    the value of `deviation` given here. Otherwise the model is linearized about
-    the steady state. After the simulation is computed, the model is restored to
-    its original state. Default value is `false`.
-  * `deviation::Bool` - set to `true` if the `data` is in deviations from the
-    steady state. This is only relevant if the `linearize` option is set to
-    `true`. Default value is `false`.
+  * `deviation::Bool` - set to `true` if the `data` is given in deviations from
+    the steady state. In this case the simulation result is also returned as a
+    deviation from the steady state. Default value is `false`.
   * `anticipate::Bool` - set to `false` to instruct the solver that all shocks
     are unanticilated by the agents. Default value is `true`.
   * `verbose::Bool` - control whether or not to print progress information.
@@ -91,18 +85,19 @@ Run a simulation for the given model, simulation plan and exogenous data.
 ### Examples
 
 """
+function simulate end
+
 function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
-                    initial_guess::AbstractArray{Float64,2}=zeros(0, 0),
-                    linearize::Bool=false,
-                    deviation::Bool=false,
-                    anticipate::Bool=true,
-                    verbose::Bool=m.options.verbose,
-                    tol::Float64=m.options.tol,
-                    maxiter::Int64=m.options.maxiter,
-                    fctype=getoption(m, :fctype, fcgiven),
-                    expectation_horizon::Union{Nothing,Int64}=nothing,
-                    sparse_solver::Function=(A, b) -> A \ b
-    )
+    initial_guess::AbstractArray{Float64,2} = zeros(0, 0),
+    deviation::Bool = false,
+    anticipate::Bool = true,
+    verbose::Bool = m.options.verbose,
+    tol::Float64 = m.options.tol,
+    maxiter::Int64 = m.options.maxiter,
+    fctype = getoption(m, :fctype, fcgiven),
+    expectation_horizon::Union{Nothing,Int64} = nothing,
+    sparse_solver::Function = (A, b) -> A \ b
+)
     NT = length(p.range)
     nauxs = length(m.auxvars)
     if size(exog_data) != (NT, length(m.varshks))
@@ -114,10 +109,10 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
 
     if deviation
         exog_data = copy(exog_data)
-        local logvars = islog.(m.varshks) .| lsneglog.(m.varshks)
+        local logvars = islog.(m.varshks) .| isneglog.(m.varshks)
         local ss_data = steadystatearray(m, p)
         exog_data[:, logvars] .*= ss_data[:, logvars]
-        exog_data[:, .! logvars] .+= ss_data[:, .! logvars]
+        exog_data[:, .!logvars] .+= ss_data[:, .!logvars]
     end
 
     exog_data = @timer ModelBaseEcon.update_auxvars(transform(exog_data, m), m)
@@ -126,12 +121,6 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         x = @timer ModelBaseEcon.update_auxvars(transform(initial_guess, m), m)
     else
         x = copy(exog_data)
-    end
-
-    if linearize
-        throw(ErrorException("Linearization is disabled."))
-        org_med = m.evaldata
-        linearize!(m; deviation=deviation)
     end
 
     if anticipate
@@ -143,15 +132,15 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         @timer sim_nr!(x, gdata, maxiter, tol, verbose, sparse_solver)
     else # unanticipated shocks
         init = 1:m.maxlag
-        term = NT .+ (1 - m.maxlead:0)
-        sim = 1 + m.maxlag:NT - m.maxlead
+        term = NT .+ (1-m.maxlead:0)
+        sim = 1+m.maxlag:NT-m.maxlead
         nvars = length(m.variables)
         nshks = length(m.shocks)
         nauxs = length(m.auxvars)
         shkinds = nvars .+ (1:nshks)
         auxinds = nvars .+ nshks .+ (1:nauxs)
-        varshkinds = 1:(nvars + nshks)
-        allvarinds = 1:(nvars + nshks + nauxs)
+        varshkinds = 1:(nvars+nshks)
+        allvarinds = 1:(nvars+nshks+nauxs)
         x[init, allvarinds] .= exog_data[init, allvarinds]
         # x[term, allvarinds] .= exog_data[term, allvarinds]
         x[sim, shkinds] .= 0.0
@@ -162,16 +151,16 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
             for t in sim
                 exog_inds = p[t, Val(:inds)]
                 psim = Plan(m, t:T)
-                if (t != t0) && (psim[t0, Val(:inds)] == exog_inds) && (maximum(abs, exog_data[t,shkinds]) < tol)
+                if (t != t0) && (psim[t0, Val(:inds)] == exog_inds) && (maximum(abs, exog_data[t, shkinds]) < tol)
                     continue
                 end
                 setexog!(psim, t0, exog_inds)
                 @timer gdata = StackedTimeSolverData(m, psim, fctype)
-                x[t,exog_inds] = exog_data[t,exog_inds]
+                x[t, exog_inds] = exog_data[t, exog_inds]
                 # @timer assign_exog_data!(x[psim.range,:], exog_data[psim.range,:], gdata)
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
-                assign_final_condition!(xx, exog_data[sim_range,:], gdata)
+                assign_final_condition!(xx, exog_data[sim_range, :], gdata)
                 if verbose
                     @info "Simulating $(p.range[t:T])" # anticipate expectation_horizon gdata.FC
                 end
@@ -183,7 +172,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         else
             # the new code, where the first and last simulations use the true 
             # simulation range and final condition, while the intermediate 
-            # simulations use expectation_horizon steps with fcslope
+            # simulations use expectation_horizon steps with fcnatural
             if expectation_horizon == 0
                 expectation_horizon = length(sim)
             elseif expectation_horizon < 10 * m.maxlead
@@ -193,17 +182,17 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
             ninit = length(init)
             nterm = length(term)
             # first simulation
-            let t = t0  
+            let t = t0
                 # first run is with the full range, the true fctype, 
                 # and only the first period is imposed
                 exog_inds = p[t, Val(:inds)]
                 psim = Plan(m, t:T)
                 setexog!(psim, t0, exog_inds)
                 @timer sdata = StackedTimeSolverData(m, psim, fctype)
-                x[t,exog_inds] = exog_data[t,exog_inds]
+                x[t, exog_inds] = exog_data[t, exog_inds]
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
-                assign_final_condition!(xx, exog_data[sim_range,:], sdata)
+                assign_final_condition!(xx, exog_data[sim_range, :], sdata)
                 if verbose
                     @info "Simulating $(p.range[t:T])" # anticipate expectation_horizon sdata.FC
                 end
@@ -214,7 +203,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
             end
             # intermediate simulations
             last_t::Int64 = t0
-            psim = Plan(m, 0:expectation_horizon - 1)
+            psim = Plan(m, 0:expectation_horizon-1)
             sdata = StackedTimeSolverData(m, psim, fcnatural)
             for t in sim[2:end]
                 exog_inds = p[t, Val(:inds)]
@@ -235,8 +224,8 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 # The exogenous values are already set as well, except for the first period
                 # In other words, we only need to impose the first period here
                 xx[t0, exog_inds] = exog_data[t, exog_inds]
-                # Update the final conditions
-                @timer assign_final_condition!(xx, similar(xx), sdata)
+                # Update the final conditions (the second argument is not used with fcnatural)
+                @timer assign_final_condition!(xx, xx, sdata)
                 if verbose
                     @info "Simulating $(p.range[t] .+ (0:expectation_horizon - 1))" # anticipate expectation_horizon sdata.FC
                 end
@@ -269,60 +258,41 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                     # end
                 end
             end
-            x = x[1:end - expectation_horizon, :]
+            # x = x[begin:end-expectation_horizon, :]
         end
     end
-    if linearize
-        m.evaldata = org_med
-    end
-    
+
     x = x[axes(exog_data)...]
     x .= inverse_transform(x, m)
     if deviation
         x[:, logvars] ./= ss_data[:, logvars]
-        x[:, .! logvars] .-= ss_data[:, .! logvars]
+        x[:, .!logvars] .-= ss_data[:, .!logvars]
     end
 
     return x
 end
 
-# The versions of simulate with Dict
+# The versions of simulate with Dict/Workspace/SimData
 
-# Simulate command, IRIS style with a range
-@inline simulate(m::Model, data, rng, p::Plan=Plan(m, rng); kwargs...) = simulate(m, data, p[rng, m]; kwargs...)
+@inline simulate(m::Model, p::Plan, data::Dict; kwargs...) = simulate(m, p, dict2data(data, m, p; copy = true); kwargs...)
+@inline simulate(m::Model, p::Plan, data::Workspace; kwargs...) = simulate(m, p, workspace2data(data, m, p; copy = true); kwargs...)
 
-# Simulate command, IRIS style but without a range
-function simulate(m::Model, D1::Dict{<:AbstractString,<:Any}, plan::Plan; 
-    overlay::Bool=false, kwargs...)::Dict{String,<:Any}
-    # Convert dictionary to Array{Float64,2}
-    data01 = dict2array(D1, m.varshks, range=plan.range)
-    ig = get(kwargs, :initial_guess, zeros(0, 0))
-    if ig isa Dict
-        ig = dict2array(ig, m.varshks, range=plan.range)
-    end
-    # Call native simulate command with Array{Float64,2}
-    data02 = simulate(m, plan, data01; kwargs..., initial_guess=ig)
-    # Reconvert Array{Float64,2} to Dict{String,Any}
-    D2 = array2dict(data02, m.varshks, plan.range[1])
-    # Overlay D1 and D2
-    if overlay
-        D3 = dictoverlay(D1, D2)
+function simulate(m::Model, p::Plan, data::SimData; kwargs...)
+    exog = data2array(data, m, p)
+    initial_guess = get(kwargs, :initial_guess, nothing)
+    if initial_guess isa SimData
+        kw = (; initial_guess = data2array(initial_guess, m, p))
+    elseif initial_guess isa Workspace
+        kw = (; initial_guess = workspace2data(initial_guess, m, p))
+    elseif initial_guess isa AbstractDict
+        kw = (; initial_guess = dict2array(initial_guess, m, p))
     else
-        D3 = D2
+        kw = (;)        
     end
-    return D3
+    result = copy(data)
+    result[p.range, m.varshks] .= simulate(m, p, exog; kwargs..., kw...)
+    return result
 end
 
-import ..SimData
 
-function simulate(m::Model, D1::SimData, plan::Plan; overlay::Bool=false, kwargs...)::typeof(D1)
-    ret = copy(D1)
-    ig = get(kwargs, :initial_guess, zeros(0, 0))
-    if ig isa SimData
-        ig = ig[plan.range, m.varshks]
-    end
-    sim = simulate(m, plan, D1[plan.range, m.varshks]; kwargs..., initial_guess=ig)
-    # overlay the sim data onto ret
-    ret[plan.range, m.varshks] = sim
-    return ret
-end
+

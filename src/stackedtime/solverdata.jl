@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -61,45 +61,47 @@ end
 
 #######
 
-function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCNone)
+@inline function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCNone)
     # No Jacobian correction 
     return Dict{Int,Vector{Float64}}()
 end
 
-function assign_fc!(x::AbstractVector{Float64}, exog::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCNone)
+@inline function assign_fc!(x::AbstractVector{Float64}, exog::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCNone)
     # nothing to see here
     return x
 end
 
 #######
 
-function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCGiven)
+@inline function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCGiven)
     # No Jacobian correction 
     return Dict{Int,Vector{Float64}}()
 end
 
-function assign_fc!(x::AbstractVector{Float64}, exog::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCGiven)
+@inline function assign_fc!(x::AbstractVector{Float64}, exog::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCGiven)
     # values given exogenously
-    x[sd.TT[end]] .= exog[sd.TT[end]]
+    if x !== exog
+        x[sd.TT[end]] .= exog[sd.TT[end]]
+    end
     return x
 end
 
 #######
 
-function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCMatchSSLevel)
+@inline function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCMatchSSLevel)
     # No Jacobian correction 
     return Dict{Int,Vector{Float64}}()
 end
 
-function assign_fc!(x::AbstractVector{Float64}, ::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCMatchSSLevel)
+@inline function assign_fc!(x::AbstractVector{Float64}, ::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCMatchSSLevel)
     # values come from the steady state
-    x[sd.TT[end]] .= sd.SS[sd.TT[end],vind]
+    x[sd.TT[end]] .= sd.SS[sd.TT[end], vind]
     return x
 end
 
 #######
 
-function var_CiSc(sd::StackedTimeSolverData, ::ModelVariable, ::FCMatchSSRate)
+@inline function var_CiSc(sd::StackedTimeSolverData, ::ModelVariable, ::FCMatchSSRate)
     # Matrix C is composed of blocks looking like this:
     #    1  0  0  0
     #   -1  1  0  0
@@ -117,20 +119,20 @@ function var_CiSc(sd::StackedTimeSolverData, ::ModelVariable, ::FCMatchSSRate)
     #   0 0 0 0 0 -1
     # The number of rows equals NTFC (the number of final condition periods)
     # The column with the -1 is the one corresponding to the last simulation period of the variable.
-    return Dict{Int,Vector{Float64}}(0 => fill(Float64(-1.0), length(sd.TT[end])))
+    return Dict{Int,Vector{Float64}}(0 => fill(-1.0, length(sd.TT[end])))
 end
 
-function assign_fc!(x::AbstractVector{Float64}, ::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCMatchSSRate)
+@inline function assign_fc!(x::AbstractVector{Float64}, ::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCMatchSSRate)
     # compute values using the slope from the steady state
     for t in sd.TT[end]
-        x[t] = x[t - 1] + sd.SS[t, vind] - sd.SS[t - 1, vind]
+        x[t] = x[t-1] + sd.SS[t, vind] - sd.SS[t-1, vind]
     end
     return x
 end
 
 #######
 
-function var_CiSc(sd::StackedTimeSolverData, ::ModelVariable, ::FCConstRate)
+@inline function var_CiSc(sd::StackedTimeSolverData, ::ModelVariable, ::FCConstRate)
     # Matrix C is composed of blocks looking like this:
     #    -1  0  0  0  0
     #     2 -1  1  0  0
@@ -153,14 +155,14 @@ function var_CiSc(sd::StackedTimeSolverData, ::ModelVariable, ::FCConstRate)
     # The number of rows equals sd.TT[end] (the number of final condition periods)
     # The column with -2,-3,-4... has offset 0 -- the last simulation period.
     # The column with  1, 2, 3... has offset -1 -- the period before the last simulation period.
-    foo = Float64[1:length(sd.TT[end])...]
+    foo = collect(Float64, 1:length(sd.TT[end]))
     return Dict{Int,Vector{Float64}}(-1 => foo, 0 => -1.0 .- foo)
 end
 
-function assign_fc!(x::AbstractVector{Float64}, ::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCConstRate)
+@inline function assign_fc!(x::AbstractVector{Float64}, ::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCConstRate)
     # compute values using the slope at the end of the simulation
     for t in sd.TT[end]
-        x[t] = 2x[t - 1] - x[t - 2]
+        x[t] = 2x[t-1] - x[t-2]
     end
     return x
 end
@@ -177,7 +179,7 @@ detected. Setting the `changed` flag to `true` forces the update even if the
 plan seems unchanged. This is necessary only in rare circumstances.
 
 """
-function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=false)
+function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = false)
     if sd.NT != length(p.range)
         error("Unable to update using a simulation plan of different length.")
     end
@@ -185,7 +187,7 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=fals
     # LinearIndices used for indexing the columns of the global matrix
     LI = LinearIndices((p.range, 1:sd.NU))
 
-    sim = m.maxlag + 1:sd.NT - m.maxlead
+    sim = m.maxlag+1:sd.NT-m.maxlead
     NTFC = m.maxlead
 
     # Assume initial conditions are set correctly to exogenous in the constructor
@@ -197,8 +199,8 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=fals
         si = p[t, Val(:inds)]
         fill!(foo, false)
         foo[si] .= true
-        if !all(foo .== sd.exog_mask[LI[t,:]])
-            sd.exog_mask[LI[t,:]] .= foo
+        if !all(foo .== sd.exog_mask[LI[t, :]])
+            sd.exog_mask[LI[t, :]] .= foo
             changed = true
         end
     end
@@ -218,7 +220,7 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=fals
             # and values containing the column values.
             for (offset, values) in var_CiSc(sd, v, fc)
                 # col_ind is the column index in the global matrix
-                col_ind = LI[last_sim_t + offset, vi]
+                col_ind = LI[last_sim_t+offset, vi]
                 if !sd.solve_mask[col_ind]
                     # this value is exogenous, no column for it in Sc
                     continue
@@ -238,7 +240,7 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=fals
                 #   the block for variable 1 gets row indexes 1 .. NTFC
                 #   the block for variable 2 gets row indexes NTFC+1 .. 2*NTFC
                 #   the block for variable vi gets row indexes (vi-1)*NTFC+1 .. vi*NTFC
-                IIvar = ((vi - 1) * NTFC + 1):(vi * NTFC)
+                IIvar = ((vi-1)*NTFC+1):(vi*NTFC)
                 # The values in this column came from the var_CiSc call above
                 VVvar = values
                 append!(II, IIvar)
@@ -282,7 +284,7 @@ function make_BI(JMAT::SparseMatrixCSC{Float64,Int}, II::AbstractVector{<:Abstra
     for i = 1:n
         for j in nzrange(JMAT, i)
             row = rows[j]
-            push!(BI[ Bar[row] ], j)
+            push!(BI[Bar[row]], j)
         end
     end
     return BI
@@ -297,15 +299,15 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCo
 
     NT = length(p.range)
     init = 1:m.maxlag
-    term = NT - m.maxlead + 1:NT
-    sim = m.maxlag + 1:NT - m.maxlead
+    term = NT-m.maxlead+1:NT
+    sim = m.maxlag+1:NT-m.maxlead
     NTFC = length(term)
     NTSIM = length(sim)
     NTIC = length(init)
 
     need_SS = false
     for fc in fctype
-        if (fc === fclevel || fc === fcslope) 
+        if (fc === fclevel || fc === fcslope)
             need_SS = true
         end
         if (fc === fcnatural) && (length(sim) + length(init) < 2)
@@ -368,24 +370,24 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCo
     # 
     exog_mask = falses(nunknowns * NT)
     # Initial conditions are set as exogenous values
-    exog_mask[vec(LI[init,:])] .= true
+    exog_mask[vec(LI[init, :])] .= true
     # The exogenous values during sim are set in update_plan!() call below.
 
     # Final conditions are complicated
     fc_mask = falses(nunknowns * NT)
-    fc_mask[vec(LI[term,:])] .= true
+    fc_mask[vec(LI[term, :])] .= true
 
     # The solve_mask is redundant. We pre-compute and store it for speed
     solve_mask = .!(fc_mask .| exog_mask)
 
     sd = StackedTimeSolverData(NT, nvars, nshks, nunknowns, fctype, TT, II, JJ, BI, JMAT,
-                             sparse([], [], Float64[], NTFC * nunknowns, size(JMAT, 1)),
-                             need_SS ? transform(steadystatearray(m, p), m) : zeros(0, 0),
-                             islog.(m.allvars) .| isneglog.(m.allvars), islin.(m.allvars),
-                             m.evaldata, exog_mask, fc_mask, solve_mask,
-                             Ref{Any}(nothing))
+        sparse([], [], Float64[], NTFC * nunknowns, size(JMAT, 1)),
+        need_SS ? transform(steadystatearray(m, p), m) : zeros(0, 0),
+        islog.(m.allvars) .| isneglog.(m.allvars), islin.(m.allvars),
+        m.evaldata, exog_mask, fc_mask, solve_mask,
+        Ref{Any}(nothing))
 
-    return update_plan!(sd, m, p; changed=true)
+    return @timer update_plan!(sd, m, p; changed = true)
 end
 
 function assign_exog_data!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
@@ -396,19 +398,20 @@ function assign_exog_data!(x::AbstractArray{Float64,2}, exog::AbstractArray{Floa
 end
 
 function assign_final_condition!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
-    for (vi, fc) in enumerate(sd.FC)
-        assign_fc!(view(x, :, vi), exog[:,vi], vi, sd, fc)
+    @timer for (vi, fc) in enumerate(sd.FC)
+        assign_fc!(view(x, :, vi), exog[:, vi], vi, sd, fc)
     end
     return x
 end
 
 function global_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
-    point = reshape(point, sd.NT, sd.NU)
-    exog_data = reshape(exog_data, sd.NT, sd.NU)
+    @assert size(point) == size(exog_data) == (sd.NT, sd.NU)
+    # point = reshape(point, sd.NT, sd.NU)
+    # exog_data = reshape(exog_data, sd.NT, sd.NU)
     @assert(length(res) == size(sd.J, 1), "Length of residual vector doesn't match.")
     @timer "global_R!" begin
         for (ii, tt) in zip(sd.II, sd.TT)
-            eval_R!(view(res, ii), point[tt,:], sd.evaldata)
+            eval_R!(view(res, ii), point[tt, :], sd.evaldata)
         end
     end
     return res
@@ -520,11 +523,12 @@ function update_CiSc!(x, sd, ::Val{fcnatural})
     return nothing
 end =#
 
-function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData; 
-        debugging=false)
+function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData;
+    debugging = false)
     nunknowns = sd.NU
-    point = reshape(point, sd.NT, nunknowns)
-    exog_data = reshape(exog_data, sd.NT, nunknowns)
+    @assert size(point) == size(exog_data) == (sd.NT, nunknowns)
+    # point = reshape(point, sd.NT, nunknowns)
+    # exog_data = reshape(exog_data, sd.NT, nunknowns)
     JAC = sd.J
     RES = Vector{Float64}(undef, size(JAC, 1))
     # Model equations @ [1] to [end-1]
@@ -533,12 +537,12 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
     if haveJ
         # update only RES
         @timer "globalRJ/evalR!" for i = 1:length(sd.BI)
-            eval_R!(view(RES, sd.II[i]), point[sd.TT[i],:], sd.evaldata)
+            eval_R!(view(RES, sd.II[i]), point[sd.TT[i], :], sd.evaldata)
         end
     else
         # update both RES and JAC
         @timer "globalRJ/evalRJ" for i = 1:length(sd.BI)
-            R, J = eval_RJ(point[sd.TT[i],:], sd.evaldata)
+            R, J = eval_RJ(point[sd.TT[i], :], sd.evaldata)
             RES[sd.II[i]] .= R
             JAC.nzval[sd.BI[i]] .= J.nzval
         end

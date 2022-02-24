@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -16,7 +16,7 @@ using LinearAlgebra
         data = zerodata(m, p)
         data[1, :] = [1 0]   # initial condition
         data[end, :] = [5 0] # final condition
-        sim00 = simulate(m, data, p)
+        sim00 = simulate(m, p, data)
         exp00 = hcat(1.0:(5.0 - 1.0) / (T - 1):5.0, zeros(T))
         # @info "T=$T" sim00 exp00 data
         @test sim00 ≈ exp00
@@ -25,7 +25,7 @@ using LinearAlgebra
         shk = .1
         y2val = ((T - 2) * (1 + 2 * shk) + 5.0) / (T - 1)
         data1[2U,:y_shk] = shk  # shock at time 2
-        sim01 = simulate(m, data1, p)
+        sim01 = simulate(m, p, data1)
         exp01 = vcat([1.0 y2val:(5.0 - y2val) / (T - 2):5.0...], [0 shk zeros(T - 2)...])'
         @test sim01 ≈ exp01
         # exogenous-endogenous swap
@@ -35,7 +35,7 @@ using LinearAlgebra
         p2 = deepcopy(p)
         exogenize!(p2, :y, 2)
         endogenize!(p2, :y_shk, 2)
-        sim02 = simulate(m, data2, p2)
+        sim02 = simulate(m, p2, data2)
         exp02 = sim01
         @test sim02 ≈ exp02
     end
@@ -319,13 +319,13 @@ end
         @initialize m
         p = Plan(m, 1:1)
         ed = zerodata(m, p)
-        @test_throws ArgumentError simulate(m, ed, p, fctype=fcnatural)
+        @test_throws ArgumentError simulate(m, p, ed, fctype=fcnatural)
     end
     let m = E1.model
         p = Plan(m, 3:17)
         ed = zerodata(m, p)
         ed .= rand(Float64, size(ed))
-        @test_logs (:error, r"The system is underdetermined.*") (@test_throws SingularException simulate(m, ed, p, fctype=fcnatural))
+        @test_logs (:error, r"The system is underdetermined.*") (@test_throws SingularException simulate(m, p, ed, fctype=fcnatural))
         sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
         @test_throws ErrorException StateSpaceEcon.StackedTimeSolver.update_plan!(sd, m, Plan(m, 3:8))
         x = rand(Float64, size(ed))
@@ -340,18 +340,18 @@ end
         ed[3U:end, m.variables] .= rand(178, 3)
         empty!(m.sstate.constraints)
         clear_sstate!(m)
-        @test_throws ArgumentError simulate(m, ed, p, fctype=fclevel)
-        @test_throws ArgumentError simulate(m, ed, p, fctype=fcslope)
+        @test_throws ArgumentError simulate(m, p, ed, fctype=fclevel)
+        @test_throws ArgumentError simulate(m, p, ed, fctype=fcslope)
         vec1 = sssolve!(m)
         initial_sstate!(m, 0.4 * rand(Float64, size(m.sstate.values)))
         vec2 = sssolve!(m)
         @test vec1 ≈ vec2
-        s1 = simulate(m, ed, p, fctype=fclevel)
-        s2 = simulate(m, ed, p, fctype=fcslope)
-        s3 = simulate(m, ed, p, fctype=fcnatural)
-        @test maximum(abs, s1 - s2) < 1e-8
-        @test maximum(abs, s1 - s3) < 1e-8
-        @test maximum(abs, s3 - s2) < 1e-8
+        s1 = simulate(m, p, ed, fctype=fclevel)
+        s2 = simulate(m, p, ed, fctype=fcslope)
+        s3 = simulate(m, p, ed, fctype=fcnatural)
+        @test maximum(abs, s1 - s2; dims = :) < 1e-8
+        @test maximum(abs, s1 - s3; dims = :) < 1e-8
+        @test maximum(abs, s3 - s2; dims = :) < 1e-8
 
         sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
         x = rand(Float64, size(ed))
@@ -370,9 +370,9 @@ end
         ed = zerodata(m, p)
         ed.dlp_shk[3] = rand()
         ed.dly_shk[3] = rand()
-        s2 = simulate(m, ed, p, fctype=fcslope)
-        s3 = simulate(m, ed, p, fctype=fcnatural)
-        @test maximum(abs, s3 - s2) < 1e-12
+        s2 = simulate(m, p, ed, fctype=fcslope)
+        s3 = simulate(m, p, ed, fctype=fcnatural)
+        @test maximum(abs, s3 - s2; dims = :) < 1e-12
 
         sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
         x = rand(Float64, size(ed))

@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -30,6 +30,7 @@ include("stackedtime/fctypes.jl")
 include("stackedtime/misc.jl")
 include("stackedtime/solverdata.jl")
 include("stackedtime/simulate.jl")
+include("stackedtime/shockdecomp.jl")
 
 end # module
 
@@ -45,6 +46,9 @@ export FCMatchSSRate, fcslope, fcrate
 export FCConstRate, fcnatural
 export setfc
 
-export simulate
+export simulate, shockdecomp
+export array2data, array2workspace, data2array, data2workspace, workspace2array, workspace2data
+# the following are deprecated
 export seriesoverlay, dictoverlay
-export dict2array, dict2data, array2dict, array2data, data2dict, data2array
+export dict2array, array2dict, dict2data, data2dict
+
