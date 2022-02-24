@@ -167,7 +167,7 @@ end
 include("simtests.jl")
 include("logsimtests.jl")
 
-include("shockdecomp.jl")
+# include("shockdecomp.jl")
 
 @testset "misc" begin
     io = IOBuffer()
