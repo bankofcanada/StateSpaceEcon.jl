@@ -349,9 +349,9 @@ end
         s1 = simulate(m, p, ed, fctype=fclevel)
         s2 = simulate(m, p, ed, fctype=fcslope)
         s3 = simulate(m, p, ed, fctype=fcnatural)
-        @test maximum(abs, s1 - s2) < 1e-8
-        @test maximum(abs, s1 - s3) < 1e-8
-        @test maximum(abs, s3 - s2) < 1e-8
+        @test maximum(abs, s1 - s2; dims = :) < 1e-8
+        @test maximum(abs, s1 - s3; dims = :) < 1e-8
+        @test maximum(abs, s3 - s2; dims = :) < 1e-8
 
         sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
         x = rand(Float64, size(ed))
@@ -372,7 +372,7 @@ end
         ed.dly_shk[3] = rand()
         s2 = simulate(m, p, ed, fctype=fcslope)
         s3 = simulate(m, p, ed, fctype=fcnatural)
-        @test maximum(abs, s3 - s2) < 1e-12
+        @test maximum(abs, s3 - s2; dims = :) < 1e-12
 
         sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
         x = rand(Float64, size(ed))
