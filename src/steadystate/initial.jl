@@ -31,11 +31,13 @@ function update_auxvars_ss(point::Vector{Float64}, model::Model)
 
     result = Vector{Float64}(undef, 2 * nall)
     result[1:length(point)] = point
-    if model.flags.ssZeroSlope
-        for i = 1:nauxs
-            result[2*(nvars+nshks+i)-1] = pt0[time0, nvars+nshks+i]
-        end
-    else
+    # assign levels of aux variables
+    for i = 1:nauxs
+        result[2*(nvars+nshks+i)-1] = pt0[time0, nvars+nshks+i]
+    end
+
+    # assign slopes of aux variables, if not known to be zero
+    if !model.flags.ssZeroSlope
         shift = model.options.shift
         pt1 = [ones(ntimes) shift .+ trange] * reshape(point, 2, :)
         # pt1 = [pt1[:,1:nvars] zeros(ntimes, nshks)]
@@ -49,6 +51,9 @@ function update_auxvars_ss(point::Vector{Float64}, model::Model)
 end
 @assert precompile(update_auxvars_ss, (Vector{Float64}, Model))
 
+function _do_warn(args...) 
+    println(args...)
+end
 
 """
     _do_update_auxvars_presolve!(model)
@@ -89,7 +94,7 @@ function _do_update_auxvars_presolve!(model::Model, verbose::Bool, method::Symbo
         end
     end
     if !isempty(exogenous_not_given)
-        @warn "The following @exog variables do not have an assigned steady state. Use `@steadystate model exogvar = val`" exogenous_not_given
+        _do_warn("The following @exog variables do not have an assigned steady state. Use `@steadystate model exogvar = val`", exogenous_not_given)
     end
     # sometimes update_auxvars_ss might change the behaviour of presolve_sstate!
     # because it might set the values of aux variable differently and so

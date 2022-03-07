@@ -107,7 +107,7 @@ end
         @steadystate m lc = 14;
         clear_sstate!(m)
         sssolve!(m);
-        @test check_sstate(m) == 0
+        @test check_sstate(m, tol=10m.tol) == 0
         @test all(m.sstate.mask)
         @test m.sstate.values ≈ [0.004, 0.0, 0.004, 0.0, 0.004, 0.0, 14.0, 0.004, 7.0, 0.004, 9.267287357063445, 0.004, 14.000911466453774, 0.004, 0, 0, 0, 0, 14.000911466453774, 0.004, 9.267287357063445, 0.004]
 
