@@ -186,6 +186,8 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = fa
         error("Unable to update using a simulation plan of different length.")
     end
 
+    unknowns = m.allvars
+
     # LinearIndices used for indexing the columns of the global matrix
     LI = LinearIndices((p.range, 1:sd.NU))
 
@@ -216,8 +218,8 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = fa
         # Update the Jacobian correction matrix, if exogenous plan changed
         II, JJ, VV = Int[], Int[], Float64[]
         last_sim_t = last(sim)
-        for (vi, (v, fc)) in enumerate(zip(m.allvars, sd.FC))
-            @assert vi == v.index
+        for (vi, (v, fc)) in enumerate(zip(unknowns, sd.FC))
+            @assert vi == ModelBaseEcon._index_of_var(v, unknowns)
             # var_CiSc returns a Dict with keys equal to the column offset relative to last_sim_t
             # and values containing the column values.
             for (offset, values) in var_CiSc(sd, v, fc)
@@ -343,8 +345,8 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCo
     # Prep the Jacobian matrix
     neq = 0 # running counter of equations added to matrix
     # Model equations are the same for each sim period, just shifted according to t
-    Jblock = [ti + NT * (vi - 1) for eqn in equations for (ti, vi) in eqn.vinds]
-    Iblock = [i for (i, eqn) in enumerate(equations) for _ in eqn.vinds]
+    Jblock = [ti + NT * (ModelBaseEcon._index_of_var(var, unknowns) - 1) for eqn in equations for (var, ti) in keys(eqn.tsrefs)]
+    Iblock = [i for (i, eqn) in enumerate(equations) for _ in eqn.tsrefs]
     Tblock = -m.maxlag:m.maxlead
     @timer for t in sim
         push!(TT, t .+ Tblock)
