@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -23,21 +23,21 @@ Specific options
     method starts with the LM algorithm and automatically switches to NR when it
     starts to converge. Default is `:nr`.
 """
-function sssolve!(model::Model; 
-    verbose::Bool=model.options.verbose, 
-    tol::Float64=model.options.tol,
-    maxiter::Int64=model.options.maxiter,
-    presolve::Bool=true,
-    nropts=Options(linesearch=false),
-    lmopts=Options(),
-    method::Symbol=:nr
+function sssolve!(model::Model;
+    verbose::Bool = model.options.verbose,
+    tol::Float64 = model.options.tol,
+    maxiter::Int64 = model.options.maxiter,
+    presolve::Bool = true,
+    nropts = Options(linesearch = false),
+    lmopts = Options(),
+    method::Symbol = :nr
 )::Vector{Float64}
 
     if method ∉ (:nr, :lm, :auto)
         error("Method should be one of :nr, :lm, or :auto, not :$method")
     end
 
-    sd = SolverData(model; presolve=presolve)
+    sd = SolverData(model; presolve = presolve)
     if sd.nvars == 0
         # Nothing left to solve for
         return sd.point
@@ -45,8 +45,12 @@ function sssolve!(model::Model;
 
     ss = model.sstate
     # vars = ss.vars[sd.solve_var]
-    ss_nvars = 2*length(ss.vars)
+    ss_nvars = 2 * length(ss.vars)
     ss_neqns = ModelBaseEcon.neqns(ss)
+
+    for eqn in ss.constraints
+        ModelBaseEcon._update_eqn_params!(eqn.eval_resid, model.parameters)
+    end
 
     lm = LMData(model, sd; lmopts...)
     nr = NRData(model, sd; nropts...)
@@ -66,7 +70,7 @@ function sssolve!(model::Model;
 
     if method ∈ (:lm, :auto)
         @timer r0, j0 = global_SS_RJ(xx, sd)
-        first_step_lm!(xx, dx, r0, j0, lm; verbose=verbose)
+        first_step_lm!(xx, dx, r0, j0, lm; verbose = verbose)
         nf = nr0 = norm(r0, Inf)
         if verbose
             @info "0, || Fx || = $(nr0), || Δx || = $(norm(dx, Inf)), lambda = $(lm.params[1])"
@@ -87,10 +91,10 @@ function sssolve!(model::Model;
         nf = norm(r0, Inf)
 
         if (method == :nr) || ((method == :auto) && run_nr)
-            step_nr!(xx, dx, r0, j0, nr; verbose=verbose)
+            step_nr!(xx, dx, r0, j0, nr; verbose = verbose)
             last_step_method = :nr
         else
-            step_lm!(xx, dx, r0, j0, lm; verbose=verbose)
+            step_lm!(xx, dx, r0, j0, lm; verbose = verbose)
             run_nr = (nf < nr0 < 1e-2) && (lm.params[1] <= 1e-3)
             last_step_method = :lm
         end
@@ -98,7 +102,7 @@ function sssolve!(model::Model;
         xx .-= dx
 
         # try updating the auxiliary variables
-        if any(sd.solve_var[length(model.variables) * 2 + 1:end])
+        if any(sd.solve_var[length(model.variables)*2+1:end])
             try
                 global_SS_R!(r0, xx, sd)
                 n1 = sum(abs2, r0)
@@ -128,7 +132,7 @@ function sssolve!(model::Model;
             break
         end
     end
-    if verbose && nf > tol 
+    if verbose && nf > tol
         bad_eqn, bad_var = diagnose_sstate(model)
         lbva = length(bad_var)
         if lbva > 0
@@ -140,10 +144,10 @@ function sssolve!(model::Model;
         if lbeq > 0
             bad_eqn = (lbeq > 10) ? (join(bad_eqn[1:10], "\n   ") * "\n   . . .") : join(bad_eqn, "\n   ")
             eqns_str = "System may be inconsistent. Couldn't solve $(lbeq) equations to the required accuracy:\n   $bad_eqn"
-            @warn eqns_str 
+            @warn eqns_str
         end
     end
-    xx[ abs.(xx) .< tol ] .= 0.0
+    xx[abs.(xx).<tol] .= 0.0
     ss.values[sd.solve_var] .= xx
     ss.mask[sd.solve_var] .= true
     if run_nr

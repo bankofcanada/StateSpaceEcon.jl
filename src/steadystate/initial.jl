@@ -51,7 +51,7 @@ function update_auxvars_ss(point::Vector{Float64}, model::Model)
 end
 @assert precompile(update_auxvars_ss, (Vector{Float64}, Model))
 
-function _do_warn(args...) 
+function _do_warn(args...)
     println(args...)
 end
 
@@ -81,6 +81,9 @@ function _do_update_auxvars_presolve!(model::Model, verbose::Bool, method::Symbo
     end
     # presolve only the steady state constraints (to apply the values of exog variables)
     if !isempty(ss.constraints)
+        for eqn in ss.constraints
+            ModelBaseEcon._update_eqn_params!(eqn.eval_resid, model.parameters)
+        end
         presolve_sstate!(ss.constraints, ss.mask, ss.values; model.tol, verbose, method)
     end
     # make sure all exog variables are set to solved
