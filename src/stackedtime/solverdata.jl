@@ -50,8 +50,10 @@ struct StackedTimeSolverData # <: AbstractSolverData
     fc_mask::AbstractVector{Bool}
     "Keep track of which variables are \"active\" for the solver."
     solve_mask::AbstractVector{Bool}
-    "Cache the LU decomposition of the active part of J"
-    luJ::Ref{Any}
+    "Cache the factorization of the active part of J"
+    J_factorized::Ref{Any}
+    "Set to one of :qr or :lm"
+    factorization::Symbol
 end
 
 #############################################################################
@@ -251,7 +253,7 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = fa
             sd.CiSc .= sparse(II, JJ, VV, NTFC * sd.NU, size(sd.J, 1))
         end
         # cached lu is no longer valid, since active columns have changed
-        sd.luJ[] = nothing
+        sd.J_factorized[] = nothing
     end
 
     return sd
@@ -385,7 +387,7 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCo
         need_SS ? transform(steadystatearray(m, p), m) : zeros(0, 0),
         islog.(m.allvars) .| isneglog.(m.allvars), islin.(m.allvars),
         m.evaldata, exog_mask, fc_mask, solve_mask,
-        Ref{Any}(nothing))
+        Ref{Any}(nothing), getoption(m, :factorization, :lu))
 
     return @timer update_plan!(sd, m, p; changed = true)
 end
@@ -533,7 +535,7 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
     RES = Vector{Float64}(undef, size(JAC, 1))
     # Model equations @ [1] to [end-1]
     haveJ = isa(sd.evaldata, ModelBaseEcon.LinearizedModelEvaluationData) && !any(isnan.(JAC.nzval))
-    haveLU = sd.luJ[] !== nothing
+    haveLU = sd.J_factorized[] !== nothing
     if haveJ
         # update only RES
         @timer "globalRJ/evalR!" for i = 1:length(sd.BI)
@@ -557,7 +559,7 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
         end
         try
             # compute lu decomposition of the active part of J and cache it.
-            @timer "LU decomposition" sd.luJ[] = lu(JJ)
+            @timer "J Factorization" sd.J_factorized[] = sd.factorization == :qr ? qr(JJ) : lu(JJ)
         catch e
             if e isa SingularException
                 @error("The system is underdetermined with the given set of equations and final conditions.")
@@ -566,7 +568,7 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
             rethrow()
         end
     end
-    return RES, sd.luJ[]
+    return RES, sd.J_factorized[]
 end
 
 function assign_update_step!(x::AbstractArray{Float64}, λ::Float64, Δx::AbstractArray{Float64}, sd::StackedTimeSolverData)
