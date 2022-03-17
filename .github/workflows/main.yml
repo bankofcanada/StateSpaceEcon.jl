@@ -31,7 +31,7 @@ jobs:
         uses: julia-actions/setup-julia@v1.6.1
         with:
           # The Julia version to download (if necessary) and use. Example: 1.0.4
-          version: 1.5   # optional, default is 1
+          version: 1.6   # optional, default is 1
           # Architecture of the Julia binaries. Defaults to x64.
           arch: x64 # optional, default is x64
           # Display InteractiveUtils.versioninfo() after installing
