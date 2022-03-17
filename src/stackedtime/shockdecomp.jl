@@ -40,6 +40,8 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     _debug = false
 )
 
+    refresh_med!(m)
+
     if !anticipate
         error("Not yet implemented with `anticipate=false`. Try again later.")
     end
@@ -131,7 +133,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
             SDMAT[:, [col]] .-= sum(gdata.J[:, inds] .* delta[inds]', dims = 2)
         end
         # solve the system (in-place)
-        ldiv!(gdata.luJ[], SDMAT)
+        ldiv!(gdata.J_factorized[], SDMAT)
     end
 
     # now split and decorate the shock-decomposition matrix

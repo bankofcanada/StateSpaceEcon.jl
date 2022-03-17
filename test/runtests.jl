@@ -17,6 +17,8 @@ using ModelBaseEcon
 @using_example E6
 @using_example E7
 @using_example E7A
+@using_example S1
+@using_example S2
 
 using Test
 using Suppressor
@@ -175,3 +177,5 @@ include("logsimtests.jl")
     seekstart(io)
     @test length(readlines(io)) == 3
 end
+
+include("dynss.jl")

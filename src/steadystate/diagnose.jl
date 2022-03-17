@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -99,7 +99,7 @@ function diagnose_sstate(point::AbstractVector{Float64}, model::Model)
         if issteady(v)
             bad_var_mask[2vi] = false
         end
-        if isshock(v)
+        if isshock(v) || isexog(v)
             bad_var_mask[2vi-1] = false
             bad_var_mask[2vi] = false
         end

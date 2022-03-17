@@ -22,19 +22,50 @@ Solve the simulation problem.
 """
 function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     maxiter::Int64, tol::Float64, verbose::Bool,
-    sparse_solver::Function = (A, b) -> A \ b)
+    sparse_solver::Function = (A, b) -> A \ b, linesearch = false)
     for it = 1:maxiter
-        @timer Fx, Jx = global_RJ(x, x, sd)
-        @timer nFx = norm(Fx, Inf)
+        Fx, Jx = global_RJ(x, x, sd)
+        nFx = norm(Fx, Inf)
         if nFx < tol
             if verbose
                 @info "$it, || Fx || = $(nFx)"
             end
             break
         end
-        @timer Δx = sparse_solver(Jx, Fx)
-        @timer nΔx = norm(vec(Δx), Inf)
-        @timer assign_update_step!(x, -1.0, Δx, sd)
+        Δx = sparse_solver(Jx, Fx)
+        λ = 1.0
+        if linesearch
+            nf = norm(Fx)
+            # the Armijo rule: C.T.Kelly, Iterative Methods for Linear and Nonlinear Equations, ch.8.1, p.137
+            α = 1e-4
+            σ = 0.5
+            while λ > 0.00001
+                x_buf = copy(x)
+                assign_update_step!(x_buf, -λ, Δx, sd)
+                nrb2 = try
+                    global_R!(Fx, x_buf, x_buf, sd)
+                    norm(Fx)
+                catch e
+                    Inf
+                end
+                if nrb2 < (1.0 - α * λ) * nf
+                    if verbose && λ < 1.0
+                        @info "Linesearch success with λ = $λ."
+                    end
+                    break
+                end
+                λ = σ * λ
+            end
+            if verbose
+                if λ <= 0.00001
+                    @warn "Linesearch failed."
+                elseif λ < 1.0
+                    @info "   Linesearch success with λ=$λ"
+                end
+            end
+        end
+        nΔx = λ * norm(vec(Δx), Inf)
+        assign_update_step!(x, -λ, Δx, sd)
         if verbose
             @info "$it, || Fx || = $(nFx), || Δx || = $(nΔx)"
         end
@@ -96,8 +127,12 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     maxiter::Int64 = m.options.maxiter,
     fctype = getoption(m, :fctype, fcgiven),
     expectation_horizon::Union{Nothing,Int64} = nothing,
-    sparse_solver::Function = (A, b) -> A \ b
+    sparse_solver::Function = (A, b) -> A \ b,
+    linesearch = getoption(m, :linesearch, false)
 )
+
+    refresh_med!(m)
+
     NT = length(p.range)
     nauxs = length(m.auxvars)
     if size(exog_data) != (NT, length(m.varshks))
@@ -115,21 +150,21 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
         exog_data[:, .!logvars] .+= ss_data[:, .!logvars]
     end
 
-    exog_data = @timer ModelBaseEcon.update_auxvars(transform(exog_data, m), m)
+    exog_data = ModelBaseEcon.update_auxvars(transform(exog_data, m), m)
 
     if !isempty(initial_guess)
-        x = @timer ModelBaseEcon.update_auxvars(transform(initial_guess, m), m)
+        x = ModelBaseEcon.update_auxvars(transform(initial_guess, m), m)
     else
         x = copy(exog_data)
     end
 
     if anticipate
-        @timer gdata = StackedTimeSolverData(m, p, fctype)
-        @timer assign_exog_data!(x, exog_data, gdata)
+        gdata = StackedTimeSolverData(m, p, fctype)
+        assign_exog_data!(x, exog_data, gdata)
         if verbose
             @info "Simulating $(p.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
         end
-        @timer sim_nr!(x, gdata, maxiter, tol, verbose, sparse_solver)
+        sim_nr!(x, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
     else # unanticipated shocks
         init = 1:m.maxlag
         term = NT .+ (1-m.maxlead:0)
@@ -155,16 +190,16 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                     continue
                 end
                 setexog!(psim, t0, exog_inds)
-                @timer gdata = StackedTimeSolverData(m, psim, fctype)
+                gdata = StackedTimeSolverData(m, psim, fctype)
                 x[t, exog_inds] = exog_data[t, exog_inds]
-                # @timer assign_exog_data!(x[psim.range,:], exog_data[psim.range,:], gdata)
+                # assign_exog_data!(x[psim.range,:], exog_data[psim.range,:], gdata)
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
                 assign_final_condition!(xx, exog_data[sim_range, :], gdata)
                 if verbose
                     @info "Simulating $(p.range[t:T])" # anticipate expectation_horizon gdata.FC
                 end
-                @timer sim_nr!(xx, gdata, maxiter, tol, verbose, sparse_solver)
+                sim_nr!(xx, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
                 # if verbose
                 #     @info "Result at $t: " x[[t], :]
                 # end
@@ -188,7 +223,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 exog_inds = p[t, Val(:inds)]
                 psim = Plan(m, t:T)
                 setexog!(psim, t0, exog_inds)
-                @timer sdata = StackedTimeSolverData(m, psim, fctype)
+                sdata = StackedTimeSolverData(m, psim, fctype)
                 x[t, exog_inds] = exog_data[t, exog_inds]
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
@@ -196,7 +231,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 if verbose
                     @info "Simulating $(p.range[t:T])" # anticipate expectation_horizon sdata.FC
                 end
-                sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver)
+                sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
                 # if verbose
                 #     @info "Result at $t: " x[[t], :]
                 # end
@@ -225,11 +260,11 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 # In other words, we only need to impose the first period here
                 xx[t0, exog_inds] = exog_data[t, exog_inds]
                 # Update the final conditions (the second argument is not used with fcnatural)
-                @timer assign_final_condition!(xx, xx, sdata)
+                assign_final_condition!(xx, xx, sdata)
                 if verbose
                     @info "Simulating $(p.range[t] .+ (0:expectation_horizon - 1))" # anticipate expectation_horizon sdata.FC
                 end
-                @timer sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver)
+                sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
                 # if verbose
                 #     @info "Result at $t: " x[[t], :]
                 # end
@@ -252,7 +287,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                     if verbose
                         @info "Simulating $(p.range[last_t + 1:T])" # anticipate expectation_horizon sdata.FC
                     end
-                    @timer sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver)
+                    sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
                     # if verbose
                     #     @info "Result at $(last_t + 1): " x[[last_t + 1], :]
                     # end
@@ -287,7 +322,7 @@ function simulate(m::Model, p::Plan, data::SimData; kwargs...)
     elseif initial_guess isa AbstractDict
         kw = (; initial_guess = dict2array(initial_guess, m, p))
     else
-        kw = (;)        
+        kw = (;)
     end
     result = copy(data)
     result[p.range, m.varshks] .= simulate(m, p, exog; kwargs..., kw...)

@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -26,9 +26,9 @@ empty!(E1.model.sstate.constraints)
         # 
         m.α = 0.4
         m.β = 1.0 - m.α
-        clear_sstate!(m, verbose = false)
+        clear_sstate!(m)
         @test m.sstate.mask == trues(4)
-        sssolve!(m; verbose = false)
+        sssolve!(m)
         @test check_sstate(m) == 0
         @test m.sstate.mask == trues(4)
         @test m.sstate.values == [1.2, 0.0, 0.0, 0.0]
@@ -36,8 +36,8 @@ empty!(E1.model.sstate.constraints)
         empty!(m.sstate.constraints)
         m.α = 0.3
         m.β = 1.0 - m.α
-        clear_sstate!(m, verbose = false)
-        sssolve!(m; verbose = false)
+        clear_sstate!(m)
+        sssolve!(m)
         @test check_sstate(m) == 0
         @test m.sstate.values[2] == 0.0
     end
@@ -47,7 +47,7 @@ empty!(E2.model.sstate.constraints)
 @testset "E2.sstate" begin
     let m = E2.model
         clear_sstate!(m)
-        sssolve!(m);
+        sssolve!(m)
         @test check_sstate(m) == 0
         @test m.sstate.mask == trues(12)
         @test m.sstate.values == zeros(12)
@@ -76,7 +76,7 @@ end
         clear_sstate!(m)
         sssolve!(m)
         @test check_sstate(m) == 0
-        @test sum(m.sstate.mask) == 9+4
+        @test sum(m.sstate.mask) == 9 + 4
         @test m.sstate.values[m.sstate.mask] ≈ [0.005, 0.0, 0.0045, 0.0, 0.0095, 0.0, 0.005, 0.0045, 0.0095, 0, 0, 0, 0]
 
         empty!(m.sstate.constraints)
@@ -84,7 +84,7 @@ end
         @steadystate m ly = 3
         @steadystate m lyn = 7
         clear_sstate!(m)
-        sssolve!(m);
+        sssolve!(m)
         @test check_sstate(m) == 0
         @test all(m.sstate.mask)
         @test m.sstate.values ≈ [0.005, 0.0, 0.0045, 0.0, 0.0095, 0.0, 2.0, 0.005, 3.0, 0.0045, 7.0, 0.0095, 0, 0, 0, 0]
@@ -97,17 +97,17 @@ end
         m.options.tol = 1e-9
 
         clear_sstate!(m)
-        sssolve!(m);
+        sssolve!(m)
         @test check_sstate(m) == 0
         # underdetermined system - two free variables
         @test sum(m.sstate.mask) == length(m.sstate.mask) - 2
 
         empty!(m.sstate.constraints)
-        @steadystate m linv = lc - 7;
-        @steadystate m lc = 14;
+        @steadystate m linv = lc - 7
+        @steadystate m lc = 14
         clear_sstate!(m)
-        sssolve!(m);
-        @test check_sstate(m) == 0
+        sssolve!(m)
+        @test check_sstate(m, tol = 10m.tol) == 0
         @test all(m.sstate.mask)
         @test m.sstate.values ≈ [0.004, 0.0, 0.004, 0.0, 0.004, 0.0, 14.0, 0.004, 7.0, 0.004, 9.267287357063445, 0.004, 14.000911466453774, 0.004, 0, 0, 0, 0, 14.000911466453774, 0.004, 9.267287357063445, 0.004]
 
@@ -116,20 +116,20 @@ end
         @steadystate m lc = 14
         @steadystate m linv = 8
         clear_sstate!(m)
-        sssolve!(m);
+        sssolve!(m)
         # overdetermined inconsistent set of constraints
         @test check_sstate(m) > 0
 
         empty!(m.sstate.constraints)
         @steadystate m linv = lc - 7
         @steadystate m lc = 14
-        @steadystate m ly = log(exp(lc) + exp(linv));
+        @steadystate m ly = log(exp(lc) + exp(linv))
         clear_sstate!(m)
-        sssolve!(m);
+        sssolve!(m)
         # overdetermined consistent set of constraints
         @test check_sstate(m) == 0
         @test all(m.sstate.mask)
-        @test m.sstate.values ≈ [0.004, 0.0, 0.004, 0.0, 0.004, 0.0, 14.0, 0.004, 7.0, 0.004, 9.267287357063445, 0.004, 14.000911466453774, 0.004, 0, 0, 0 ,0, 14.000911466453774, 0.004, 9.267287357063445, 0.004]
+        @test m.sstate.values ≈ [0.004, 0.0, 0.004, 0.0, 0.004, 0.0, 14.0, 0.004, 7.0, 0.004, 9.267287357063445, 0.004, 14.000911466453774, 0.004, 0, 0, 0, 0, 14.000911466453774, 0.004, 9.267287357063445, 0.004]
     end
 end
 
@@ -142,7 +142,7 @@ using StateSpaceEcon
 module SSTEST
 using ModelBaseEcon
 model = Model()
-@steadyvariables model a b 
+@steadyvariables model a b
 @variables model c
 @equations model begin
     a[t] = 0.95b[t] + 0.1
