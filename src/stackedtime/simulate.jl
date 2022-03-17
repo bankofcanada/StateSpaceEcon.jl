@@ -130,6 +130,9 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     sparse_solver::Function = (A, b) -> A \ b,
     linesearch = getoption(m, :linesearch, false)
 )
+
+    refresh_med!(m)
+
     NT = length(p.range)
     nauxs = length(m.auxvars)
     if size(exog_data) != (NT, length(m.varshks))

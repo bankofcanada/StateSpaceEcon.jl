@@ -40,6 +40,8 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     _debug = false
 )
 
+    refresh_med!(m)
+
     if !anticipate
         error("Not yet implemented with `anticipate=false`. Try again later.")
     end
