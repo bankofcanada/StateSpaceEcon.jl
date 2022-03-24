@@ -533,12 +533,24 @@ end
 setexog!(p::Plan{T}, tt::T, vinds) where {T<:MIT} = setexog!(p, _offset(p, tt), vinds)
 
 """
-    count_exog_points(p::Plan, vars)
-    count_endo_points(p::Plan, var1, var2, ...)
+    count_exog_points(p::Plan, rng, vars)
+    count_endo_points(p::Plan, rng, vars)
+
+Count the number of exogenous / endogenous points for the given list of
+variables over the given range.
+
+Example:
+```
+count_exog_points(p, :, m.exogenous)
+count_endo_points(p, :, m.shocks)
+```
+
 """
 function count_exog_points end, function count_endo_points end
-count_exog_points(p::Plan, rng, vars) = count_points(Val(:exog), p, rng, [p.varshks[Symbol(v)] for v in vars])
-count_endo_points(p::Plan, rng, vars) = count_points(Val(:endo), p, rng, [p.varshks[Symbol(v)] for v in vars])
+count_exog_points(p::Plan, ::Colon, vars) = count_points(Val(:exog), p, :, [p.varshks[Symbol(v)] for v in vars])
+count_exog_points(p::Plan, rng::Union{MIT, AbstractUnitRange{<:MIT}}, vars) = count_points(Val(:exog), p, _offset(p, rng), [p.varshks[Symbol(v)] for v in vars])
+count_endo_points(p::Plan, ::Colon, vars) = count_points(Val(:endo), p, :, [p.varshks[Symbol(v)] for v in vars])
+count_endo_points(p::Plan, rng::Union{MIT, AbstractUnitRange{<:MIT}}, vars) = count_points(Val(:endo), p, _offset(p, rng), [p.varshks[Symbol(v)] for v in vars])
 count_points(::Val{:exog}, p::Plan, rng, vars) = sum(p.exogenous[rng, vars])
 count_points(::Val{:endo}, p::Plan, rng, vars) = sum(.!p.exogenous[rng, vars])
 export count_endo_points, count_exog_points
