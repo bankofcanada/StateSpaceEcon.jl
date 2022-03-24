@@ -87,17 +87,17 @@ function _do_update_auxvars_presolve!(model::Model, verbose::Bool, method::Symbo
         presolve_sstate!(ss.constraints, ss.mask, ss.values; model.tol, verbose, method)
     end
     # make sure all exog variables are set to solved
-    exogenous_not_given = Symbol[]
+    exog_no_sstate = Symbol[]
     for v in ss.vars
         if isexog(v.name)
             if !all(v.mask)
-                push!(exogenous_not_given, v.name.name)
+                push!(exog_no_sstate, v.name.name)
             end
             v.mask .= true
         end
     end
-    if !isempty(exogenous_not_given)
-        _do_warn("The following @exog variables do not have an assigned steady state. Use `@steadystate model exogvar = val`", exogenous_not_given)
+    if !isempty(exog_no_sstate)
+        @warn "The following @exog variables do not have an assigned steady state. Use `@steadystate model exogvar = val`" exog_no_sstate
     end
     # sometimes update_auxvars_ss might change the behaviour of presolve_sstate!
     # because it might set the values of aux variable differently and so
