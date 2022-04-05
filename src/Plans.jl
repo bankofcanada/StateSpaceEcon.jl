@@ -24,14 +24,6 @@ endogenous at each period of the range.
   * [`autoexogenize!`](@ref) - exogenize and endogenize variables according to
     the list in the model
 
-### Prepare data for simulation
-  * [`zeroarray`](@ref), [`zerodict`](@ref), [`zerodata`](@ref) - prepare a
-    matrix or a dictionary or a [`SimData`](@ref) of data for the simulation
-    containing zeros.
-  * [`steadystatearray`](@ref), [`steadystatedict`](@ref),
-    [`steadystatedata`](@ref) - prepare a matrix or a dictionary or a [`SimData`](@ref) of data for the
-    simulation containing the steady state.
-
 """
 module Plans
 
@@ -40,8 +32,7 @@ using ModelBaseEcon
 
 # exported from this module that are also exported from StateSpaceEcon
 export Plan,
-    exogenize!, endogenize!, exog_endo!, endo_exog!, autoexogenize!,
-    zeroarray, zerodict, steadystatearray, steadystatedict, zerodata, steadystatedata
+    exogenize!, endogenize!, exog_endo!, endo_exog!, autoexogenize!
 
 # exported from this module, but meant for internal use in StateSpaceEcon
 export plansum
@@ -53,7 +44,6 @@ export plansum
 A data structure representing the simulation plan. It holds information about
 the time range of the simulation and which variables/shocks are exogenous at
 each period.
-
 """
 struct Plan{T<:MIT} <: AbstractVector{Vector{Symbol}}
     range::AbstractUnitRange{T}
@@ -68,7 +58,7 @@ Plan(model::Model, r::Union{MIT,Int}) = Plan(model, r:r)
 
 Create a default simulation plan for the given model over the given range. The
 range of the plan is augmented to include periods before and after the given
-range, over which initial and final conditions will be applied. 
+range, over which initial and final conditions will be applied.
 
 Instead of a range, one could also pass in a single moment in time
 ([`MIT`](@ref TimeSeriesEcon.MIT)) instance, in which case it is interpreted as
@@ -134,7 +124,7 @@ Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}, m::Model) = p[Uni
     return p[rng]
 end
 
-@inline Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize` and `endogenize` to alter plan.")
+Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize` and `endogenize` to alter plan.")
 
 #######################################
 # query the exo-end status of a variable
@@ -147,7 +137,7 @@ end
 #######################################
 # Pretty printing
 
-@inline Base.summary(io::IO, p::Plan) = print(io, typeof(p), " with range ", p.range)
+Base.summary(io::IO, p::Plan) = print(io, typeof(p), " with range ", p.range)
 
 # Used in the show() implementation below
 function collapsed_range(p::Plan{T}) where {T<:MIT}
@@ -169,7 +159,7 @@ function collapsed_range(p::Plan{T}) where {T<:MIT}
     push!(ret, make_key() => val)
 end
 
-@inline Base.show(io::IO, ::MIME"text/plain", p::Plan) = show(io, p)
+Base.show(io::IO, ::MIME"text/plain", p::Plan) = show(io, p)
 function Base.show(io::IO, p::Plan)
     # 0) show summary before setting :compact
     summary(io, p)
@@ -223,7 +213,35 @@ end
 
 export exportplan, importplan
 
-@inline exportplan(p::Plan; kwargs...) = exportplan(Base.stdout, p; kwargs...)
+"""
+    exportplan(plan; options)
+    exportplan(file, plan; options)
+
+Display the plan or save it in a text file.
+
+### Options
+ * `alphabetical=false` - set to `true` to sort the variables. By default
+   variables will be listed in the same order as in the model.
+ * `exog_mark="X"` - a short string (ideally 1 character) to mark exogenous
+   values.
+ * `endo_mark="-"` - a short string (ideally 1 character) to mark endogenous
+   values.
+ * `delim=" "` - delimiter. Use `","`` to make it a CSV file.
+
+See also [`importplan`](@ref)
+"""
+function exportplan end
+
+"""
+    importplan(file)
+
+Read the plan from a text file.
+
+See also [`exportplan`](@ref)
+"""
+function importplan end
+
+exportplan(p::Plan; kwargs...) = exportplan(Base.stdout, p; kwargs...)
 @inline exportplan(file::AbstractString, p::Plan; kwargs...) = (
     open(file, "w") do f
         exportplan(f, p; kwargs...)
@@ -502,9 +520,9 @@ end
 #######################################
 # The user interface to prepare data for simulation.
 
-@inline TimeSeriesEcon.frequencyof(p::Plan) = frequencyof(p.range)
-@inline TimeSeriesEcon.firstdate(p::Plan) = first(p.range)
-@inline TimeSeriesEcon.lastdate(p::Plan) = last(p.range)
+TimeSeriesEcon.frequencyof(p::Plan) = frequencyof(p.range)
+TimeSeriesEcon.firstdate(p::Plan) = first(p.range)
+TimeSeriesEcon.lastdate(p::Plan) = last(p.range)
 
 #######################################
 # The internal interface to simulations code.
@@ -534,23 +552,36 @@ setexog!(p::Plan{T}, tt::T, vinds) where {T<:MIT} = setexog!(p, _offset(p, tt), 
 
 """
     count_exog_points(p::Plan, rng, vars)
-    count_endo_points(p::Plan, rng, vars)
 
-Count the number of exogenous / endogenous points for the given list of
-variables over the given range.
+Count the number of exogenous points for the given plan over the given range.
 
 Example:
 ```
 count_exog_points(p, :, m.exogenous)
+```
+
+See also [`count_endo_points`](@ref)
+"""
+function count_exog_points end
+
+"""
+    count_endo_points(p::Plan, rng, vars)
+
+Count the number of endogenous points for the given plan over the given range.
+
+Example:
+```
 count_endo_points(p, :, m.shocks)
 ```
 
+See also [`count_exog_points`](@ref)
 """
-function count_exog_points end, function count_endo_points end
+function count_endo_points end
+
 count_exog_points(p::Plan, ::Colon, vars) = count_points(Val(:exog), p, :, [p.varshks[Symbol(v)] for v in vars])
-count_exog_points(p::Plan, rng::Union{MIT, AbstractUnitRange{<:MIT}}, vars) = count_points(Val(:exog), p, _offset(p, rng), [p.varshks[Symbol(v)] for v in vars])
+count_exog_points(p::Plan, rng::Union{MIT,AbstractUnitRange{<:MIT}}, vars) = count_points(Val(:exog), p, _offset(p, rng), [p.varshks[Symbol(v)] for v in vars])
 count_endo_points(p::Plan, ::Colon, vars) = count_points(Val(:endo), p, :, [p.varshks[Symbol(v)] for v in vars])
-count_endo_points(p::Plan, rng::Union{MIT, AbstractUnitRange{<:MIT}}, vars) = count_points(Val(:endo), p, _offset(p, rng), [p.varshks[Symbol(v)] for v in vars])
+count_endo_points(p::Plan, rng::Union{MIT,AbstractUnitRange{<:MIT}}, vars) = count_points(Val(:endo), p, _offset(p, rng), [p.varshks[Symbol(v)] for v in vars])
 count_points(::Val{:exog}, p::Plan, rng, vars) = sum(p.exogenous[rng, vars])
 count_points(::Val{:endo}, p::Plan, rng, vars) = sum(.!p.exogenous[rng, vars])
 export count_endo_points, count_exog_points

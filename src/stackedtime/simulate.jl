@@ -84,15 +84,16 @@ export simulate
 Run a simulation for the given model, simulation plan and exogenous data.
 
 ### Arguments
-  * `model` - the [`Model`](@ref) instance to simulate.
+  * `model` - the [`Model`](@ref ModelBaseEcon.Model) instance to simulate.
   * `plan` - the [`Plan`](@ref) for the simulation.
   * `data` - a 2D `Array` containing the exogenous data. This includes the
     initial and final conditions.
 
 ### Options as keyword arguments
-  * `fctype::`[`FCType`](@ref) - set the desired final condition type for the
-    simulation. The default value is `fcgiven`. Other possible values
-    include `fclevel` and `fcslope`.
+  * `fctype::`[`FinalCondition`](@ref) - set the desired final condition type
+    for the simulation. The default value is [`fcgiven`](@ref). Other possible
+    values include [`fclevel`](@ref), [`fcslope`](@ref) and
+    [`fcnatural`](@ref).
   * `initial_guess::AbstractMatrix{Float64}` - a 2D `Array` containing the
     initial guess for the solution. This is used to start the Newton-Raphson
     algorithm. The default value is an empty array (`zeros(0,0)`), in which case
@@ -110,11 +111,6 @@ Run a simulation for the given model, simulation plan and exogenous data.
   * `maxiter::Int` - algorithm fails if the desired accuracy is not reached
     within this maximum number of iterations. Default value is taken from
     `model.options`.
-
-### See also: 
-
-### Examples
-
 """
 function simulate end
 
@@ -131,6 +127,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     linesearch = getoption(m, :linesearch, false)
 )
 
+    # make sure the model evaluation data is up to date
     refresh_med!(m)
 
     NT = length(p.range)
@@ -309,9 +306,10 @@ end
 
 # The versions of simulate with Dict/Workspace/SimData
 
-@inline simulate(m::Model, p::Plan, data::Dict; kwargs...) = simulate(m, p, dict2data(data, m, p; copy = true); kwargs...)
-@inline simulate(m::Model, p::Plan, data::Workspace; kwargs...) = simulate(m, p, workspace2data(data, m, p; copy = true); kwargs...)
+simulate(m::Model, p::Plan, data::Dict; kwargs...) = simulate(m, p, dict2data(data, m, p; copy = true); kwargs...)
+simulate(m::Model, p::Plan, data::Workspace; kwargs...) = simulate(m, p, workspace2data(data, m, p; copy = true); kwargs...)
 
+# this is the main interface.
 function simulate(m::Model, p::Plan, data::SimData; kwargs...)
     exog = data2array(data, m, p)
     initial_guess = get(kwargs, :initial_guess, nothing)

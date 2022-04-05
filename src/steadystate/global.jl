@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -19,11 +19,11 @@ end
 
 
 """
-    global_SS_R!(res, point, equations)
+    global_SS_R!(R, point, equations)
 
 Compute the residual vector of the given set of equations at the given point.
-The `equations` argument can be a container or an iterator whose `eltype` is `SteadyStateEquations`.
-The residual `res` is updated in place.
+The `equations` argument can be a container whose `eltype` is
+`SteadyStateEquations`. The residual `R` is updated in place.
 """
 function global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64}, eqns::EqnIter) where EqnIter
     if ! (eltype(eqns) <: SteadyStateEquation)
@@ -45,22 +45,20 @@ end
 @assert precompile(global_SS_R!, (Vector{Float64}, Vector{Float64}, Vector{SteadyStateEquation}))
 
 """
-    global_SS_R!(res, point, model::Model)
+    global_SS_R!(R, point, model::Model)
 
-When a model is given, we compute the residual of the entire steady state system.
+When a model is given, we compute the residual of the entire steady state
+system.
 """
-@inline global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64}, model::Model) = global_SS_R!(resid, point, ModelBaseEcon.alleqns(model.sstate))
+global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64}, model::Model) = global_SS_R!(resid, point, ModelBaseEcon.alleqns(model.sstate))
 @assert precompile(global_SS_R!, (Vector{Float64}, Vector{Float64}, Model))
 
-
-
-
 """
-    global_SS_RJ(point, equations)
+    R, J = global_SS_RJ(point, equations)
 
-Compute the residual vector and the Jacobian matrix of the given set of equations at the given point.
-The return value is a tuple with two values.
-The `equations` argument can be a container or an iterator whose `eltype` is `SteadyStateEquations`.
+Compute the residual vector `R` and the Jacobian matrix of the given set of
+equations at the given point. The `equations` argument can be a container whose
+`eltype` is `SteadyStateEquations`.
 """
 function global_SS_RJ(point::AbstractVector{Float64}, eqns::EqnIter) where EqnIter
     if ! (eltype(eqns) <: SteadyStateEquation)
@@ -94,9 +92,10 @@ end
 @assert precompile(global_SS_RJ, (Vector{Float64}, Vector{SteadyStateEquation}))
 
 """
-    global_SS_RJ(point, model::Model)
+    R, J = global_SS_RJ(point, model::Model)
 
-When a model is given, we compute the residual of the entire steady state system.
+When a model is given, we compute the residual of the entire steady state
+system.
 """
-@inline global_SS_RJ(point::Vector{Float64}, model::Model) = global_SS_RJ(point, ModelBaseEcon.alleqns(model.sstate))
+global_SS_RJ(point::Vector{Float64}, model::Model) = global_SS_RJ(point, ModelBaseEcon.alleqns(model.sstate))
 @assert precompile(global_SS_RJ, (Vector{Float64}, Model))

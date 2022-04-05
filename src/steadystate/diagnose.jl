@@ -74,7 +74,7 @@ steady state constraints until you get a unique solution. See
     The output from this function may be difficult to read.<br>
     Call [`check_sstate`](@ref) instead.
 """
-@inline diagnose_sstate(model::Model) = diagnose_sstate(model.sstate.values, model)
+diagnose_sstate(model::Model) = diagnose_sstate(model.sstate.values, model)
 function diagnose_sstate(point::AbstractVector{Float64}, model::Model)
     tol = model.options.tol 
     rr, jj = global_SS_RJ(point, model)

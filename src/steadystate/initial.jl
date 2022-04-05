@@ -55,13 +55,7 @@ function _do_warn(args...)
     println(args...)
 end
 
-"""
-    _do_update_auxvars_presolve!(model)
-
-Call `update_auxvars_ss`, then call `presolve_sstate!`.
-
-This function is for internal use. Do not call directly.
-"""
+# Call `update_auxvars_ss`, then call `presolve_sstate!`.
 function _do_update_auxvars_presolve!(model::Model, verbose::Bool, method::Symbol = :bisect)
     ss = model.sstate
     # set shocks (level and slope) and steady slopes to 0.0
@@ -120,7 +114,9 @@ Set the steady state values to the provided defaults and presolve.
 ### Arguments
   * `model` - the model instance
   * `lvl`, `slp` - the initial guess for the level and the slope. Each could be
-    a number or a vector of length equal to the number of variable in the mode.
+    a number or a vector of length equal to the number of variable in the model.
+    Variables include regular and exogenous variables, but not shocks (shocks
+    are assumed to be 0 in steady state).
 
 ### Options
 Standard options (default values are taken from `model.options`)
@@ -129,7 +125,7 @@ Standard options (default values are taken from `model.options`)
 function clear_sstate!(model::Model; lvl = 0.1, slp = 0.0, verbose = model.options.verbose)
     ss = model.sstate
     nvars = length(model.variables)
-    nshks = length(model.shocks)
+    # nshks = length(model.shocks)
     fill!(ss.values, 0.0)
     ss.values[1:2:2nvars] .= lvl  # default initial guess for level
     ss.values[2:2:2nvars] .= slp  # default initial guess for slope
@@ -167,7 +163,7 @@ function initial_sstate!(model::Model, init::AbstractVector{Float64}; verbose = 
     nauxs = length(model.auxvars)
     ninit = length(init)
     if ninit ∉ (2nvars, 2nvars + 2nauxs, 2nvars + 2nshks + 2nauxs)
-        error("Incorrect dimension if initial guess: $(ninit). Expected $(2nvars) or $(2nvars + 2nauxs) or $(2nvars + 2nshks + 2nauxs)")
+        error("Incorrect dimension if initial guess: $(ninit). Expected $(2nvars) or $(2nvars + 2nshks) or $(2nvars + 2nshks + 2nauxs)")
     end
     ss.values[1:ninit] = init
     ss.values[ninit+1:end] .= 0.0

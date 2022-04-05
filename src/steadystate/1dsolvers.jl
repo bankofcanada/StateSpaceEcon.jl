@@ -1,31 +1,30 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
 """
     1dsolvers.jl 
 
-This file contains a couple of solvers used in SteadyStateSolver.
-The functions here solve a problem where a multivariate function is
-solved in a single coordinate, keeping the other coordinates fixed.
-We have 1d- Newton and a variant of the bisection method.
+This file contains solvers used in SteadyStateSolver. The functions here solve a
+problem where a multivariate function is solved in a single coordinate, keeping
+the other coordinates fixed. We have 1d- Newton and a variant of the bisection
+method.
 
 ### Important note: 
-These functions are used in pre-solving the steady state. 
-They have a peculiar feature that they fail if the first derivative is zero.
-Normally, if the residual is zero, that would be a solution regardless of
-the first derivative. However, in the context of presolving the steady state
-we have to consider that the first derivative might be zero because the variable
-actually cancels out of the equation. In that case, any value would
-result in zero residual, but we can't consider that to be a solution.
-For this reason, the implementations in this file deliberately fail
-if the derivative is zero, even if the residual is zero.
-"""
+These functions are used in pre-solving the steady state. They have a peculiar
+feature that they fail if the first derivative is zero. Normally, if the
+residual is zero, that would be a solution regardless of the first derivative.
+However, in the context of presolving the steady state we have to consider that
+the first derivative might be zero because the variable actually cancels out of
+the equation. In that case, any value would result in zero residual, but we
+can't consider that to be a solution. For this reason, the implementations in
+this file deliberately fail if the first derivative is zero, even if the
+residual is zero. """
 
-# This line intentionally left blank
+# Above line intentionally left blank
 
 
 
@@ -33,35 +32,38 @@ if the derivative is zero, even if the residual is zero.
     newton1!(F, x, i; <options>)
 
 Solve the equation `F(x) = 0` for `x[i]` keeping the other values of `x` fixed.
-The input value of `x[i]` is used as the initial guess and it is updated in place.
-Other entries of `x` are not accessed at all.
-Return `true` upon success, or `false` otherwise.
+The input value of `x[i]` is used as the initial guess and it is updated in
+place. Other entries of `x` are not accessed at all. Return `true` upon success,
+or `false` otherwise.
 
 ### Function `F`
-The function `F` must accept a single argument `x`, which is an array, and must return a
-tuple of two things: the value of `F` (numeric scalar) and the gradient of `F`
-(an array of the same shape as x). Only the i-th index of the gradient array is used.
+The function `F` must accept a single argument `x`, which is an array, and must
+return a tuple of two things: the value of `F` (numeric scalar) and the gradient
+of `F` (an array of the same shape as x). Only the i-th index of the gradient
+array is used.
 
 ### Options
-  * `maxiter = 5` - maximum number of iterations. The default is small (5) because
-  the Newton method either converges very fast or doesn't converge at all.
+  * `maxiter = 5` - maximum number of iterations. The default is small (5)
+    because the Newton method either converges very fast or doesn't converge at
+    all.
   * `tol = 1e-8` - desired tolerance of the solution.
 
 ### Notes
-The `tol` value is used for a stopping criterion and also for diagnosing problems.
+The `tol` value is used for a stopping criterion and also for diagnosing
+problems.
 
 !!! warning
-    This is an internal function used by the steady state solver. In the future it might be
-    removed or modified.
+    This is an internal function used by the steady state solver. In the future
+    it might be removed or modified.
 """
-function newton1!(F::Function, vals::AbstractVector{T}, ind::Integer; maxiter=5, tol=sqrt(eps(T)))::Bool where T <: AbstractFloat
+function newton1!(F::Function, vals::AbstractVector{T}, ind::Integer; maxiter=5, tol=sqrt(eps(T)))::Bool where {T<:AbstractFloat}
     fval, Jval = F(vals)
     err = tol * abs(fval) + tol
     for iter = 1:maxiter
         if abs(Jval[ind]) < tol
             return false
         end
-        if abs(fval) < err 
+        if abs(fval) < err
             return true
         end
         dx = fval / Jval[ind]
@@ -76,48 +78,57 @@ end
     bisect!(F, x, i, dF; <options>)
 
 Solve the equation `F(x) = 0` for `x[i]` keeping the other values of `x` fixed.
-The input value of `x[i]` is used as the initial guess and it is updated in place.
-Other entries of `x` are not accessed at all. Return `true` upon success, or `false` otherwise.
+The input value of `x[i]` is used as the initial guess and it is updated in
+place. Other entries of `x` are not accessed at all. Return `true` upon success,
+or `false` otherwise.
 
 ### Arguments
-  * `F` - A function that must accept a single argument `x`, which is an array, and must return
-  the value of `F` (numeric scalar).
+  * `F` - A function that must accept a single argument `x`, which is an array,
+    and must return the value of `F` (numeric scalar).
   * `x` - An array.
-  * `i` - The index identifying the dimension in which we're solving the problem.
-  * `dF` - A numeric value. This must equal the partial derivative of F with respect to `x[i]`
-   at the input value of `x[i]`.
+  * `i` - The index identifying the dimension in which we're solving the
+    problem.
+  * `dF` - A numeric value. This must equal the partial derivative of F with
+    respect to `x[i]` at the input value of `x[i]`. This value is used to
+    construct the initial interval in which the bisection method will be
+    applied.
 
 ### Options
-  * `maxiter = 500` - maximum number of iterations. The default is large (500) because
-  this method sometimes converges slowly.
+  * `maxiter = 500` - maximum number of iterations. The default is large (500)
+    because this method sometimes converges slowly.
   * `tol = 1e-8` - desired tolerance of the solution.
 
 !!! warning
-    This is an internal function used by the steady state solver. In the future it might be
-    removed or modified.
+    This is an internal function used by the steady state solver. In the future
+    it might be removed or modified.
 """
-function bisect!(F::Function, vals::AbstractVector{T}, ind::Int64, deriv::T; maxiter=500, tol=sqrt(eps(T)))::Bool where T <: AbstractFloat
+function bisect!(F::Function, vals::AbstractVector{T}, ind::Int64, deriv::T; maxiter=500, tol=sqrt(eps(T)))::Bool where {T<:AbstractFloat}
     # This code is a mess. Someone please clean it up!
 
     # Convenience wrapper - evaluate F as if it were a univariate function
     # and trap any errors (e.g. inadmissible arguments) returning NaN.
     # With each call, the current value of vals[i] is updated in place.
-    f(x) = (vals[ind] = x; try; F(vals); catch; NaN; end)
+    f(x) = (vals[ind] = x; try
+        F(vals)
+    catch
+        NaN
+    end)
 
     """
         _do_bisect(x0, f0, x1, f1)
 
     Perform the iteration of the bisection method.
 
-    The two initial points are assumed to bracket the solution, i.e. f0 and f1 have different signs.
-    On each iteration we replace one of the endpoints with the midpoint, always maintaining
-    that property.
+    The two initial points are assumed to bracket the solution, i.e. f0 and f1
+    have different signs. On each iteration we replace one of the endpoints with
+    the midpoint, always maintaining that property.
 
-    Return `true` if either the length of the interval shrinks to the machine accuracy
-    of if the function value is with `tol` of zero. Return `false` otherwise.
+    Return `true` if either the length of the interval shrinks to the machine
+    accuracy of if the function value is within `tol` of zero. Return `false`
+    otherwise.
 
-    Note that here we call the function f(x) defined above. In particular, the value of
-    x that solves the problem is written directly into `vals[i]`.
+    Note that here we call the function f(x) defined above. In particular, the
+    value of x that solves the problem is written directly into `vals[i]`.
     """
     function _do_bisect(x0, f0, x1, f1)
         for it = 1:maxiter
@@ -139,7 +150,7 @@ function bisect!(F::Function, vals::AbstractVector{T}, ind::Int64, deriv::T; max
     #######################################################################
     # The problem is to find two points that bracket the solution, i.e. such 
     # that f(x0) and f(x1) have opposite signs. 
-    
+
     # With the sign of f0 and the known derivative at x0 we can search for x1 
     # in the direction in which the function approaches zero.)
     # if the derivative is zero at the initial point, that's an argument error
@@ -180,14 +191,14 @@ function bisect!(F::Function, vals::AbstractVector{T}, ind::Int64, deriv::T; max
     abs(f2) < tol && return true
     # does (x0, x2) bracket the solution?
     if f0 * f2 < 0.0
-        # yes, then (x1, x2) also bracket the solution. Hmmm!
+        # yes, then (x1, x2) also brackets the solution. Hmmm!
         return abs(f0) < abs(f1) ? _do_bisect(x0, f0, x2, f2) : _do_bisect(x1, f1, x2, f2)
     end
 
     # We have three points with the same sign of f. 
     # Desperately try a few iterations of inverse quadratic interpolation.
     for i = 1:20
-        # Approximate f-inverse with a quadratic through the three points we have and set x3 = f-inverse(0)
+        # Approximate f-inverse with a quadratic through the three points we have and set x3 = f_inverse(0)
         x3 = f0 * f1 * x2 / (f2 - f0) / (f2 - f1) + f0 * x1 * f2 / (f1 - f0) / (f1 - f2) + x0 * f1 * f2 / (f0 - f1) / (f0 - f2)
         f3 = f(x3)
         # is it a bad point? 

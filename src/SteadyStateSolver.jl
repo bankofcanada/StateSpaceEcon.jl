@@ -1,15 +1,15 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
 """
     SteadyStateSolver
 
-A module that is part of StateSpaceEcon package.
-Contains methods for finding a steady state of a model.
+A module that is part of StateSpaceEcon package. Contains methods for finding a
+steady state solution of a model.
 """
 module SteadyStateSolver
 

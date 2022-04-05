@@ -14,25 +14,30 @@ Display a matrix in full while controlling the formatting of each value and
 optionally showing the column names.
   * `Val(F)` - display each number in the given format `F`. The format is in the
     form of a decimal point number where the whole part indicates the total
-    width and the fractional part is the number of digits printed after the
-    decimal point. Default is `Val(12.7)`
+    width and the fractional part indicates the number of digits printed after
+    the decimal point. Default is `Val(12.7)`
   * `colnames` - a list of names to display in the first row. The names are
     displayed as given, possibly with padding to match the width given in the
     `Val` argument. If any names are longer than that, they will not be
     truncated and so the display will not be aligned properly. Sorry about that!
 
 """
-@inline printmatrix(mat::AbstractMatrix, args...) = printmatrix(stdout, mat, args...)
-@inline printmatrix(io::IO, mat::AbstractMatrix, args...) = printmatrix(io, mat, Val(12.7), args...)
-@generated function printmatrix(io::IO, mat::AbstractMatrix, ::Val{N}, cols = nothing) where N
+printmatrix(mat::AbstractMatrix, args...) = printmatrix(stdout, mat, args...)
+printmatrix(io::IO, mat::AbstractMatrix, args...) = printmatrix(io, mat, Val(12.7), args...)
+@generated function printmatrix(io::IO, mat::AbstractMatrix, ::Val{F}, cols = nothing) where F
+    N = floor(Int, F)
     fmts = "% $(N)s "
-    fmtn = "% $(N)f "
+    fmtn = "% $(F)f "
     return quote
         m, n = size(mat)
         if cols !== nothing
             s = ""
             for j ∈ 1:n
-                s *= Printf.@sprintf($fmts, cols[j])
+                c = string(cols[j])
+                if length(c) > $N
+                    c = c[1:$N-1] * "…"
+                end
+                s *= Printf.@sprintf($fmts, c)
             end
             println(io, s)
         end
@@ -48,9 +53,7 @@ optionally showing the column names.
 end
 export printmatrix
 
-import ModelBaseEcon: transform, inverse_transform
-
-function transform(data::AbstractMatrix{Float64}, m::Model) 
+function ModelBaseEcon.transform(data::AbstractMatrix{Float64}, m::Model) 
     tdata = similar(data)
     for (i, v) in enumerate(m.varshks)
         tdata[:, i] .= transform(data[:, i], v)
@@ -58,7 +61,7 @@ function transform(data::AbstractMatrix{Float64}, m::Model)
     return tdata
 end
 
-function inverse_transform(data::AbstractMatrix{Float64}, m::Model) 
+function ModelBaseEcon.inverse_transform(data::AbstractMatrix{Float64}, m::Model) 
     idata = similar(data)
     for (i, v) in enumerate(m.varshks)
         idata[:, i] .= inverse_transform(data[:, i], v)
