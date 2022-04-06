@@ -55,13 +55,7 @@ function _do_warn(args...)
     println(args...)
 end
 
-"""
-    _do_update_auxvars_presolve!(model)
-
-Call `update_auxvars_ss`, then call `presolve_sstate!`.
-
-This function is for internal use. Do not call directly.
-"""
+# Call `update_auxvars_ss`, then call `presolve_sstate!`.
 function _do_update_auxvars_presolve!(model::Model, verbose::Bool, method::Symbol = :bisect)
     ss = model.sstate
     # set shocks (level and slope) and steady slopes to 0.0
@@ -87,17 +81,17 @@ function _do_update_auxvars_presolve!(model::Model, verbose::Bool, method::Symbo
         presolve_sstate!(ss.constraints, ss.mask, ss.values; model.tol, verbose, method)
     end
     # make sure all exog variables are set to solved
-    exogenous_not_given = Symbol[]
+    exog_no_sstate = Symbol[]
     for v in ss.vars
         if isexog(v.name)
             if !all(v.mask)
-                push!(exogenous_not_given, v.name.name)
+                push!(exog_no_sstate, v.name.name)
             end
             v.mask .= true
         end
     end
-    if !isempty(exogenous_not_given)
-        _do_warn("The following @exog variables do not have an assigned steady state. Use `@steadystate model exogvar = val`", exogenous_not_given)
+    if !isempty(exog_no_sstate)
+        @warn "The following @exog variables do not have an assigned steady state. Use `@steadystate model exogvar = val`" exog_no_sstate
     end
     # sometimes update_auxvars_ss might change the behaviour of presolve_sstate!
     # because it might set the values of aux variable differently and so
@@ -120,7 +114,9 @@ Set the steady state values to the provided defaults and presolve.
 ### Arguments
   * `model` - the model instance
   * `lvl`, `slp` - the initial guess for the level and the slope. Each could be
-    a number or a vector of length equal to the number of variable in the mode.
+    a number or a vector of length equal to the number of variable in the model.
+    Variables include regular and exogenous variables, but not shocks (shocks
+    are assumed to be 0 in steady state).
 
 ### Options
 Standard options (default values are taken from `model.options`)
@@ -129,7 +125,7 @@ Standard options (default values are taken from `model.options`)
 function clear_sstate!(model::Model; lvl = 0.1, slp = 0.0, verbose = model.options.verbose)
     ss = model.sstate
     nvars = length(model.variables)
-    nshks = length(model.shocks)
+    # nshks = length(model.shocks)
     fill!(ss.values, 0.0)
     ss.values[1:2:2nvars] .= lvl  # default initial guess for level
     ss.values[2:2:2nvars] .= slp  # default initial guess for slope
@@ -167,7 +163,7 @@ function initial_sstate!(model::Model, init::AbstractVector{Float64}; verbose = 
     nauxs = length(model.auxvars)
     ninit = length(init)
     if ninit ∉ (2nvars, 2nvars + 2nauxs, 2nvars + 2nshks + 2nauxs)
-        error("Incorrect dimension if initial guess: $(ninit). Expected $(2nvars) or $(2nvars + 2nauxs) or $(2nvars + 2nshks + 2nauxs)")
+        error("Incorrect dimension if initial guess: $(ninit). Expected $(2nvars) or $(2nvars + 2nshks) or $(2nvars + 2nshks + 2nauxs)")
     end
     ss.values[1:ninit] = init
     ss.values[ninit+1:end] .= 0.0

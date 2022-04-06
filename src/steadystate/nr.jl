@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -29,17 +29,17 @@ struct NRData
     linesearch::Bool
 end
 
-@inline NRData(model::Model; kwargs...) = NRData(model, SolverData(model); kwargs...)
-@inline NRData(model::Model, sd::SolverData; linesearch::Bool = false) = NRData(sd, model.sstate,
+NRData(model::Model; kwargs...) = NRData(model, SolverData(model); kwargs...)
+NRData(model::Model, sd::SolverData; linesearch::Bool = false) = NRData(sd, model.sstate,
                     Array{Float64}(undef, sd.nvars), Array{Float64}(undef, sd.neqns), 
                     trues(sd.nvars), linesearch)
 
 """
     step_nr!(x, dx, resid, J, nr::NRData; verbose=false)
 
-Attempt a Newton-Raphson step. 
-The `nr` structure and the `dx` vector would be updated accordingly.
-Vectors `x`, `resid` and the matrix `J` are read-only inputs.
+Attempt a Newton-Raphson step. The `nr` structure and the `dx` vector would be
+updated accordingly. Vectors `x`, `resid` and the matrix `J` are read-only
+inputs.
 
 !!! warning
     Internal function, do not call directly.

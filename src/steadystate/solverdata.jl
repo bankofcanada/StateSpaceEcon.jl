@@ -1,11 +1,10 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
-@inline ModelBaseEcon.geteqn(i::Integer, m::Model) = geteqn(i, m.sstate)
 
 """
     SolverData
@@ -18,32 +17,43 @@ It contains some current state information and some buffers.
 
 ### Why is this necessary?
 The solution of the steady state problem is done in steps:
-  1. The user sets the initial guess. This can be done with either `initial_sstate!` or `clear_sstate!`
-  2. Pre-solve step. In this step we look for equations that have only one unknown and attempt to solve it.
-  If successful, the unknown is marked as "solved" and is not an unknown anymore, also the equation is marked as
-  "solved" and is not considered anymore. The process repeats for as long as it keeps solving.
-  3. Solve step. This is where we solve the non-linear system composed of the remaining equations for the
-  remaining variables.
+  1. The user sets the initial guess. This can be done with either
+     `initial_sstate!` or `clear_sstate!`
+  2. Pre-solve step. In this step we look for equations that have only one
+     unknown and attempt to solve it. If successful, the unknown is marked as
+     "solved" and is not an unknown anymore, also the equation is marked as
+     "solved" and is not considered anymore. The process repeats for as long as
+     it keeps solving.
+  3. Solve step. This is where we solve the non-linear system composed of the
+     remaining equations for the remaining variables.
 
-This data structure keeps track of which unknowns and equations are solved and which remain to be solved.
-It also holds an indexing map that translates the indexes of the variables and equations we solve for
-to their original indexes in the full steady state system.
+This data structure keeps track of which unknowns and equations are solved and
+which remain to be solved. It also holds an indexing map that translates the
+indexes of the variables and equations we solve for to their original indexes in
+the full steady state system.
 
 ### Fields
-  * `point` - a buffer for the current solution values. Some of these may be presolved, which are kept
-  fixed while solving the system, while the rest are updated during solver iterations. The length equals
-  the total number of steady state variables.
-  * `resid` - a buffer for the current residual vector. The entries corresponding to presolved equations
-  would normally be all zeros, while the ones corresponding to "active" equations would be updated during
-  solver iterations. Lentgh equals the total number of steady state equations.
-  * `solve_var` - a Boolean vector, same size as `point`. Value of `true` means that the unknown is "active", while `false` indicates
-  that it has been pre-solved.
-  * `solve_eqn` - a Boolean vector, same size as `resid`. Value of `true` means that the equation is "active", while `false` indicates
-  that it has been pre-solved.
-  * `vars_index` - an Integer vector, same length as `point`. Entries corresponding to pre-solved variables hold zeros.
-  Entries for active vars are numbered sequentially from 1 to `nvars`
-  * `eqns_index` - an Integer vector, same length as `resid`. Presolved equations have a zero here, while active equations
-  are numbered sequentially from 1 to `neqns`.
+  * `point` - a buffer for the current solution values. Some of these may be
+    presolved, which are kept fixed while solving the system, while the rest are
+    updated during solver iterations. The length equals the total number of
+    steady state variables.
+  * `resid` - a buffer for the current residual vector. The entries
+    corresponding to presolved equations would normally be all zeros, while the
+    ones corresponding to "active" equations would be updated during solver
+    iterations. Lentgh equals the total number of steady state equations.
+  * `solve_var` - a Boolean vector, same size as `point`. Value of `true` means
+    that the unknown is "active", while `false` indicates that it has been
+    pre-solved.
+  * `solve_eqn` - a Boolean vector, same size as `resid`. Value of `true` means
+    that the equation is "active", while `false` indicates that it has been
+    pre-solved.
+  * `vars_index` - an Integer vector, same length as `point`. Entries
+    corresponding to pre-solved variables hold zeros. Entries for active vars
+    are numbered sequentially from 1 to `nvars`
+  * `eqns_index` - an Integer vector, same length as `resid`. Presolved
+    equations have a zero here, while active equations are numbered sequentially
+    from 1 to `neqns`.
+
 """
 struct SolverData
     "Buffer holding the current solution."
@@ -80,10 +90,11 @@ Construct a SolverData instance from all variables and equations in the model,
 ignoring anything pre-solved.
 
 ### Options
-  `verbose::Bool` - if not specified it's taken from the model options.
-  `tol::Float64` - desired tolerance when checking the residual of presolved equation.
-  `presolve::Bool` - if `false`, any pre-solved information is ignored and
-  the solver data is set up to solve all equations for all variables. 
+  * `verbose::Bool` - if not specified it's taken from the model options.
+  * `tol::Float64` - desired tolerance when checking the residual of presolved
+    equation.
+  * `presolve::Bool` - if `false`, any pre-solved information is ignored and the
+    solver data is set up to solve all equations for all variables.
 """
 function SolverData(model::Model; presolve::Bool=true, 
             verbose::Bool=model.options.verbose,
@@ -171,10 +182,10 @@ end
 
 
 """
-    global_SS_RJ(point, sd::SolverData)
+    R, J = global_SS_RJ(point, sd::SolverData)
 
-When applied to a solver data, computes the residual and Jacobian of the active set of equations
-with respect to the active set of variables.
+When applied to a solver data, computes the residual and Jacobian of the active
+set of equations with respect to the active set of variables.
 """
 function global_SS_RJ(point::AbstractVector{Float64}, sd::SolverData)
     sd.point[sd.solve_var] .= point
@@ -208,9 +219,10 @@ end
 @assert precompile(global_SS_RJ, (Vector{Float64}, SolverData))
 
 """
-    global_SS_RJ(point, sd::SolverData)
+    R, J = global_SS_RJ(point, sd::SolverData)
 
-When a solver data is given, we compute the residual of the active equations only.
+When a solver data is given, we compute the residual of the active equations
+only.
 """
 function global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64},  sd::SolverData)
     sd.point[sd.solve_var] .= point

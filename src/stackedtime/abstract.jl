@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -16,19 +16,19 @@
 # that in the signatures of most of these methods, the `sd` argument of the new
 # type is the last argument..
 
-#   * Constructor - normally it would take a model and a plan together with a
+#   + Constructor - normally it would take a model and a plan together with a
 #     final condition type.
-#   * `global_RJ(x, exog, sd)` - compute the residual and the Jacobian (return a
+#   + `global_RJ(x, exog, sd)` - compute the residual and the Jacobian (return a
 #     2-tuple) of the system at the given point `x` and exogenous data `exog`.
-#   * `global_R!(res, x, exog, sd)` (optional) - compute the residual in place.
-#   * `assign_exog_data!(x, exog, sd)` - this function applies the exogenous
+#   + `global_R!(res, x, exog, sd)` (optional) - compute the residual in place.
+#   + `assign_exog_data!(x, exog, sd)` - this function applies the exogenous
 #     constraints as per the plan and the given exogenous data.
-#   * `assign_final_condition!(x, exog, sd, ::Val{T})` where T is one of the
+#   + `assign_final_condition!(x, exog, sd, ::Val{T})` where T is one of the
 #     FCType constants. This method applies the given type of final condition. If
 #     T is fcgiven, the values of the final conditions are taken from exog.
-#   * `assign_update_step(x, lambda, dx, sd)` - this method must implement x = x +
+#   + `assign_update_step(x, lambda, dx, sd)` - this method must implement x = x +
 #     lambda * dx
-#   * `update_plan!(sd, model, plan)` - update the solver data to reflect the given
+#   + `update_plan!(sd, model, plan)` - update the solver data to reflect the given
 #     simulation plan.
 
 # """

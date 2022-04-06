@@ -24,14 +24,6 @@ endogenous at each period of the range.
   * [`autoexogenize!`](@ref) - exogenize and endogenize variables according to
     the list in the model
 
-### Prepare data for simulation
-  * [`zeroarray`](@ref), [`zerodict`](@ref), [`zerodata`](@ref) - prepare a
-    matrix or a dictionary or a [`SimData`](@ref) of data for the simulation
-    containing zeros.
-  * [`steadystatearray`](@ref), [`steadystatedict`](@ref),
-    [`steadystatedata`](@ref) - prepare a matrix or a dictionary or a [`SimData`](@ref) of data for the
-    simulation containing the steady state.
-
 """
 module Plans
 
@@ -40,8 +32,7 @@ using ModelBaseEcon
 
 # exported from this module that are also exported from StateSpaceEcon
 export Plan,
-    exogenize!, endogenize!, exog_endo!, endo_exog!, autoexogenize!,
-    zeroarray, zerodict, steadystatearray, steadystatedict, zerodata, steadystatedata
+    exogenize!, endogenize!, exog_endo!, endo_exog!, autoexogenize!
 
 # exported from this module, but meant for internal use in StateSpaceEcon
 export plansum
@@ -53,7 +44,6 @@ export plansum
 A data structure representing the simulation plan. It holds information about
 the time range of the simulation and which variables/shocks are exogenous at
 each period.
-
 """
 struct Plan{T<:MIT} <: AbstractVector{Vector{Symbol}}
     range::AbstractUnitRange{T}
@@ -68,7 +58,7 @@ Plan(model::Model, r::Union{MIT,Int}) = Plan(model, r:r)
 
 Create a default simulation plan for the given model over the given range. The
 range of the plan is augmented to include periods before and after the given
-range, over which initial and final conditions will be applied. 
+range, over which initial and final conditions will be applied.
 
 Instead of a range, one could also pass in a single moment in time
 ([`MIT`](@ref TimeSeriesEcon.MIT)) instance, in which case it is interpreted as
@@ -95,45 +85,46 @@ end
 #######################################
 # AbstractVector interface 
 
-@inline Base.size(p::Plan) = size(p.range)
-@inline Base.axes(p::Plan) = (p.range,)
-@inline Base.length(p::Plan) = length(p.range)
-@inline Base.IndexStyle(::Plan) = IndexLinear()
-@inline Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
-@inline Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
+Base.size(p::Plan) = size(p.range)
+Base.axes(p::Plan) = (p.range,)
+Base.length(p::Plan) = length(p.range)
+Base.IndexStyle(::Plan) = IndexLinear()
+Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
+Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
 
-@inline _offset(p::Plan{T}, idx::T) where {T<:MIT} = convert(Int, idx - first(p.range) + 1)
-@inline _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where {T<:MIT} =
+_offset(p::Plan{T}, idx::T) where {T<:MIT} = convert(Int, idx - first(p.range) + 1)
+_offset(p::Plan{T}, idx::AbstractUnitRange{T}) where {T<:MIT} =
     _offset(p, first(idx)):_offset(p, last(idx))
 
 ## Integer index is taken as is
-@inline Base.getindex(p::Plan, idx::Int) = p[p.range[idx]]
-@inline Base.getindex(p::Plan, idx::AbstractUnitRange{Int}) = p[p.range[idx]]
-@inline Base.getindex(p::Plan, idx::Int, ::Val{:inds}) = findall(p.exogenous[idx, :])
+Base.getindex(p::Plan, idx::Int) = p[p.range[idx]]
+Base.getindex(p::Plan, idx::AbstractUnitRange{Int}) = p[p.range[idx]]
+Base.getindex(p::Plan, idx::Int, ::Val{:inds}) = findall(p.exogenous[idx, :])
 
 # Index of the frequency type returns the list of exogenous symbols
-@inline Base.getindex(p::Plan{T}, idx::T) where {T<:MIT} = [keys(p.varshks)[p[_offset(p, idx), Val(:inds)]]...,]
-@inline function Base.getindex(p::Plan{T}, idx::T, ::Val{:inds}) where {T<:MIT}
+Base.getindex(p::Plan, idx::MIT) = [keys(p.varshks)[p[_offset(p, idx), Val(:inds)]]...,]
+@inline function Base.getindex(p::Plan, idx::MIT, ::Val{:inds})
     first(p.range) ≤ idx ≤ last(p.range) || throw(BoundsError(p, idx))
     return p[_offset(p, idx), Val(true)]
 end
 
 # A range returns the plan trimmed over that exact range.
-@inline Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}) = p[UnitRange{MIT{Unit}}(rng)]
-@inline function Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}) where {T<:MIT}
+Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}) = p[UnitRange{MIT{Unit}}(rng)]
+@inline function Base.getindex(p::Plan, rng::AbstractUnitRange)
     rng.start < p.range.start && throw(BoundsError(p, rng.start))
     rng.stop > p.range.stop && throw(BoundsError(p, rng.stop))
-    return Plan{T}(rng, p.varshks, p.exogenous[_offset(p, rng), :])
+    println("hello")
+    return Plan(rng, p.varshks, p.exogenous[_offset(p, rng), :])
 end
 
 # A range with a model returns a plan trimmed over that range and extended for initial and final conditions.
-@inline Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}, m::Model) = p[UnitRange{MIT{Unit}}(rng), m]
+Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}, m::Model) = p[UnitRange{MIT{Unit}}(rng), m]
 @inline function Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}, m::Model) where {T<:MIT}
     rng = (rng.start-m.maxlag):(rng.stop+m.maxlead)
     return p[rng]
 end
 
-@inline Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize` and `endogenize` to alter plan.")
+Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize` and `endogenize` to alter plan.")
 
 #######################################
 # query the exo-end status of a variable
@@ -146,7 +137,7 @@ end
 #######################################
 # Pretty printing
 
-@inline Base.summary(io::IO, p::Plan) = print(io, typeof(p), " with range ", p.range)
+Base.summary(io::IO, p::Plan) = print(io, typeof(p), " with range ", p.range)
 
 # Used in the show() implementation below
 function collapsed_range(p::Plan{T}) where {T<:MIT}
@@ -168,7 +159,7 @@ function collapsed_range(p::Plan{T}) where {T<:MIT}
     push!(ret, make_key() => val)
 end
 
-@inline Base.show(io::IO, ::MIME"text/plain", p::Plan) = show(io, p)
+Base.show(io::IO, ::MIME"text/plain", p::Plan) = show(io, p)
 function Base.show(io::IO, p::Plan)
     # 0) show summary before setting :compact
     summary(io, p)
@@ -222,7 +213,35 @@ end
 
 export exportplan, importplan
 
-@inline exportplan(p::Plan; kwargs...) = exportplan(Base.stdout, p; kwargs...)
+"""
+    exportplan(plan; options)
+    exportplan(file, plan; options)
+
+Display the plan or save it in a text file.
+
+### Options
+ * `alphabetical=false` - set to `true` to sort the variables. By default
+   variables will be listed in the same order as in the model.
+ * `exog_mark="X"` - a short string (ideally 1 character) to mark exogenous
+   values.
+ * `endo_mark="-"` - a short string (ideally 1 character) to mark endogenous
+   values.
+ * `delim=" "` - delimiter. Use `","`` to make it a CSV file.
+
+See also [`importplan`](@ref)
+"""
+function exportplan end
+
+"""
+    importplan(file)
+
+Read the plan from a text file.
+
+See also [`exportplan`](@ref)
+"""
+function importplan end
+
+exportplan(p::Plan; kwargs...) = exportplan(Base.stdout, p; kwargs...)
 @inline exportplan(file::AbstractString, p::Plan; kwargs...) = (
     open(file, "w") do f
         exportplan(f, p; kwargs...)
@@ -238,20 +257,20 @@ function _cpad(x::AbstractString, n::Integer, args...)
 end
 
 function exportplan(io::IO, p::Plan;
-    alphabetical = false,  # whether to sort variables
-    exog_mark = "X", endo_mark = "-",  # symbols used for each class
-    delim = " ",  # set to "," to get a CSV file (with 3 skip rows and 1 header row)
-    _name_delim = delim,  # padding after NAME column
-    _range_delim = delim    # padding between range columns
+    alphabetical=false,  # whether to sort variables
+    exog_mark="X", endo_mark="-",  # symbols used for each class
+    delim=" ",  # set to "," to get a CSV file (with 3 skip rows and 1 header row)
+    _name_delim=delim,  # padding after NAME column
+    _range_delim=delim    # padding between range columns
 )
     summary(io, p)
     println(io)
     println(io, "Range: ", p.range)
     println(io, "Variables: ", p.varshks)
-    width1 = 2 + maximum(length, (sprint(print, v; context = io, sizehint = 20) for v in keys(p.varshks)))
+    width1 = 2 + maximum(length, (sprint(print, v; context=io, sizehint=20) for v in keys(p.varshks)))
     width1 = max(width1, 2 + length("NAME"))
     ranges, _ = zip(collapsed_range(p)...)
-    width2 = 1 .+ map(length, (sprint(print, rng; context = io, sizehint = 15) for rng in ranges))
+    width2 = 1 .+ map(length, (sprint(print, rng; context=io, sizehint=15) for rng in ranges))
     width2 = max.(width2, 1 + maximum(length, (exog_mark, endo_mark)))
     tf_matr = p.exogenous[map(x -> _offset(p, first(x)), [ranges...]), :]
     println(io, "($(exog_mark)) = Exogenous, ($(endo_mark)) = Endogenous:")
@@ -260,8 +279,8 @@ function exportplan(io::IO, p::Plan;
     println(io, join(tmp, _range_delim))
     varind = pairs(p.varshks)
     if alphabetical
-        varind = sort([varind...], by = Base.Fix2(getindex, 1),
-            lt = (l, r) -> isless(string(l), string(r)))
+        varind = sort([varind...], by=Base.Fix2(getindex, 1),
+            lt=(l, r) -> isless(string(l), string(r)))
     end
     for (var, ind) in varind
         print(io, lpad(var, width1), _name_delim)
@@ -329,7 +348,7 @@ function importplan(io::IO)
     end
     _name_delim = m.captures[1]
     _range_delim = m.captures[3]
-    ranges = [parse_range(strip(str), true, 5) for str in split(m.captures[2], _range_delim; keepempty = false)]
+    ranges = [parse_range(strip(str), true, 5) for str in split(m.captures[2], _range_delim; keepempty=false)]
     # parse the rest of it
     p = Plan{MIT{freq}}(rng, nt, falses(length(rng), length(nt)))
     ranges_inds = [[_offset(p, r)...] for r in ranges]
@@ -342,7 +361,7 @@ function importplan(io::IO)
         end
         var = Symbol(m.captures[1])
         var_ind = p.varshks[var]
-        vals = split(m.captures[2], _range_delim; keepempty = false)
+        vals = split(m.captures[2], _range_delim; keepempty=false)
         for (rng_ind, val) in zip(ranges_inds, vals)
             val = strip(val)
             if val == exog_mark
@@ -358,7 +377,7 @@ function importplan(io::IO)
     return p
 end
 
-function parse_range(str, allow_mit = true, line = nothing)
+function parse_range(str, allow_mit=true, line=nothing)
     e = Meta.parse(str)
     if occursin(":", str) || !allow_mit
         ans = Meta.isexpr(e, :call) && e.args[1] == :(:) ? eval(e) : nothing
@@ -374,7 +393,7 @@ function parse_range(str, allow_mit = true, line = nothing)
     return ans
 end
 
-function parse_frequency(str, line = nothing)
+function parse_frequency(str, line=nothing)
     e = Meta.parse(str)
     ans = e isa Symbol ? eval(e) : nothing
     if !(ans isa Type && ans <: Frequency)
@@ -383,7 +402,7 @@ function parse_frequency(str, line = nothing)
     ans
 end
 
-function parse_namedtuple(str, line = nothing)
+function parse_namedtuple(str, line=nothing)
     e = Meta.parse(str)
     ans = Meta.isexpr(e, :tuple) && all(Meta.isexpr(ee, :(=)) for ee in e.args) ? eval(e) : nothing
     if !(ans isa NamedTuple{NAMES,NTuple{N,Int}} where {NAMES,N})
@@ -501,9 +520,9 @@ end
 #######################################
 # The user interface to prepare data for simulation.
 
-@inline TimeSeriesEcon.frequencyof(p::Plan) = frequencyof(p.range)
-@inline TimeSeriesEcon.firstdate(p::Plan) = first(p.range)
-@inline TimeSeriesEcon.lastdate(p::Plan) = last(p.range)
+TimeSeriesEcon.frequencyof(p::Plan) = frequencyof(p.range)
+TimeSeriesEcon.firstdate(p::Plan) = first(p.range)
+TimeSeriesEcon.lastdate(p::Plan) = last(p.range)
 
 #######################################
 # The internal interface to simulations code.
@@ -531,6 +550,42 @@ function setexog!(p::Plan, tt::Int, vinds)
 end
 setexog!(p::Plan{T}, tt::T, vinds) where {T<:MIT} = setexog!(p, _offset(p, tt), vinds)
 
+"""
+    count_exog_points(p::Plan, rng, vars)
+
+Count the number of exogenous points for the given plan over the given range.
+
+Example:
+```
+count_exog_points(p, :, m.exogenous)
+```
+
+See also [`count_endo_points`](@ref)
+"""
+function count_exog_points end
+
+"""
+    count_endo_points(p::Plan, rng, vars)
+
+Count the number of endogenous points for the given plan over the given range.
+
+Example:
+```
+count_endo_points(p, :, m.shocks)
+```
+
+See also [`count_exog_points`](@ref)
+"""
+function count_endo_points end
+
+count_exog_points(p::Plan, ::Colon, vars) = count_points(Val(:exog), p, :, [p.varshks[Symbol(v)] for v in vars])
+count_exog_points(p::Plan, rng::Union{MIT,AbstractUnitRange{<:MIT}}, vars) = count_points(Val(:exog), p, _offset(p, rng), [p.varshks[Symbol(v)] for v in vars])
+count_endo_points(p::Plan, ::Colon, vars) = count_points(Val(:endo), p, :, [p.varshks[Symbol(v)] for v in vars])
+count_endo_points(p::Plan, rng::Union{MIT,AbstractUnitRange{<:MIT}}, vars) = count_points(Val(:endo), p, _offset(p, rng), [p.varshks[Symbol(v)] for v in vars])
+count_points(::Val{:exog}, p::Plan, rng, vars) = sum(p.exogenous[rng, vars])
+count_points(::Val{:endo}, p::Plan, rng, vars) = sum(.!p.exogenous[rng, vars])
+export count_endo_points, count_exog_points
+
 end # module Plans
 
 using .Plans
@@ -538,4 +593,5 @@ export Plan,
     exogenize!, endogenize!,
     exog_endo!, endo_exog!,
     autoexogenize!,
-    exportplan, importplan
+    exportplan, importplan,
+    count_endo_points, count_exog_points

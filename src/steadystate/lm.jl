@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020, Bank of Canada
+# Copyright (c) 2020-2022, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -34,8 +34,8 @@ end
     LMData(model)
     LMData(model, sd::SolverData)
 
-Make an instance of the LMData for the given model. If solver data is not also given,
-then it is used, instead of creating a default SolverData for the model.
+Make an instance of the LMData for the given model. If solver data is not also
+given, then it is used, instead of creating a default SolverData for the model.
 """
 LMData(model::Model) = LMData(model, SolverData(model))
 LMData(model::Model, sd::SolverData) = LMData(sd, 
@@ -51,9 +51,8 @@ LMData(model::Model, sd::SolverData) = LMData(sd,
 """
     step_nr!(x, dx, resid, J, lm::LMData; verbose=false)
 
-Attempt a Levenberg–Marquardt step. 
-The `lm` structure and the `dx` vector would be updated.
-Vectors `x`, `resid` and the matrix `J` are read-only inputs.
+Attempt a Levenberg–Marquardt step. The `lm` structure and the `dx` vector would
+be updated. Vectors `x`, `resid` and the matrix `J` are read-only inputs.
 
 !!! warning
     Internal function, do not call directly.
@@ -97,8 +96,8 @@ end
 """
     first_step_nr!(x, dx, resid, J, lm::LMData; verbose=false)
 
-Make the first step of a Levenberg–Marquardt algorithm. Involves determining the initial trust region.
-The `lm` structure and the `dx` vector would be updated.
+Make the first step of a Levenberg–Marquardt algorithm. Involves determining the
+initial trust region. The `lm` structure and the `dx` vector would be updated.
 Vectors `x`, `resid` and the matrix `J` are read-only inputs.
 
 !!! warning

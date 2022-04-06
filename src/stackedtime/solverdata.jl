@@ -10,8 +10,6 @@
     StackedTimeSolverData
 
 The data structure used in the stacked time algorithm.
-
-**TODO** Add all the details here.
 """
 struct StackedTimeSolverData # <: AbstractSolverData
     "Number of time periods"
@@ -58,6 +56,29 @@ end
 
 #############################################################################
 
+"""
+    var_CiSc(sd::StackedTimeSolverData, var::ModelVariable, fc::FinalCondition)
+
+Return data related to the correction of the Jacobian matrix needed for the
+given final condition for the given variable.
+
+!!! warning
+    Internal function not part of the public interface.
+"""
+function var_CiSc end
+
+"""
+    assign_fc!(x::Vector, exog::Vector, vind::Int, sd::StackedTimeSolverData, fc::FinalCondition)
+    
+Applying the final condition `fc` for variable with index `vind`. Exogenous data
+is provided in `exog` and stacked time solver data in `sd`. This function
+updates the solution vector `x` in place and returns `x`.
+
+!!! warning
+    Internal function not part of the public interface.
+"""
+function assign_fc! end
+
 # var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FinalCondition) = error("Missing var_CiSc for $(typeof(fc))")
 # assign_fc!(::AbstractVector{Float64}, ::AbstractVector{Float64}, ::Int, fc::FinalCondition) = error("Missing assign_fc! for $(typeof(fc))")
 
@@ -68,7 +89,7 @@ end
     return Dict{Int,Vector{Float64}}()
 end
 
-@inline function assign_fc!(x::AbstractVector{Float64}, exog::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCNone)
+@inline function assign_fc!(x::AbstractVector{Float64}, exog::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCNone)
     # nothing to see here
     return x
 end
@@ -173,15 +194,18 @@ end
 """
     update_plan!(sd::StackedTimeSolverData, model, plan; changed=false)
 
-Implementation for the Stacked Time algorithm. Plan must have the same range as
-the original plan.
+Update the stacked time solver data to reflect the new plan. The new plan must
+have the same range as the original plan, otherwise the solver data cannot be
+updated in place.
 
 By default the data structure is updated only if an actual change in the plan is
 detected. Setting the `changed` flag to `true` forces the update even if the
 plan seems unchanged. This is necessary only in rare circumstances.
 
+!!! warning
+    Internal function not part of the public interface.
 """
-function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed = false)
+function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=false)
     if sd.NT != length(p.range)
         error("Unable to update using a simulation plan of different length.")
     end
@@ -269,6 +293,8 @@ import ..steadystatearray
 Prepares the `BI` array for the solver data. Called from the constructor of
 `StackedTimeSolverData`.
 
+!!! warning
+    Internal function not part of the public interface.
 """
 function make_BI(JMAT::SparseMatrixCSC{Float64,Int}, II::AbstractVector{<:AbstractVector{Int}})
     # Computes the set of indexes in JMAT.nzval corresponding to blocks of equations in II
@@ -294,11 +320,7 @@ function make_BI(JMAT::SparseMatrixCSC{Float64,Int}, II::AbstractVector{<:Abstra
     return BI
 end
 
-"""
-    StackedTimeSolverData(model, plan, fctype)
-
-"""
-@inline StackedTimeSolverData(m::Model, p::Plan, fctype::FinalCondition) = StackedTimeSolverData(m, p, setfc(m, fctype))
+StackedTimeSolverData(m::Model, p::Plan, fctype::FinalCondition) = StackedTimeSolverData(m, p, setfc(m, fctype))
 function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCondition})
 
     NT = length(p.range)
@@ -391,9 +413,18 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCo
         m.evaldata, exog_mask, fc_mask, solve_mask,
         Ref{Any}(nothing), getoption(m, :factorization, :lu))
 
-    return @timer update_plan!(sd, m, p; changed = true)
+    return @timer update_plan!(sd, m, p; changed=true)
 end
 
+"""
+    assign_exog_data!(x::Matrix, exog::Matrix, sd::StackedTimeSolverData)
+
+Assign the exogenous points into `x` according to the plan with which `sd` was created using 
+exogenous data from `exog`.  Also call [`assign_final_condition!`](@ref).
+
+!!! warning
+    Internal function not part of the public interface.
+"""
 function assign_exog_data!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
     # @assert size(x,1) == size(exog,1) == sd.NT
     x[sd.exog_mask] = exog[sd.exog_mask]
@@ -401,27 +432,43 @@ function assign_exog_data!(x::AbstractArray{Float64,2}, exog::AbstractArray{Floa
     return x
 end
 
+"""
+    assign_final_condition!(x::Matrix, exog::Matrix, sd::StackedTimeSolver)
+
+Assign the final conditions into `x`. The final condition types for the different variables of the model 
+are stored in the the solver data `sd`. `exog` is used for [`fcgiven`](@ref).
+
+!!! warning
+    Internal function not part of the public interface.
+"""
 function assign_final_condition!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
-    @timer for (vi, fc) in enumerate(sd.FC)
+    for (vi, fc) in enumerate(sd.FC)
         assign_fc!(view(x, :, vi), exog[:, vi], vi, sd, fc)
     end
     return x
 end
 
+"""
+    global_R!(R::Vector, point::Array, exog::Array, sd::StackedTimeSolverData)
+
+Compute the residual of the stacked time system at the given `point`. R is
+updated in place and returned.
+"""
 function global_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
     @assert size(point) == size(exog_data) == (sd.NT, sd.NU)
     # point = reshape(point, sd.NT, sd.NU)
     # exog_data = reshape(exog_data, sd.NT, sd.NU)
     @assert(length(res) == size(sd.J, 1), "Length of residual vector doesn't match.")
-    @timer "global_R!" begin
-        for (ii, tt) in zip(sd.II, sd.TT)
-            eval_R!(view(res, ii), point[tt, :], sd.evaldata)
-        end
+    for (ii, tt) in zip(sd.II, sd.TT)
+        eval_R!(view(res, ii), point[tt, :], sd.evaldata)
     end
     return res
 end
 
-#= disable - this is not necessary with log-transformed variables
+#= disable 
+
+# this is not necessary with log-transformed variables
+# we keep it because it might be necessary for other transformations in the future.
 
 @inline update_CiSc!(x::AbstractArray{Float64,2}, sd::StackedTimeSolverData) = any(sd.log_mask) ? update_CiSc!(x, sd, Val(sd.FC)) : nothing
 
@@ -525,10 +572,18 @@ function update_CiSc!(x, sd, ::Val{fcnatural})
         end
     end
     return nothing
-end =#
+end 
+=#
 
+
+"""
+    R, J = global_RJ(point::Array, exog::Array, sd::StackedTimeSolverData)
+
+Compute the residual and Jacobian of the stacked time system at the given
+`point`.
+"""
 function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData;
-    debugging = false)
+    debugging=false)
     nunknowns = sd.NU
     @assert size(point) == size(exog_data) == (sd.NT, nunknowns)
     # point = reshape(point, sd.NT, nunknowns)
@@ -573,6 +628,12 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
     return RES, sd.J_factorized[]
 end
 
+"""
+    assign_update_step!(x::Array, lambda, dx, sd::StackedTimeSolverData)
+
+Perform something similar to `x = x + lambda * dx`, but with the necessary
+corrections related to final conditions.
+"""
 function assign_update_step!(x::AbstractArray{Float64}, λ::Float64, Δx::AbstractArray{Float64}, sd::StackedTimeSolverData)
     x[sd.solve_mask] .+= λ .* Δx
     if nnz(sd.CiSc) > 0
