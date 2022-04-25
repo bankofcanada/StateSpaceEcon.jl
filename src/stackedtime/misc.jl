@@ -141,7 +141,7 @@ end
 
 function workspace2data(w::Workspace, vars; copy=false)
     range = mapreduce(v -> rangeof(w[Symbol(v)]), intersect, vars)
-    return hcat(MVTSeries(range); (v => w[Symbol(v)] for v in vars)...)
+    return hcat(MVTSeries(range); (v.name => w[Symbol(v)] for v in vars)...)
 end
 
 """
