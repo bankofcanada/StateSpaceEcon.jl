@@ -98,7 +98,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
 
         # indices of endogenous variable-points (the unknowns we were solving for)
         endo_inds = vec(vcat(
-            (LI[sim, v.index] for v in m.allvars if !(isexog(v) || isshock(v)))...
+            (LI[sim, index] for (index,v) in enumerate(m.allvars) if !(isexog(v) || isshock(v)))...
         ))
 
         if length(endo_inds) != sum(gdata.solve_mask) || !all(gdata.solve_mask[endo_inds])
@@ -112,9 +112,9 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
             # contributions of final conditions
             term = vec(LI[term, :]),
             # contributions of shocks
-            (v.name => vec(LI[sim, v.index]) for v in m.allvars if isshock(v))...,
+            (v.name => vec(LI[sim, index]) for (index,v) in enumerate(m.allvars) if isshock(v))...,
             # contributions of @exog variables
-            (v.name => vec(LI[sim, v.index]) for v in m.allvars if isexog(v))...
+            (v.name => vec(LI[sim, index]) for (index,v) in enumerate(m.allvars) if isexog(v))...
         )
         # Note: we use a Workspace() because it preserves the order in which
         #     members were added to it
@@ -142,8 +142,8 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
         # in order to split the rows of SDMAT by variable, we need the inverse indexing map
         inv_endo_inds = zeros(Int, size(gdata.solve_mask))
         inv_endo_inds[gdata.solve_mask] .= 1:sum(gdata.solve_mask)
-        for v in m.allvars
-            v_inds = vec(LI[:, v.index])
+        for (index,v) in enumerate(m.allvars)
+            v_inds = vec(LI[:, index])
             v_endo_mask = gdata.solve_mask[v_inds]
             if !any(v_endo_mask)
                 continue
