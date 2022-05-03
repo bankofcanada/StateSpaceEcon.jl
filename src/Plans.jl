@@ -113,7 +113,6 @@ Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}) = p[UnitRange{MIT
 @inline function Base.getindex(p::Plan, rng::AbstractUnitRange)
     rng.start < p.range.start && throw(BoundsError(p, rng.start))
     rng.stop > p.range.stop && throw(BoundsError(p, rng.stop))
-    println("hello")
     return Plan(rng, p.varshks, p.exogenous[_offset(p, rng), :])
 end
 
