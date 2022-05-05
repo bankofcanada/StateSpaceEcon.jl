@@ -139,9 +139,9 @@ function workspace2array(w::Workspace, vars; copy=false)
     return hcat((w[Symbol(v)][range] for v in vars)...)
 end
 
-function workspace2data(w::Workspace, vars; copy=false)
+@inline function workspace2data(w::Workspace, vars; copy=false)
     range = mapreduce(v -> rangeof(w[Symbol(v)]), intersect, vars)
-    return hcat(MVTSeries(range); (v.name => w[Symbol(v)] for v in vars)...)
+    return workspace2data(w, vars, range; copy)
 end
 
 """
