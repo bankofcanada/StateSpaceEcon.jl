@@ -134,14 +134,19 @@ workspace2data(w::Workspace, model::Model, plan::Plan; copy=false) = workspace2d
 
 workspace2data(w::Workspace, model::Model; copy=false) = workspace2data(w, model.varshks; copy=copy)
 workspace2array(w::Workspace, model::Model; copy=false) = workspace2array(w, model.varshks; copy=copy)
-function workspace2array(w::Workspace, vars; copy=false)
+function workspace2array(w::Workspace, vars; copy=true)
     range = mapreduce(v -> rangeof(w[Symbol(v)]), intersect, vars)
     return hcat((w[Symbol(v)][range] for v in vars)...)
 end
 
-@inline function workspace2data(w::Workspace, vars; copy=false)
+@inline function workspace2data(w::Workspace, vars; copy=true)
     range = mapreduce(v -> rangeof(w[Symbol(v)]), intersect, vars)
     return workspace2data(w, vars, range; copy)
+end
+
+@inline function workspace2data(w::Workspace; copy=true)
+    vars = collect(keys(w))
+    return workspace2data(w, vars; copy)
 end
 
 """
