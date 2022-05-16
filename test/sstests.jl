@@ -43,6 +43,82 @@ empty!(E1.model.sstate.constraints)
     end
 end
 
+empty!(E1.model.sstate.constraints)
+@testset "E1.sstate, auto" begin
+    let m = E1.model
+        m.α = 0.5
+        m.β = 1.0 - m.α
+        clear_sstate!(m)
+        sssolve!(m; method=:auto)
+        @test check_sstate(m) == 0
+        @test m.sstate.mask == [true, true, true, true]  # different from default
+        # 
+        @steadystate m y = 1.2
+        m.α = 0.5
+        m.β = 1.0 - m.α
+        clear_sstate!(m)
+        sssolve!(m; method=:auto)
+        @test check_sstate(m) == 0
+        @test m.sstate.mask == [true, true, true, true] # different from default
+        @test m.sstate.values[1] == 1.2
+        # 
+        m.α = 0.4
+        m.β = 1.0 - m.α
+        clear_sstate!(m)
+        @test m.sstate.mask == trues(4)
+        sssolve!(m; method=:auto)
+        @test check_sstate(m) == 0
+        @test m.sstate.mask == trues(4)
+        @test m.sstate.values == [1.2, 0.0, 0.0, 0.0]
+        # 
+        empty!(m.sstate.constraints)
+        m.α = 0.3
+        m.β = 1.0 - m.α
+        clear_sstate!(m)
+        sssolve!(m; method=:auto)
+        @test check_sstate(m) == 0
+        @test m.sstate.values[2] == 0.0
+    end
+end
+
+empty!(E1.model.sstate.constraints)
+@testset "E1.sstate, lm" begin
+    let m = E1.model
+        m.α = 0.5
+        m.β = 1.0 - m.α
+        clear_sstate!(m)
+        sssolve!(m; method=:lm)
+        @test check_sstate(m) == 0
+        @test m.sstate.mask == [true, true, true, true]  # different from default
+        # 
+        @steadystate m y = 1.2
+        m.α = 0.5
+        m.β = 1.0 - m.α
+        clear_sstate!(m)
+        sssolve!(m; method=:lm)
+        @test check_sstate(m) == 0
+        @test m.sstate.mask == [true, true, true, true]  # different from default
+        @test m.sstate.values[1] == 1.2
+        # 
+        m.α = 0.4
+        m.β = 1.0 - m.α
+        clear_sstate!(m)
+        @test m.sstate.mask == trues(4)
+        sssolve!(m; method=:lm)
+        @test check_sstate(m) == 0
+        @test m.sstate.mask == trues(4)
+        @test m.sstate.values == [1.2, 0.0, 0.0, 0.0]
+        # 
+        empty!(m.sstate.constraints)
+        m.α = 0.3
+        m.β = 1.0 - m.α
+        clear_sstate!(m)
+        sssolve!(m; method=:lm)
+        @test check_sstate(m) == 0
+        @test m.sstate.values[2] == 0.0
+    end
+end
+
 empty!(E2.model.sstate.constraints)
 @testset "E2.sstate" begin
     let m = E2.model
