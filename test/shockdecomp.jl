@@ -15,6 +15,6 @@ using JLD2
     exog_data = steadystatedata(m, p)
     exog_data[2021Q1, m.shocks] .+= 0.1
     result = shockdecomp(m, p, exog_data; fctype = fcnatural)
-    @test @compare result expected quiet
+    @test compare(result, expected; atol=1.0e-9, quiet=true)
 end
 

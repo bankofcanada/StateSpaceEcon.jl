@@ -37,9 +37,17 @@ empty!(E1.model.sstate.constraints)
         m.α = 0.3
         m.β = 1.0 - m.α
         clear_sstate!(m)
-        sssolve!(m)
+        @suppress begin
+            sssolve!(m; verbose=true, nropts = Options(linesearch = true))
+        end
         @test check_sstate(m) == 0
         @test m.sstate.values[2] == 0.0
+        # 
+        empty!(m.sstate.constraints)
+        m.α = 0.3
+        m.β = 1.0 - m.α
+        clear_sstate!(m)
+        @test_throws ErrorException sssolve!(m, method=:other)
     end
 end
 
@@ -75,7 +83,9 @@ empty!(E1.model.sstate.constraints)
         m.α = 0.3
         m.β = 1.0 - m.α
         clear_sstate!(m)
-        sssolve!(m; method=:auto)
+        @suppress begin
+            sssolve!(m; method=:auto, verbose=true)
+        end
         @test check_sstate(m) == 0
         @test m.sstate.values[2] == 0.0
     end
@@ -113,7 +123,9 @@ empty!(E1.model.sstate.constraints)
         m.α = 0.3
         m.β = 1.0 - m.α
         clear_sstate!(m)
-        sssolve!(m; method=:lm)
+        @suppress begin
+            sssolve!(m; method=:lm, verbose=true)
+        end
         @test check_sstate(m) == 0
         @test m.sstate.values[2] == 0.0
     end
@@ -234,5 +246,94 @@ end
         clear_sstate!(m)
         @test issssolved(m)
         @test check_sstate(m) == 0
+    end
+end
+
+module DiagnoseSState
+using ModelBaseEcon
+model = Model()
+println(model)
+@steadyvariables model a b
+@variables model c
+@equations model begin
+    a[t] = (a[t-1] + 10)^2
+    b[t] = b[t-1] + 10
+    b[t] = (a[t-1] + 10)^2
+    c[t] = a[t] + b[t]
+end
+@initialize model
+end
+
+@testset "DiagnoseSState" begin
+    let m = Model()
+        @steadyvariables m a b
+        @variables m c
+        @equations m begin
+            a[t] = (a[t-1] + 10)^2
+            b[t] = b[t-1] + 10
+            b[t] = (a[t-1] + 10)^2
+            c[t] = a[t] + b[t]
+        end
+        @initialize m
+
+        # tests
+        @test sum(issteady.(m.allvars)) == 2
+        clear_sstate!(m)
+        @test issssolved(m) == false
+        @test check_sstate(m) == 8
+        out = @capture_err begin
+            sssolve!(m; verbose=true)
+            @test check_sstate(m; verbose=true) == 6
+        end
+        @test occursin("System may be inconsistent", out)
+       
+    end
+end
+
+@testset "Inadmissible" begin
+    let m = Model()
+        m.flags.ssZeroSlope = true
+        @steadyvariables m a b
+        @variables m c
+        @equations m begin
+            a[t] = (a[t-1] + 10)^2
+            b[t] = b[t-1]/0
+            b[t] = (a[t-1] + 10)^2
+            c[t] = a[t] + b[t]
+        end
+        @initialize m
+        
+        # tests
+        @test sum(issteady.(m.allvars)) == 2
+        clear_sstate!(m)
+        @test issssolved(m) == false
+        out = @capture_err begin
+            @test_throws ErrorException check_sstate(m) == 8
+            @test_throws ErrorException sssolve!(m; presolve=true)
+        end
+        @test occursin("Inadmissible point in equation", out)
+    end
+end
+
+@testset "presolve, ssZeroSlope" begin
+    empty!(E1.model.sstate.constraints)
+    let m = E1.model
+        m.α = 0.5
+        m.β = 1.0 - m.α
+        clear_sstate!(m)
+        sssolve!(m; presolve=false)
+        @test check_sstate(m) == 0
+        @test m.sstate.mask == [false, false, true, true]
+    end
+    
+    empty!(E1.model.sstate.constraints)
+    let m = E1.model
+        m.α = 0.5
+        m.β = 1.0 - m.α
+        m.flags.ssZeroSlope = true
+        clear_sstate!(m)
+        sssolve!(m; presolve=false)
+        @test check_sstate(m) == 0
+        @test m.sstate.mask == [false, true, true, true]
     end
 end
