@@ -128,7 +128,7 @@ Update the final condition for the given `variable` in the given `fc_vector` to
 """
 function setfc! end
 function setfc!(fc_vec::AbstractVector{FinalCondition}, m::Model, v::Union{ModelVariable,Symbol}, new_fc::FinalCondition)
-    vi = _index_of_var(v, m.allvars)
+    vi = ModelBaseEcon._index_of_var(v, m.allvars)
     if vi === nothing
         throw(ArgumentError("Unknown variable $(Symbol(v))."))
     end
