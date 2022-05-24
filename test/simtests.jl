@@ -67,6 +67,32 @@ function test_simulation(m_in, path; atol = 1.0e-9)
     data02[m.maxlag + 1:end - m.maxlead,nvars .+ (1:nshks)] = data_chk[m.maxlag + 1:end - m.maxlead,nvars .+ (1:nshks)]
     res02 = simulate(m, p02, data02)
     @test isapprox(res02, data_chk; atol = atol)
+
+    # linesearch
+    m.options.linesearch = true
+    res01_line = simulate(m, p01, data01)
+    @test isapprox(res01_line, data_chk; atol = atol)
+    m.options.linesearch = false
+
+    # deviation
+    data01_dev = deepcopy(data01)
+    data_chk_dev = deepcopy(data_chk)
+    sssolve!(m)
+    println(m.ssZeroSlope)
+    for (i, var) in enumerate(m.allvars)
+        data01_dev[:,i] .-= m.sstate[var].level
+        data_chk_dev[:,i] .-= m.sstate[var].level
+        if m.sstate[var].slope != 0
+            counter = 0
+            for j in p01.range
+                data01_dev[j,i] -= m.sstate[var].slope*counter
+                data_chk_dev[j,i] -= m.sstate[var].slope*counter
+                counter += 1
+            end
+        end
+    end
+    res01_dev = simulate(m, p01, data01_dev; deviation=true)
+    @test isapprox(res01_dev, data_chk_dev; atol = atol) 
 end
 
 @testset "E1.sim" begin
