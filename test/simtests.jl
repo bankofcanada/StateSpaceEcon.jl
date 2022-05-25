@@ -60,6 +60,7 @@ function test_simulation(m_in, path; atol = 1.0e-9)
     data01[m.maxlag + 1:end - m.maxlead,1:nvars] = data_chk[m.maxlag + 1:end - m.maxlead,1:nvars]
     res01 = simulate(m, p01, data01)
     @test isapprox(res01, data_chk; atol = atol)
+    
     p02 = deepcopy(plan)
     data02 = zeroarray(m, p02)
     data02[1:m.maxlag,:] = data_chk[1:m.maxlag,:]
@@ -78,16 +79,15 @@ function test_simulation(m_in, path; atol = 1.0e-9)
     data01_dev = deepcopy(data01)
     data_chk_dev = deepcopy(data_chk)
     sssolve!(m)
-    println(m.ssZeroSlope)
     for (i, var) in enumerate(m.allvars)
         data01_dev[:,i] .-= m.sstate[var].level
         data_chk_dev[:,i] .-= m.sstate[var].level
         if m.sstate[var].slope != 0
-            counter = 0
+            period = 0
             for j in p01.range
-                data01_dev[j,i] -= m.sstate[var].slope*counter
-                data_chk_dev[j,i] -= m.sstate[var].slope*counter
-                counter += 1
+                data01_dev[j,i] -= m.sstate[var].slope*period
+                data_chk_dev[j,i] -= m.sstate[var].slope*period
+                period += 1
             end
         end
     end
@@ -115,7 +115,7 @@ end
 # linearization tests
 
 @testset "linearize" begin
-    m3 = deepcopy(E3.model)
+    m3 = deepcopy(E3.model) 
     clear_sstate!(m3)
     @test_throws ModelBaseEcon.LinearizationError linearize!(m3)
 
@@ -139,7 +139,7 @@ end
 
     linearize!(m3)
     @test isa(m3.evaldata, ModelBaseEcon.LinearizedModelEvaluationData)
-    test_simulation(m3, "data/M3_TestData.csv"; atol = 1.0e-6) # this tests needs reduced tolerance
+    test_simulation(m3, "data/M3_TestData.csv")
 
     m7 = deepcopy(E7.model)
     if !issssolved(m7)
@@ -156,7 +156,7 @@ end
     sssolve!(E7A.model)
     # non-zeros linear growth in the steady state
     @test_throws ModelBaseEcon.LinearizationError linearize!(E7A.model)
-
+    
 end
 
 
