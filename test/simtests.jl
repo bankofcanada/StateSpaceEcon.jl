@@ -152,11 +152,12 @@ end
     # the aux variables are present
     @test_throws ModelBaseEcon.LinearizationError linearize!(m7)
 
-    clear_sstate!(E7A.model)
-    sssolve!(E7A.model)
+    m7a = deepcopy(E7A.model)
+    clear_sstate!(m7a)
+    sssolve!(m7a)
     # non-zeros linear growth in the steady state
-    @test_throws ModelBaseEcon.LinearizationError linearize!(E7A.model)
-    
+    @test_throws ModelBaseEcon.LinearizationError linearize!(m7a)
+
 end
 
 
@@ -177,7 +178,7 @@ end
 end
 
 @testset "E2.unant" begin
-    m = E2.model
+    m = deepcopy(E2.model)
     nvars = length(m.variables)
     nshks = length(m.shocks)
     var_inds = 1:nvars
@@ -248,7 +249,7 @@ end
 end
 
 @testset "E3.unant" begin
-    m = E3.model
+    m = deepcopy(E3.model)
     nvars = length(m.variables)
     nshks = length(m.shocks)
     var_inds = 1:nvars
@@ -347,7 +348,7 @@ end
         ed = zerodata(m, p)
         @test_throws ArgumentError simulate(m, p, ed, fctype=fcnatural)
     end
-    let m = E1.model
+    let m = deepcopy(E1.model)
         p = Plan(m, 3:17)
         ed = zerodata(m, p)
         ed .= rand(Float64, size(ed))
@@ -359,7 +360,7 @@ end
         R2 = StateSpaceEcon.StackedTimeSolver.global_R!(similar(R1), x, ed, sd)
         @test R1 ≈ R2
     end
-    let m = E3.model
+    let m = deepcopy(E3.model)
         p = Plan(m, 3:177)
         ed = zerodata(m, p)
         ed[3U, m.shocks] .= 0.2 * rand(1,3)
@@ -385,7 +386,7 @@ end
         R2 = StateSpaceEcon.StackedTimeSolver.global_R!(similar(R1), x, ed, sd)
         @test R1 ≈ R2
     end
-    let m = E6.model
+    let m = deepcopy(E6.model)
         empty!(m.sstate.constraints)
         @steadystate m lp  = 1.0
         @steadystate m lp + lyn = 1.5

@@ -13,7 +13,7 @@
 end
 
 @testset "fcset" begin
-    m = E7A.model
+    m = deepcopy(E7A.model)
    
     empty!(m.sstate.constraints)
     @steadystate m lc = 1
