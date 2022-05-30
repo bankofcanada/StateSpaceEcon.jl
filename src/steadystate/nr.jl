@@ -47,7 +47,7 @@ inputs.
 function step_nr!(xx::AbstractArray{Float64,1}, dx::AbstractArray{Float64,1},
                     rr::AbstractArray{Float64,1}, jj::AbstractArray{Float64,2},
                     nr::NRData; verbose::Bool = false)
-    ff = qr(jj, ColumnNorm())
+    ff = qr(jj, Val(true))
     rj = rank(ff.R)
     # nr.r_buffer .= ff.Q' * rr
     # dx[ff.p[1:rj]] = ff.R[1:rj,1:rj] \ nr.r_buffer[1:rj]
