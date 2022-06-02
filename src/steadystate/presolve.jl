@@ -35,7 +35,11 @@ are set to `true`.
 function presolve_sstate! end
 
 function solve1d(sseqn, vals, ind, ::Val{:bisect}, tol = 1e-12, maxiter = 1000)
-    R, J = sseqn.eval_RJ(vals)
+    R, J = try
+        sseqn.eval_RJ(vals)
+    catch
+        return false
+    end
     if abs(R) < tol && abs(J[ind]) > tol
         return true
     end

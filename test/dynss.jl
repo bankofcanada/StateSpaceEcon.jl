@@ -77,3 +77,40 @@ end
     @test irf[end-3:end, :] ≈ ss[end-3:end, :]
 
 end
+
+module PC
+using ModelBaseEcon
+const model = Model()
+model.ssZeroSlope = true
+model.warn.no_t = false
+@variables model a
+@shocks model a_shk
+@parameters model p_a_ss = exp(2.0) p_a_rho = 0.8
+@equations model begin
+    a = (1 - p_a_rho) * @sstate(a) + p_a_rho * a[t-1] + a_shk
+end
+@initialize model
+@steadystate model a = log(p_a_ss)
+end
+
+@testset "dynss+" begin
+    # tests to make sure that changes in parameter values are applied to steady state constraints correctly
+    local m = PC.model
+    m.sstate.values .= 0.0
+    @test begin
+        sssolve!(m, presolve=false)
+        m.sstate.values ≈ [2, 0, 0, 0]
+    end
+    @test begin
+        m.p_a_ss = exp(4)
+        sssolve!(m, presolve=false)
+        m.sstate.values ≈ [4, 0, 0, 0]
+    end
+    m.p_a_ss = exp(3)
+    @test check_sstate(m) == 1
+    @test_throws ErrorException begin
+        m.p_a_ss = -1.0
+        @capture_err check_sstate(m)
+    end
+end
+
