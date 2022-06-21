@@ -36,6 +36,8 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     verbose::Bool = getoption(m, :verbose, false),
     maxiter::Int = getoption(m, :maxiter, 20),
     tol::Float64 = getoption(m, :tol, 1e-12),
+    sparse_solver::Function = (A, b) -> A \ b,
+    linesearch::Bool  = getoption(m, :linesearch, false),
     fctype::FinalCondition = getoption(m, :fctype, fcgiven),
     _debug = false
 )
@@ -72,7 +74,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     global_R!(res_shocked, shocked, shocked, gdata)    # Run the "shocked" simulation with the given exogenous data.
     if norm(res_shocked, Inf) > tol
         assign_exog_data!(shocked, exog_data, gdata)
-        sim_nr!(shocked, gdata, maxiter, tol, verbose)
+        sim_nr!(shocked, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
     end
 
     # We need the Jacobian matrix evaluated at the control solution.
