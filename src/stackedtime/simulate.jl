@@ -247,12 +247,19 @@ function simulate(m::Model,
         T = last(sim)
         if expectation_horizon === nothing
             # when expectation_horizon is not given, we simulate each iteration until the end and with the true final condition
+            last_run = Workspace(; t=t0)
             for t in sim
                 exog_inds = p_unant[t, Val(:inds)]
                 psim = Plan(m, t:T)
                 psim.exogenous .= p_ant.exogenous[begin+Int(t - t0):end, :]
-                if (t != t0) && (maximum(abs, x[t, exog_inds] .- exog_unant[t, exog_inds]) < tol) #= && (psim[t0, Val(:inds)] == exog_inds) =#
+                if t == t0
+                    imaxiter = maxiter
+                    itol = tol
+                elseif (maximum(abs, x[t, exog_inds] .- exog_unant[t, exog_inds]) < tol) #= && (psim[t0, Val(:inds)] == exog_inds) =#
                     continue
+                else
+                    imaxiter = 5
+                    itol = sqrt(tol)
                 end
                 setexog!(psim, t0, exog_inds)
                 gdata = StackedTimeSolverData(m, psim, fctype)
@@ -262,13 +269,25 @@ function simulate(m::Model,
                 xx = view(x, sim_range, :)
                 assign_final_condition!(xx, exog_unant[sim_range, :], gdata)
                 if verbose
-                    @info "Simulating $(p_ant.range[t:T])" # anticipate expectation_horizon gdata.FC
+                    @info "Simulating $(p_ant.range[t:T]) with $((itol, imaxiter))" # anticipate expectation_horizon gdata.FC
+                end
+                converged = sim_nr!(xx, gdata, imaxiter, itol, verbose, sparse_solver, linesearch)
+                if warn_maxiter && !converged
+                    @warn("Newton-Raphson reached maximum number of iterations (`imaxiter`).")
+                end
+                last_run = Workspace(; t, xx, gdata)
+            end
+            if last_run.t > t0
+                local t = last_run.t
+                xx = last_run.xx
+                gdata = last_run.gdata
+                if verbose
+                    @info "Simulating $(p_ant.range[t:T]) with $((tol, maxiter))" # anticipate expectation_horizon gdata.FC
                 end
                 converged = sim_nr!(xx, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
                 end
-
             end
         else
             # when expectation_horizon is not given,
@@ -347,7 +366,7 @@ function simulate(m::Model,
                 if verbose
                     @info("Simulating $(p_ant.range[t] .+ (0:expectation_horizon - 1))") # anticipate expectation_horizon sdata.FC
                 end
-                converged = sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
+                converged = sim_nr!(xx, sdata, 5, sqrt(tol), verbose, sparse_solver, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
                 end
