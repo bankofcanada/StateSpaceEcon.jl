@@ -20,6 +20,12 @@ jobs:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
+    strategy: 
+      matrix:
+        julia-version: ["1.6", "1.7"]
+        julia-arch: [x64]
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -28,12 +34,12 @@ jobs:
       - name: Setup Julia environment
         # You may pin to the exact commit or the version.
         # uses: julia-actions/setup-julia@ee66464cb7897ffcc5322800f4b18d449794af30
-        uses: julia-actions/setup-julia@v1.6.1
+        uses: julia-actions/setup-julia@v1
         with:
           # The Julia version to download (if necessary) and use. Example: 1.0.4
-          version: 1.6   # optional, default is 1
+          version: ${{ matrix.julia-version }}   # optional, default is 1
           # Architecture of the Julia binaries. Defaults to x64.
-          arch: x64 # optional, default is x64
+          arch: ${{ matrix.julia-arch }} # optional, default is x64
           # Display InteractiveUtils.versioninfo() after installing
           show-versioninfo: false # optional, default is false
 
