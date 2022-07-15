@@ -18,11 +18,14 @@ Solve the simulation problem.
   * `verbose` - whether or not to print progress information.
   * `sparse_solver` (optional) - a function called to solve the linear system A
     x = b for x. Defaults to A\\b
+  * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a 
+    search along the descent direction for a sufficient decrease in f. It will 
+    do this at each iteration. Default is `false`.
 
 """
 function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     maxiter::Int64, tol::Float64, verbose::Bool,
-    sparse_solver::Function = (A, b) -> A \ b, linesearch = false)
+    sparse_solver::Function = (A, b) -> A \ b, linesearch::Bool = false)
     for it = 1:maxiter
         Fx, Jx = global_RJ(x, x, sd)
         nFx = norm(Fx, Inf)
@@ -111,6 +114,9 @@ Run a simulation for the given model, simulation plan and exogenous data.
   * `maxiter::Int` - algorithm fails if the desired accuracy is not reached
     within this maximum number of iterations. Default value is taken from
     `model.options`.
+  * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a 
+    search along the descent direction for a sufficient decrease in f. It will 
+    do this at each iteration. Default is `false`.
 """
 function simulate end
 
@@ -124,7 +130,7 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
     fctype = getoption(m, :fctype, fcgiven),
     expectation_horizon::Union{Nothing,Int64} = nothing,
     sparse_solver::Function = (A, b) -> A \ b,
-    linesearch = getoption(m, :linesearch, false)
+    linesearch::Bool = getoption(m, :linesearch, false)
 )
 
     # make sure the model evaluation data is up to date
