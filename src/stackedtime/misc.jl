@@ -124,9 +124,10 @@ Convert a [`SimData`](@ref) to a [`Workspace`](@ref TimeSeriesEcon.Workspace)
 function workspace2data end
 
 function workspace2data(w::Workspace, vars, range::AbstractUnitRange; copy=false)
-    ret = SimData(range, vars)
+    ret = SimData(range, vars, NaN)
     for v in vars
-        copyto!(ret[v], range, w[Symbol(v)])
+        wv = w[Symbol(v)]
+        copyto!(ret[v], intersect(range,rangeof(wv)), wv)
     end
     return ret
 end

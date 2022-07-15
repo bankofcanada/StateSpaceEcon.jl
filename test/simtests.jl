@@ -6,9 +6,10 @@
 ##################################################################################
 
 using LinearAlgebra
+using DelimitedFiles
 
 @testset "E1.simple" begin
-    m = E1.model
+    m = deepcopy(E1.model)
     m.α = 0.5
     m.β = 1.0 - m.α
     for T = 6:10
@@ -42,9 +43,8 @@ using LinearAlgebra
     # test_simulation(E1.model, "data/M1_TestMatrix.csv")
 end
 
-using DelimitedFiles
-
-function test_simulation(m, path)
+function test_simulation(m_in, path; atol = 1.0e-9)
+    m = deepcopy(m_in)
     nvars = ModelBaseEcon.nvariables(m)
     nshks = ModelBaseEcon.nshocks(m)
     # 
@@ -59,14 +59,40 @@ function test_simulation(m, path)
     data01[end - m.maxlead + 1:end,:] = data_chk[end - m.maxlead + 1:end,:]
     data01[m.maxlag + 1:end - m.maxlead,1:nvars] = data_chk[m.maxlag + 1:end - m.maxlead,1:nvars]
     res01 = simulate(m, p01, data01)
-    @test isapprox(res01, data_chk; atol = 0.000001)
+    @test isapprox(res01, data_chk; atol = atol)
+    
     p02 = deepcopy(plan)
     data02 = zeroarray(m, p02)
     data02[1:m.maxlag,:] = data_chk[1:m.maxlag,:]
     data02[end - m.maxlead + 1:end,:] = data_chk[end - m.maxlead + 1:end,:]
     data02[m.maxlag + 1:end - m.maxlead,nvars .+ (1:nshks)] = data_chk[m.maxlag + 1:end - m.maxlead,nvars .+ (1:nshks)]
     res02 = simulate(m, p02, data02)
-    @test res02 ≈ data_chk
+    @test isapprox(res02, data_chk; atol = atol)
+
+    # linesearch
+    m.options.linesearch = true
+    res01_line = simulate(m, p01, data01)
+    @test isapprox(res01_line, data_chk; atol = atol)
+    m.options.linesearch = false
+
+    # deviation
+    data01_dev = deepcopy(data01)
+    data_chk_dev = deepcopy(data_chk)
+    sssolve!(m)
+    for (i, var) in enumerate(m.allvars)
+        data01_dev[:,i] .-= m.sstate[var].level
+        data_chk_dev[:,i] .-= m.sstate[var].level
+        if m.sstate[var].slope != 0
+            period = 0
+            for j in p01.range
+                data01_dev[j,i] -= m.sstate[var].slope*period
+                data_chk_dev[j,i] -= m.sstate[var].slope*period
+                period += 1
+            end
+        end
+    end
+    res01_dev = simulate(m, p01, data01_dev; deviation=true)
+    @test isapprox(res01_dev, data_chk_dev; atol = atol) 
 end
 
 @testset "E1.sim" begin
@@ -89,7 +115,7 @@ end
 # linearization tests
 
 @testset "linearize" begin
-    m3 = deepcopy(E3.model)
+    m3 = deepcopy(E3.model) 
     clear_sstate!(m3)
     @test_throws ModelBaseEcon.LinearizationError linearize!(m3)
 
@@ -126,10 +152,11 @@ end
     # the aux variables are present
     @test_throws ModelBaseEcon.LinearizationError linearize!(m7)
 
-    clear_sstate!(E7A.model)
-    sssolve!(E7A.model)
+    m7a = deepcopy(E7A.model)
+    clear_sstate!(m7a)
+    sssolve!(m7a)
     # non-zeros linear growth in the steady state
-    @test_throws ModelBaseEcon.LinearizationError linearize!(E7A.model)
+    @test_throws ModelBaseEcon.LinearizationError linearize!(m7a)
 
 end
 
@@ -138,7 +165,7 @@ end
 # Tests of unanticipated shocks
 
 @testset "E1.unant" begin
-    m = E1.model
+    m = deepcopy(E1.model)
     m.α = m.β = 0.5
     p = Plan(m, 1:3);
     data = zeroarray(m, p);
@@ -151,7 +178,7 @@ end
 end
 
 @testset "E2.unant" begin
-    m = E2.model
+    m = deepcopy(E2.model)
     nvars = length(m.variables)
     nshks = length(m.shocks)
     var_inds = 1:nvars
@@ -222,7 +249,7 @@ end
 end
 
 @testset "E3.unant" begin
-    m = E3.model
+    m = deepcopy(E3.model)
     nvars = length(m.variables)
     nshks = length(m.shocks)
     var_inds = 1:nvars
@@ -321,7 +348,7 @@ end
         ed = zerodata(m, p)
         @test_throws ArgumentError simulate(m, p, ed, fctype=fcnatural)
     end
-    let m = E1.model
+    let m = deepcopy(E1.model)
         p = Plan(m, 3:17)
         ed = zerodata(m, p)
         ed .= rand(Float64, size(ed))
@@ -333,7 +360,7 @@ end
         R2 = StateSpaceEcon.StackedTimeSolver.global_R!(similar(R1), x, ed, sd)
         @test R1 ≈ R2
     end
-    let m = E3.model
+    let m = deepcopy(E3.model)
         p = Plan(m, 3:177)
         ed = zerodata(m, p)
         ed[3U, m.shocks] .= 0.2 * rand(1,3)
@@ -359,7 +386,7 @@ end
         R2 = StateSpaceEcon.StackedTimeSolver.global_R!(similar(R1), x, ed, sd)
         @test R1 ≈ R2
     end
-    let m = E6.model
+    let m = deepcopy(E6.model)
         empty!(m.sstate.constraints)
         @steadystate m lp  = 1.0
         @steadystate m lp + lyn = 1.5
@@ -438,4 +465,103 @@ end
         simulate(m, p_a, data_a, p_u2, data_u)
     end
     @test chk_sm ≈ res_sm
+end
+
+@testset "linesearch, deviation" begin
+    # linesearch should get the same results
+    let m = deepcopy(E3nl.model)
+        clear_sstate!(m)
+        nvars = ModelBaseEcon.nvariables(m)
+        nshks = ModelBaseEcon.nshocks(m)
+        # 
+        data_chk = readdlm("data/M3_TestData.csv", ',', Float64)
+        IDX = size(data_chk, 1)
+        plan = Plan(m, 1 + m.maxlag:IDX - m.maxlead)
+        # 
+        p01 = deepcopy(plan)
+        autoexogenize!(p01, m, m.maxlag + 1:IDX - m.maxlead)
+        data01 = zeroarray(m, p01)
+        data01[1:m.maxlag,:] = data_chk[1:m.maxlag,:]
+        data01[end - m.maxlead + 1:end,:] = data_chk[end - m.maxlead + 1:end,:]
+        data01[m.maxlag + 1:end - m.maxlead,1:nvars] = data_chk[m.maxlag + 1:end - m.maxlead,1:nvars]
+        initial_guess = similar(data01)
+        initial_guess .= 1
+        initial_guess[end-2:end,:] .= 0 #at the very end 
+        res01 = simulate(m, p01, data01)
+        res01_line = nothing
+        m.options.linesearch = true
+        out = @capture_err begin
+            res01_line = simulate(m, p01, data01; initial_guess=initial_guess, verbose=true)
+        end
+      
+        # line search should give the same results
+        @test occursin("Linesearch success", out)
+        @test isapprox(res01, data_chk; atol = 1.0e-9)
+        @test isapprox(res01_line, data_chk; atol = 1.0e-9)
+        @test isapprox(res01, res01_line; atol = 1.0e-9)
+    end
+
+    let m = deepcopy(E1.model)
+        clear_sstate!(m)
+        nvars = ModelBaseEcon.nvariables(m)
+        nshks = ModelBaseEcon.nshocks(m)
+        # 
+        data_chk = readdlm("data/M1_TestData.csv", ',', Float64)
+        IDX = size(data_chk, 1)
+        plan = Plan(m, 1 + m.maxlag:IDX - m.maxlead)
+        # 
+        p01 = deepcopy(plan)
+        autoexogenize!(p01, m, m.maxlag + 1:IDX - m.maxlead)
+        data01 = zeroarray(m, p01)
+        data01[1:m.maxlag,:] = data_chk[1:m.maxlag,:]
+        data01[end - m.maxlead + 1:end,:] = data_chk[end - m.maxlead + 1:end,:]
+        data01[m.maxlag + 1:end - m.maxlead,1:nvars] = data_chk[m.maxlag + 1:end - m.maxlead,1:nvars]
+
+        # deviation gives the same results
+        res01 = simulate(m, p01, data01)
+        res01_dev = simulate(m, p01, data01; deviation=true) 
+        @test isapprox(res01_dev, data_chk; atol = 1.0e-9)
+        @test isapprox(res01_dev, res01; atol = 1.0e-9)
+    end
+
+    let m = deepcopy(E3.model)
+        clear_sstate!(m)
+        nvars = ModelBaseEcon.nvariables(m)
+        nshks = ModelBaseEcon.nshocks(m)
+        # 
+        data_chk = readdlm("data/M3_TestData.csv", ',', Float64)
+        IDX = size(data_chk, 1)
+        plan = Plan(m, 1 + m.maxlag:IDX - m.maxlead)
+        # 
+        p01 = deepcopy(plan)
+        autoexogenize!(p01, m, m.maxlag + 1:IDX - m.maxlead)
+        data01 = zeroarray(m, p01)
+        data01[1:m.maxlag,:] = data_chk[1:m.maxlag,:]
+        data01[end - m.maxlead + 1:end,:] = data_chk[end - m.maxlead + 1:end,:]
+        data01[m.maxlag + 1:end - m.maxlead,1:nvars] = data_chk[m.maxlag + 1:end - m.maxlead,1:nvars]
+
+        # deviation do not give the same result
+        res01 = simulate(m, p01, data01)
+        res01_dev = simulate(m, p01, data01; deviation=true)
+        @test isapprox(res01, data_chk; atol = 1.0e-9) 
+        @test !isapprox(res01_dev, data_chk; atol = 1.0e-9)
+        @test !isapprox(res01_dev, res01; atol = 1.0e-9)
+
+        # subtract steady-state from data and results
+        data02 = deepcopy(data01)
+        data_chk02 = deepcopy(data_chk)
+        sssolve!(m)
+        for (i, var) in enumerate(m.allvars)
+            data02[:,i] .-= m.sstate[var].level
+            data_chk02[:,i] .-= m.sstate[var].level
+        end
+        res02 = simulate(m, p01, data02)
+        res02_dev = simulate(m, p01, data02; deviation=true)
+
+        # results equal new data_chk02 
+        @test isapprox(res01, data_chk02; atol = 1.0e-9) 
+        @test isapprox(res02_dev, data_chk02; atol = 1.0e-9)
+        @test isapprox(res02_dev, res01; atol = 1.0e-9)
+
+    end
 end

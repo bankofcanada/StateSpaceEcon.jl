@@ -48,7 +48,7 @@ using Suppressor
 end
 
 @testset "Plans" begin
-    m = E1.model
+    m = deepcopy(E1.model)
     p = Plan(m, 1:3)
     @test first(p.range) == 0U
     @test last(p.range) == 4U
@@ -96,7 +96,7 @@ end
 include("sstests.jl")
 
 @testset "misc" begin
-    m = E3.model
+    m = deepcopy(E3.model)
     sim = m.maxlag .+ (1:10)
     p = Plan(m, sim)
 
@@ -169,13 +169,8 @@ end
 include("simtests.jl")
 include("logsimtests.jl")
 
-# include("shockdecomp.jl")
-
-@testset "misc" begin
-    io = IOBuffer()
-    printmatrix(io, rand(3, 4))
-    seekstart(io)
-    @test length(readlines(io)) == 3
-end
+include("shockdecomp.jl")
 
 include("dynss.jl")
+
+include("misc.jl")

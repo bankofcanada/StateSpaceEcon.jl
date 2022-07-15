@@ -18,14 +18,14 @@ Solve the simulation problem.
   * `verbose` - whether or not to print progress information.
   * `sparse_solver` (optional) - a function called to solve the linear system A
     x = b for x. Defaults to A\\b
-  * `linesearch` (optional) - a `true` / `false` controlling whether to run a
-    pure Newton-Raphson (`false`) or to include a linesearch at each iteration
-    (`true`). Default is `false`.
+  * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a 
+    search along the descent direction for a sufficient decrease in f. It will 
+    do this at each iteration. Default is `false`.
 
 """
 function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     maxiter::Int64, tol::Float64, verbose::Bool,
-    sparse_solver::Function=(A, b) -> A \ b, linesearch=false)
+    sparse_solver::Function=(A, b) -> A \ b, linesearch::Bool=false)
     for it = 1:maxiter
         Fx, Jx = global_RJ(x, x, sd)
         nFx = norm(Fx, Inf)
@@ -114,6 +114,9 @@ Run a simulation for the given model, simulation plan and exogenous data.
   * `maxiter::Int` - algorithm fails if the desired accuracy is not reached
     within this maximum number of iterations. Default value is taken from
     `model.options`.
+  * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a 
+    search along the descent direction for a sufficient decrease in f. It will 
+    do this at each iteration. Default is `false`.
 """
 function simulate end
 
@@ -122,7 +125,7 @@ function simulate(m::Model,
     exog_ant::AbstractArray{Float64,2},
     p_unant::Plan=Plan(1U:0U, (;), falses(0, 0)),
     exog_unant::AbstractArray{Float64,2}=zeros(0, 0);
-    #= Deviation options =#
+    #= Options =#
     anticipate::Bool=isempty(exog_unant),
     initial_guess::AbstractArray{Float64,2}=zeros(0, 0),
     #= Deviation options =#
@@ -138,8 +141,8 @@ function simulate(m::Model,
     expectation_horizon::Union{Nothing,Int64}=nothing,
     #= Newton-Raphson options =#
     sparse_solver::Function=(A, b) -> A \ b,
-    linesearch=getoption(m, :linesearch, false),
-    warn_maxiter=getoption(getoption(m, :warn, Options()), :maxiter, false)
+    linesearch::Bool=getoption(m, :linesearch, false),
+    warn_maxiter::Bool=getoption(getoption(m, :warn, Options()), :maxiter, false)
 )
 
     unant_given = !isempty(exog_unant)
