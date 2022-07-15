@@ -49,9 +49,9 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
                     Inf
                 end
                 if nrb2 < (1.0 - α * λ) * nf
-                    if verbose && λ < 1.0
-                        @info "Linesearch success with λ = $λ."
-                    end
+                    # if verbose && λ < 1.0
+                    #     @info "Linesearch success with λ = $λ."
+                    # end
                     break
                 end
                 λ = σ * λ
@@ -60,7 +60,7 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
                 if λ <= 0.00001
                     @warn "Linesearch failed."
                 elseif λ < 1.0
-                    @info "   Linesearch success with λ=$λ"
+                    @info "Linesearch success with λ=$λ"
                 end
             end
         end

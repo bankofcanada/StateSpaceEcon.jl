@@ -5,15 +5,20 @@
 # All rights reserved.
 ##################################################################################
 
+_getparams(eqn) = hasproperty(eqn.eval_resid, :params) ? eqn.eval_resid.params :
+                  hasproperty(eqn.eval_resid, :s) ? _getparams(eqn.eval_resid.s.eqn) :
+                  ()
 function inadmissible_error(eqind, eqn, point, val)
     vars = tuple(eqn.vsyms...)
     args = tuple((eval(Expr(:(=), sym, val)) for (sym, val) in zip(eqn.vsyms, point[eqn.vinds]))...)
+    varsargs = (; (v => a for (v, a) in zip(vars, args))...)
+    params = (; _getparams(eqn)...)
     if typeof(val) <: AbstractArray
-        @error "Singular gradient in equation $eqind: $eqn" vars args val
-        error("Singular gradient in equation $eqind: $eqn")
+        @error "Singular gradient in steady state equation $eqind: $eqn" params varsargs val
+        error("Singular gradient in steady state equation $eqind: $eqn")
     else
-        @error "Inadmissible point in equation $eqind: $eqn" vars args val
-        error("Inadmissible point in equation $eqind: $eqn")
+        @error "Inadmissible point in steady state equation $eqind: $eqn" params varsargs val
+        error("Inadmissible point in steady state equation $eqind: $eqn")
     end
 end
 
@@ -25,12 +30,16 @@ Compute the residual vector of the given set of equations at the given point.
 The `equations` argument can be a container whose `eltype` is
 `SteadyStateEquations`. The residual `R` is updated in place.
 """
-function global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64}, eqns::EqnIter) where EqnIter
-    if ! (eltype(eqns) <: SteadyStateEquation)
+function global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64}, eqns::EqnIter) where {EqnIter}
+    if !(eltype(eqns) <: SteadyStateEquation)
         error("Expected a set of steady state equations, not $(EqnIter).")
     end
     for (eqind, eqn) in enumerate(eqns)
-        rr = try eqn.eval_resid(point[eqn.vinds]) catch; NaN64 end
+        rr = try
+            eqn.eval_resid(point[eqn.vinds])
+        catch
+            NaN64
+        end
         if isnan(rr) || isinf(rr)
             inadmissible_error(eqind, eqn, point, rr)
             # vars = tuple(eqn.vsyms...)
@@ -60,8 +69,8 @@ Compute the residual vector `R` and the Jacobian matrix of the given set of
 equations at the given point. The `equations` argument can be a container whose
 `eltype` is `SteadyStateEquations`.
 """
-function global_SS_RJ(point::AbstractVector{Float64}, eqns::EqnIter) where EqnIter
-    if ! (eltype(eqns) <: SteadyStateEquation)
+function global_SS_RJ(point::AbstractVector{Float64}, eqns::EqnIter) where {EqnIter}
+    if !(eltype(eqns) <: SteadyStateEquation)
         error("Expected a set of steady state equations, not $(EqnIter).")
     end
     neqns = length(eqns)
@@ -69,7 +78,11 @@ function global_SS_RJ(point::AbstractVector{Float64}, eqns::EqnIter) where EqnIt
     R = zeros(neqns)
     J = zeros(neqns, nvars)
     for (eqind, eqn) in enumerate(eqns)
-        rr, jj = try eqn.eval_RJ(point[eqn.vinds]) catch; NaN64, fill(NaN64, size(eqn.vinds)) end
+        rr, jj = try
+            eqn.eval_RJ(point[eqn.vinds])
+        catch
+            NaN64, fill(NaN64, size(eqn.vinds))
+        end
         if isnan(rr) || isinf(rr) || any(@. isnan(jj) | isinf(jj))
             inadmissible_error(eqind, eqn, point, rr)
             # args = tuple((eval(Expr(:(=), sym, val)) for (sym, val) in zip(eqn.vsyms, point[eqn.vinds]))...)
@@ -79,13 +92,13 @@ function global_SS_RJ(point::AbstractVector{Float64}, eqns::EqnIter) where EqnIt
         end
         if any(@. isnan(jj) | isinf(jj))
             inadmissible_error(eqind, eqn, point, jj)
-        #     args = tuple((eval(Expr(:(=), sym, val)) for (sym, val) in zip(eqn.vsyms, point[eqn.vinds]))...)
-        #     vars = tuple(eqn.vsyms...)
-        #     @error "Singular gradient in equation $eqind: $eqn" vars args rr
-        #     error("Singular gradient in equation $eqind: $eqn")
+            #     args = tuple((eval(Expr(:(=), sym, val)) for (sym, val) in zip(eqn.vsyms, point[eqn.vinds]))...)
+            #     vars = tuple(eqn.vsyms...)
+            #     @error "Singular gradient in equation $eqind: $eqn" vars args rr
+            #     error("Singular gradient in equation $eqind: $eqn")
         end
         R[eqind] = rr
-        J[eqind,eqn.vinds] .= jj
+        J[eqind, eqn.vinds] .= jj
     end
     return R, J
 end

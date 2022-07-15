@@ -36,21 +36,22 @@ function sssolve!(model::Model;
     if method ∉ (:nr, :lm, :auto)
         error("Method should be one of :nr, :lm, or :auto, not :$method")
     end
+    
+    ss = model.sstate
+    ss_nvars = 2 * length(ss.vars)
+    ss_neqns = ModelBaseEcon.neqns(ss)
+
+    # !! make sure constraints use the latest parameter values
+    # !! before calling SolverData constructor, because it computes the initial residual
+    for eqn in ss.constraints
+        ModelBaseEcon._update_eqn_params!(eqn.eval_resid, model.parameters)
+    end
 
     sd = SolverData(model; presolve = presolve)
     if sd.nvars == 0
         # Nothing left to solve for
         return sd.point
-    end
-
-    ss = model.sstate
-    # vars = ss.vars[sd.solve_var]
-    ss_nvars = 2 * length(ss.vars)
-    ss_neqns = ModelBaseEcon.neqns(ss)
-
-    for eqn in ss.constraints
-        ModelBaseEcon._update_eqn_params!(eqn.eval_resid, model.parameters)
-    end
+    end    
 
     lm = LMData(model, sd; lmopts...)
     nr = NRData(model, sd; nropts...)

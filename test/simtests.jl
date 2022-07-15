@@ -59,7 +59,7 @@ function test_simulation(m, path)
     data01[end - m.maxlead + 1:end,:] = data_chk[end - m.maxlead + 1:end,:]
     data01[m.maxlag + 1:end - m.maxlead,1:nvars] = data_chk[m.maxlag + 1:end - m.maxlead,1:nvars]
     res01 = simulate(m, p01, data01)
-    @test res01 ≈ data_chk
+    @test isapprox(res01, data_chk; atol = 0.000001)
     p02 = deepcopy(plan)
     data02 = zeroarray(m, p02)
     data02[1:m.maxlag,:] = data_chk[1:m.maxlag,:]
