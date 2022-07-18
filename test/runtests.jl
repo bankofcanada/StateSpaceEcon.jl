@@ -30,19 +30,19 @@ using Suppressor
         vals = [1.0, NaN, -5.0, 6.0]
 
         vals[2] = 0.0
-        @test StateSpaceEcon.SteadyStateSolver.newton1!(fdf, vals, 2; tol = eps(), maxiter = 8)
+        @test StateSpaceEcon.SteadyStateSolver.newton1!(fdf, vals, 2; tol=eps(), maxiter=8)
         @test vals ≈ [1.0, 2.0, -5.0, 6.0] atol = 1e3 * eps()
 
         vals[2] = 6.0
-        @test StateSpaceEcon.SteadyStateSolver.newton1!(fdf, vals, 2; tol = eps(), maxiter = 8)
+        @test StateSpaceEcon.SteadyStateSolver.newton1!(fdf, vals, 2; tol=eps(), maxiter=8)
         @test vals ≈ [1.0, 3.0, -5.0, 6.0] atol = 1e3 * eps()
 
         vals[2] = 0.0
-        @test StateSpaceEcon.SteadyStateSolver.bisect!(f, vals, 2, fdf(vals)[2][2]; tol = eps())
+        @test StateSpaceEcon.SteadyStateSolver.bisect!(f, vals, 2, fdf(vals)[2][2]; tol=eps())
         @test vals ≈ [1.0, 2.0, -5.0, 6.0] atol = 1e3 * eps()
 
         vals[2] = 6.0
-        @test StateSpaceEcon.SteadyStateSolver.bisect!(f, vals, 2, fdf(vals)[2][2]; tol = eps())
+        @test StateSpaceEcon.SteadyStateSolver.bisect!(f, vals, 2, fdf(vals)[2][2]; tol=eps())
         @test vals ≈ [1.0, 3.0, -5.0, 6.0] atol = 1e3 * eps()
     end
 end
@@ -78,7 +78,7 @@ end
         out = @capture_out print(p)
         length(split(out, "\n")) == 4
     end
-    let p = Plan(2000Q1:2010Q4, (a = 1, b = 2, c = 3), falses(44, 3))
+    let p = Plan(2000Q1:2010Q4, (a=1, b=2, c=3), falses(44, 3))
         exogenize!(p, :a, p.range)
         exogenize!(p, :b, 2001Q1:2006Q1)
         exogenize!(p, :c, 2006Q1:2009Q4)
@@ -88,6 +88,45 @@ end
         seek(pio, 0)
         q = importplan(pio)
         @test p == q
+    end
+
+end
+
+@testset "compare_plans" begin
+    let m = Model()
+        m = Model()
+        @variables m a b c
+        @parameters m pa = 0.9 pb = -0.3 ass = 0.3 bss = 0.4
+        @shocks m as bs
+        @autoexogenize m begin
+            a = as
+            b = bs
+        end
+        @equations m begin
+            c[t] = sqrt(b[t]^2 + a[t]^2)
+            a[t] - ass = pa * (a[t-1] - ass) + as[t]
+            b[t] - bss = pb * (b[t-1] - bss) + bs[t]
+        end
+        @initialize m
+
+        p = Plan(m, 1U:10U)
+        autoexogenize!(p, m, 2U:3U)
+        q = copy(p)
+        exog_endo!(q, m.a, m.as, 2U:6U)
+        exog_endo!(p, m.b, m.bs, 5U:8U)
+
+        begin
+            io = IOBuffer()
+            compare_plans(io, p, q)
+            seek(io, 0)
+            @test read(io, String) == "\nSame range: 0U:10U\nSame variables.\n(X) = Exogenous, (-) = Endogenous, (M) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n     a    - -      X X      - X      - X      - -      - -  \n     b    - -      X X      - -      X -      X -      - -  \n     c    - -      - -      - -      - -      - -      - -  \n    as    X X      - -      X -      X -      X X      X X  \n    bs    X X      - -      X X      - X      - X      X X  \n"
+        end
+        begin
+            io = IOBuffer()
+            compare_plans(io, p, q; pagelines=3)
+            seek(io, 0)
+            @test read(io, String) == "\nSame range: 0U:10U\nSame variables.\n(X) = Exogenous, (-) = Endogenous, (M) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n     a    - -      X X      - X      - X      - -      - -  \n     b    - -      X X      - -      X -      X -      - -  \n     c    - -      - -      - -      - -      - -      - -  \n\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n\n    as    X X      - -      X -      X -      X X      X X  \n    bs    X X      - -      X X      - X      - X      X X  \n"
+        end
     end
 
 end
@@ -147,7 +186,7 @@ include("sstests.jl")
     @test all(as .== a)
     a[1, 2] = 2.5
     @test all(as .== a)
-    as = array2data(a, m.allvars, first(p.range), copy = true)
+    as = array2data(a, m.allvars, first(p.range), copy=true)
     @test all(as .== a)
     a[1, 2] = 3.0
     @test !all(as .== a)

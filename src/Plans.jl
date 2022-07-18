@@ -650,11 +650,11 @@ function compare_plans(io::IO, left::Plan, right::Plan;
         [bar[i-1]+1:bar[i] for i = 2:length(bar)]
     end
     width2 = 1 .+ map(length, (sprint(print, rng; context=io, sizehint=15) for rng in ranges))
-    width2 = max.(width2, 1 + maximum(length, (exog_mark, endo_mark, missing_mark)))
+    width2 = max.(width2, 6 + 2maximum(length, (exog_mark, endo_mark, missing_mark)))
     left_tf_matr = left.exogenous[map(x -> _offset(left, first(x)), [ranges...]), :]
     right_tf_matr = right.exogenous[map(x -> _offset(right, first(x)), [ranges...]), :]
     println(io, "($(exog_mark)) = Exogenous, ($(endo_mark)) = Endogenous, ($(missing_mark)) = Missing:")
-    header = (lpad(rng, w) for (rng, w) in zip(ranges, width2))
+    header = (_cpad(rng, w) for (rng, w) in zip(ranges, width2))
     println(io, lpad("NAME", width1), _name_delim, join(header, _range_delim))
     allvars = unique([left_vars..., right_vars...])
     if alphabetical
@@ -668,7 +668,7 @@ function compare_plans(io::IO, left::Plan, right::Plan;
             lmark = lind < 0 ? missing_mark : left_tf_matr[row, lind] ? exog_mark : endo_mark
             rind = var in right_vars ? right.varshks[var] : -1
             rmark = rind < 0 ? missing_mark : right_tf_matr[row, lind] ? exog_mark : endo_mark
-            push!(tmp, _cpad("$lmark   $rmark", w))
+            push!(tmp, _cpad("$lmark $rmark", w))
         end
         println(io, join(tmp, _range_delim))
         if pagelines > 0 && rem(lno, pagelines) == 0
