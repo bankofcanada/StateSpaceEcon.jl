@@ -618,8 +618,8 @@ compare_plans(left::Plan, right::Plan; kwargs...) = compare_plans(Base.stdout, l
 )
 function compare_plans(io::IO, left::Plan, right::Plan;
     alphabetical=false,  # whether to sort variables
-    pagelines = 0, 
-    exog_mark="X", endo_mark="-", missing_mark="M", # symbols used for each class
+    pagelines=0,
+    exog_mark="X", endo_mark="~", missing_mark=".", # symbols used for each class
     delim=" ",  # set to "," to get a CSV file (with 3 skip rows and 1 header row)
     _name_delim=delim,  # padding after NAME column
     _range_delim=delim    # padding between range columns
@@ -631,7 +631,7 @@ function compare_plans(io::IO, left::Plan, right::Plan;
         println(io, "Same range: ", left.range)
     else
         println(io, "Range  left: ", left.range)
-        println(io, "Range right: ", left.range)
+        println(io, "Range right: ", right.range)
     end
     left_vars = keys(left.varshks)
     right_vars = keys(right.varshks)
@@ -651,8 +651,6 @@ function compare_plans(io::IO, left::Plan, right::Plan;
     end
     width2 = 1 .+ map(length, (sprint(print, rng; context=io, sizehint=15) for rng in ranges))
     width2 = max.(width2, 6 + 2maximum(length, (exog_mark, endo_mark, missing_mark)))
-    left_tf_matr = left.exogenous[map(x -> _offset(left, first(x)), [ranges...]), :]
-    right_tf_matr = right.exogenous[map(x -> _offset(right, first(x)), [ranges...]), :]
     println(io, "($(exog_mark)) = Exogenous, ($(endo_mark)) = Endogenous, ($(missing_mark)) = Missing:")
     header = (_cpad(rng, w) for (rng, w) in zip(ranges, width2))
     println(io, lpad("NAME", width1), _name_delim, join(header, _range_delim))
@@ -663,11 +661,15 @@ function compare_plans(io::IO, left::Plan, right::Plan;
     for (lno, var) in enumerate(allvars)
         print(io, lpad(var, width1), _name_delim)
         tmp = String[]
-        for (row, w) in enumerate(width2)
-            lind = var in left_vars ? left.varshks[var] : -1
-            lmark = lind < 0 ? missing_mark : left_tf_matr[row, lind] ? exog_mark : endo_mark
-            rind = var in right_vars ? right.varshks[var] : -1
-            rmark = rind < 0 ? missing_mark : right_tf_matr[row, lind] ? exog_mark : endo_mark
+        for (rng, w) in zip(ranges, width2)
+            #  compute left mark
+            row = _offset(left, first(rng))
+            col = var in left_vars ? left.varshks[var] : -1
+            lmark = col < 0 || !checkbounds(Bool, left.exogenous, row, col) ? missing_mark : left.exogenous[row, col] ? exog_mark : endo_mark
+            # compute right mark
+            row = _offset(right, first(rng))
+            col = var in right_vars ? right.varshks[var] : -1
+            rmark = col < 0 || !checkbounds(Bool, right.exogenous, row, col) ? missing_mark : right.exogenous[row, col] ? exog_mark : endo_mark
             push!(tmp, _cpad("$lmark $rmark", w))
         end
         println(io, join(tmp, _range_delim))

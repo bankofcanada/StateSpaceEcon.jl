@@ -252,7 +252,6 @@ end
 module DiagnoseSState
 using ModelBaseEcon
 model = Model()
-println(model)
 @steadyvariables model a b
 @variables model c
 @equations model begin

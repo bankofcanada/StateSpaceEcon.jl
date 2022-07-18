@@ -119,13 +119,22 @@ end
             io = IOBuffer()
             compare_plans(io, p, q)
             seek(io, 0)
-            @test read(io, String) == "\nSame range: 0U:10U\nSame variables.\n(X) = Exogenous, (-) = Endogenous, (M) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n     a    - -      X X      - X      - X      - -      - -  \n     b    - -      X X      - -      X -      X -      - -  \n     c    - -      - -      - -      - -      - -      - -  \n    as    X X      - -      X -      X -      X X      X X  \n    bs    X X      - -      X X      - X      - X      X X  \n"
+            @test read(io, String) == "\nSame range: 0U:10U\nSame variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n     a    ~ ~      X X      ~ X      ~ X      ~ ~      ~ ~  \n     b    ~ ~      X X      ~ ~      X ~      X ~      ~ ~  \n     c    ~ ~      ~ ~      ~ ~      ~ ~      ~ ~      ~ ~  \n    as    X X      ~ ~      X ~      X ~      X X      X X  \n    bs    X X      ~ ~      X X      ~ X      ~ X      X X  \n"
         end
         begin
             io = IOBuffer()
             compare_plans(io, p, q; pagelines=3)
             seek(io, 0)
-            @test read(io, String) == "\nSame range: 0U:10U\nSame variables.\n(X) = Exogenous, (-) = Endogenous, (M) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n     a    - -      X X      - X      - X      - -      - -  \n     b    - -      X X      - -      X -      X -      - -  \n     c    - -      - -      - -      - -      - -      - -  \n\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n\n    as    X X      - -      X -      X -      X X      X X  \n    bs    X X      - -      X X      - X      - X      X X  \n"
+            @test read(io, String) == "\nSame range: 0U:10U\nSame variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n     a    ~ ~      X X      ~ X      ~ X      ~ ~      ~ ~  \n     b    ~ ~      X X      ~ ~      X ~      X ~      ~ ~  \n     c    ~ ~      ~ ~      ~ ~      ~ ~      ~ ~      ~ ~  \n\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n\n    as    X X      ~ ~      X ~      X ~      X X      X X  \n    bs    X X      ~ ~      X X      ~ X      ~ X      X X  \n"
+        end
+        begin
+            m1 = deepcopy(m)
+            deleteat!(m1.variables, 2)
+            push!(m1.variables, :beta)
+            r = Plan(m1, 8U:15U)
+            exogenize!(r, :beta, 10U:13U)
+            out = @capture_out compare_plans(p, r; alphabetical=true)
+            @test out == "\nRange  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U    9U:9U   10U:10U  11U:13U  14U:15U\n     a    ~ .      X .      ~ .      ~ .      ~ ~      ~ ~      ~ ~      . ~      . ~  \n    as    X .      ~ .      X .      X .      X X      X X      X X      . X      . X  \n     b    ~ .      X .      ~ .      X .      X .      ~ .      ~ .      . .      . .  \n  beta    . .      . .      . .      . .      . ~      . ~      . X      . X      . ~  \n    bs    X .      ~ .      X .      ~ .      ~ X      X X      X X      . X      . X  \n     c    ~ .      ~ .      ~ .      ~ .      ~ ~      ~ ~      ~ ~      . ~      . ~  \n"
         end
     end
 
