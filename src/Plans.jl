@@ -585,6 +585,101 @@ count_points(::Val{:exog}, p::Plan, rng, vars) = sum(p.exogenous[rng, vars])
 count_points(::Val{:endo}, p::Plan, rng, vars) = sum(.!p.exogenous[rng, vars])
 export count_endo_points, count_exog_points
 
+#############
+
+"""
+    compare_plans(left, right; options)
+    compare_plans(file, left, right; options)
+
+Display a comparison of two plans, or save it in a text file.
+
+### Options
+* `alphabetical=false` - set to `true` to sort the variables. By default
+  variables will be listed in the same order as in the left plan.
+* `exog_mark="X"` - a short string (ideally 1 character) to mark exogenous
+  values.
+* `endo_mark="-"` - a short string (ideally 1 character) to mark endogenous
+  values.
+* `missing_mark="M"` - a short string (ideally 1 character) to display when a
+  variable is missing from one of the plans.
+* `delim=" "` - delimiter. Use `","`` to make it a CSV file.
+* `pagelines=0` - Set to a positive integer to enable pagination. Number is
+  interpreted as the number of lines to repeat the header line (the one with the
+  ranges).
+"""
+function compare_plans end
+export compare_plans
+
+compare_plans(left::Plan, right::Plan; kwargs...) = compare_plans(Base.stdout, left, right; kwargs...)
+@inline compare_plans(file::AbstractString, left::Plan, right::Plan; kwargs...) = (
+    open(file, "w") do f
+        compare_plans(f, left, right; kwargs...)
+    end
+)
+function compare_plans(io::IO, left::Plan, right::Plan;
+    alphabetical=false,  # whether to sort variables
+    pagelines=0,
+    exog_mark="X", endo_mark="~", missing_mark=".", # symbols used for each class
+    delim=" ",  # set to "," to get a CSV file (with 3 skip rows and 1 header row)
+    _name_delim=delim,  # padding after NAME column
+    _range_delim=delim    # padding between range columns
+)
+    # summary(io, p)
+    println(io)
+    frequencyof(left.range) == frequencyof(right.range) || TimeSeriesEcon.mixed_freq_error(left.range, right.range)
+    if left.range == right.range
+        println(io, "Same range: ", left.range)
+    else
+        println(io, "Range  left: ", left.range)
+        println(io, "Range right: ", right.range)
+    end
+    left_vars = keys(left.varshks)
+    right_vars = keys(right.varshks)
+    if Set(left_vars) == Set(right_vars)
+        println(io, "Same variables.")
+    else
+        println(io, "Variables only in left plan: ", setdiff(left_vars, right_vars))
+        println(io, "Variables only in right plan: ", setdiff(right_vars, left_vars))
+        println(io, length(intersect(left_vars, right_vars)), " common variables.")
+    end
+    width1 = 2 + maximum(length, (sprint(print, v; context=io, sizehint=20) for v in union(left_vars, right_vars)))
+    width1 = max(width1, 2 + length("NAME"))
+    ranges = let
+        foo, _ = zip(collapsed_range(left)..., collapsed_range(right)...)
+        bar = sort!(unique!([first(left.range) - 1, first(right.range) - 1, last.(foo)...]))
+        [bar[i-1]+1:bar[i] for i = 2:length(bar)]
+    end
+    width2 = 1 .+ map(length, (sprint(print, rng; context=io, sizehint=15) for rng in ranges))
+    width2 = max.(width2, 6 + 2maximum(length, (exog_mark, endo_mark, missing_mark)))
+    println(io, "($(exog_mark)) = Exogenous, ($(endo_mark)) = Endogenous, ($(missing_mark)) = Missing:")
+    header = (_cpad(rng, w) for (rng, w) in zip(ranges, width2))
+    println(io, lpad("NAME", width1), _name_delim, join(header, _range_delim))
+    allvars = unique([left_vars..., right_vars...])
+    if alphabetical
+        sort!(allvars)
+    end
+    for (lno, var) in enumerate(allvars)
+        print(io, lpad(var, width1), _name_delim)
+        tmp = String[]
+        for (rng, w) in zip(ranges, width2)
+            #  compute left mark
+            row = _offset(left, first(rng))
+            col = var in left_vars ? left.varshks[var] : -1
+            lmark = col < 0 || !checkbounds(Bool, left.exogenous, row, col) ? missing_mark : left.exogenous[row, col] ? exog_mark : endo_mark
+            # compute right mark
+            row = _offset(right, first(rng))
+            col = var in right_vars ? right.varshks[var] : -1
+            rmark = col < 0 || !checkbounds(Bool, right.exogenous, row, col) ? missing_mark : right.exogenous[row, col] ? exog_mark : endo_mark
+            push!(tmp, _cpad("$lmark $rmark", w))
+        end
+        println(io, join(tmp, _range_delim))
+        if pagelines > 0 && rem(lno, pagelines) == 0
+            println(io, "\n", lpad("NAME", width1), _name_delim, join(header, _range_delim), "\n")
+        end
+    end
+end
+
+
 end # module Plans
 
 using .Plans
@@ -592,5 +687,7 @@ export Plan,
     exogenize!, endogenize!,
     exog_endo!, endo_exog!,
     autoexogenize!,
-    exportplan, importplan,
+    exportplan, importplan, compare_plans,
     count_endo_points, count_exog_points
+
+

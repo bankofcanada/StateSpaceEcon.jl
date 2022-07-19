@@ -24,7 +24,7 @@ optionally showing the column names.
 """
 printmatrix(mat::AbstractMatrix, args...) = printmatrix(stdout, mat, args...)
 printmatrix(io::IO, mat::AbstractMatrix, args...) = printmatrix(io, mat, Val(12.7), args...)
-@generated function printmatrix(io::IO, mat::AbstractMatrix, ::Val{F}, cols = nothing) where F
+@generated function printmatrix(io::IO, mat::AbstractMatrix, ::Val{F}, cols=nothing) where {F}
     N = floor(Int, F)
     fmts = "% $(N)s "
     fmtn = "% $(F)f "
@@ -44,7 +44,7 @@ printmatrix(io::IO, mat::AbstractMatrix, args...) = printmatrix(io, mat, Val(12.
         for i in 1:m
             s = ""
             for j in 1:n
-                s *= Printf.@sprintf($fmtn, mat[i,j])
+                s *= Printf.@sprintf($fmtn, mat[i, j])
             end
             println(io, s)
         end
@@ -53,18 +53,22 @@ printmatrix(io::IO, mat::AbstractMatrix, args...) = printmatrix(io, mat, Val(12.
 end
 export printmatrix
 
-function ModelBaseEcon.transform(data::AbstractMatrix{Float64}, m::Model) 
-    tdata = similar(data)
+function ModelBaseEcon.transform(data::AbstractMatrix{Float64}, m::Model)
+    tdata = copy(data)
     for (i, v) in enumerate(m.varshks)
-        tdata[:, i] .= transform(data[:, i], v)
+        if need_transform(v)
+            tdata[:, i] .= transform(data[:, i], v)
+        end
     end
     return tdata
 end
 
-function ModelBaseEcon.inverse_transform(data::AbstractMatrix{Float64}, m::Model) 
-    idata = similar(data)
+function ModelBaseEcon.inverse_transform(data::AbstractMatrix{Float64}, m::Model)
+    idata = copy(data)
     for (i, v) in enumerate(m.varshks)
-        idata[:, i] .= inverse_transform(data[:, i], v)
+        if need_transform(v)
+            idata[:, i] .= inverse_transform(data[:, i], v)
+        end
     end
     return idata
 end

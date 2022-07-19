@@ -6,7 +6,7 @@
 ##################################################################################
 
 """
-    sim_nr!(x, sd, maxiter, tol, verbose [, sparse_solver])
+    sim_nr!(x, sd, maxiter, tol, verbose [, sparse_solver [, linesearch]])
 
 Solve the simulation problem.
   * `x` - the array of data for the simulation. All initial, final and exogenous
@@ -25,7 +25,7 @@ Solve the simulation problem.
 """
 function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     maxiter::Int64, tol::Float64, verbose::Bool,
-    sparse_solver::Function = (A, b) -> A \ b, linesearch::Bool = false)
+    sparse_solver::Function=(A, b) -> A \ b, linesearch::Bool=false)
     for it = 1:maxiter
         Fx, Jx = global_RJ(x, x, sd)
         nFx = norm(Fx, Inf)
@@ -33,7 +33,7 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
             if verbose
                 @info "$it, || Fx || = $(nFx)"
             end
-            break
+            return true
         end
         Δx = sparse_solver(Jx, Fx)
         λ = 1.0
@@ -73,10 +73,10 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
             @info "$it, || Fx || = $(nFx), || Δx || = $(nΔx)"
         end
         if nΔx < tol
-            break
+            return true
         end
     end
-    return nothing
+    return false
 end
 
 
@@ -106,7 +106,7 @@ Run a simulation for the given model, simulation plan and exogenous data.
     the steady state. In this case the simulation result is also returned as a
     deviation from the steady state. Default value is `false`.
   * `anticipate::Bool` - set to `false` to instruct the solver that all shocks
-    are unanticilated by the agents. Default value is `true`.
+    are unanticipated by the agents. Default value is `true`.
   * `verbose::Bool` - control whether or not to print progress information.
     Default value is taken from `model.options`.
   * `tol::Float64` - set the desired accuracy. Default value is taken from
@@ -120,95 +120,181 @@ Run a simulation for the given model, simulation plan and exogenous data.
 """
 function simulate end
 
-function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
-    initial_guess::AbstractArray{Float64,2} = zeros(0, 0),
-    deviation::Bool = false,
-    anticipate::Bool = true,
-    verbose::Bool = m.options.verbose,
-    tol::Float64 = m.options.tol,
-    maxiter::Int64 = m.options.maxiter,
-    fctype = getoption(m, :fctype, fcgiven),
-    expectation_horizon::Union{Nothing,Int64} = nothing,
-    sparse_solver::Function = (A, b) -> A \ b,
-    linesearch::Bool = getoption(m, :linesearch, false)
+function simulate(m::Model,
+    p_ant::Plan,
+    exog_ant::AbstractArray{Float64,2},
+    p_unant::Plan=Plan(1U:0U, (;), falses(0, 0)),
+    exog_unant::AbstractArray{Float64,2}=zeros(0, 0);
+    #= Options =#
+    anticipate::Bool=isempty(exog_unant),
+    initial_guess::AbstractArray{Float64,2}=zeros(0, 0),
+    #= Deviation options =#
+    deviation::Bool=false,
+    baseline::AbstractArray{Float64,2}=zeros(0, 0),
+    deviation_ant=deviation,
+    deviation_unant=deviation,
+    #= Solver options =#
+    verbose::Bool=m.options.verbose,
+    tol::Float64=m.options.tol,
+    maxiter::Int64=m.options.maxiter,
+    fctype=getoption(m, :fctype, fcgiven),
+    expectation_horizon::Union{Nothing,Int64}=nothing,
+    #= Newton-Raphson options =#
+    sparse_solver::Function=(A, b) -> A \ b,
+    linesearch::Bool=getoption(m, :linesearch, false),
+    warn_maxiter::Bool=getoption(getoption(m, :warn, Options()), :maxiter, false)
 )
+
+    unant_given = !isempty(exog_unant)
+
+    if isempty(p_unant) == unant_given
+        error("Invalid `unanticipated` inputs: either plan and data must both be given, or both must be left empty.")
+    end
+
+    if anticipate && unant_given
+        error("Conflicting arguments: non-empty `exog_unanticipated` with `anticipate=true`.")
+    end
 
     # make sure the model evaluation data is up to date
     refresh_med!(m)
 
-    NT = length(p.range)
+    NT = length(p_ant.range)
     nauxs = length(m.auxvars)
-    if size(exog_data) != (NT, length(m.varshks))
-        error("Incorrect dimensions of exog_data. Expected $((NT, length(m.varshks))), got $(size(exog_data)).")
+    nvarshks = length(m.varshks)
+    logvars = [islog(var) | isneglog(var) for var in m.varshks]
+
+    if size(exog_ant) != (NT, nvarshks)
+        error("Incorrect dimensions of exog_data. Expected $((NT, nvarshks)), got $(size(exog_ant)).")
     end
-    if !isempty(initial_guess) && size(initial_guess) != (NT, length(m.varshks))
-        error("Incorrect dimensions of initial_guess. Expected $((NT, length(m.varshks))), got $(size(exog_data)).")
+    if !isempty(initial_guess) && size(initial_guess) != (NT, nvarshks)
+        error("Incorrect dimensions of initial_guess. Expected $((NT, nvarshks)), got $(size(initial_guess)).")
     end
 
-    if deviation
-        exog_data = copy(exog_data)
-        local logvars = islog.(m.varshks) .| isneglog.(m.varshks)
-        local ss_data = steadystatearray(m, p)
-        exog_data[:, logvars] .*= ss_data[:, logvars]
-        exog_data[:, .!logvars] .+= ss_data[:, .!logvars]
+    if deviation_ant
+        exog_ant = copy(exog_ant)
+        if isempty(baseline)
+            baseline = steadystatearray(m, p_ant)
+        end
+        if size(baseline) != (NT, nvarshks)
+            error("Incorrect dimensions of baseline. Expected $((NT, nvarshks)), got $(size(baseline)).")
+        end
+        exog_ant[:, logvars] .*= baseline[:, logvars]
+        exog_ant[:, .!logvars] .+= baseline[:, .!logvars]
     end
-
-    exog_data = ModelBaseEcon.update_auxvars(transform(exog_data, m), m)
+    exog_ant = ModelBaseEcon.update_auxvars(transform(exog_ant, m), m)
 
     if !isempty(initial_guess)
         x = ModelBaseEcon.update_auxvars(transform(initial_guess, m), m)
     else
-        x = copy(exog_data)
+        x = copy(exog_ant)
     end
 
     if anticipate
-        gdata = StackedTimeSolverData(m, p, fctype)
-        assign_exog_data!(x, exog_data, gdata)
+        gdata = StackedTimeSolverData(m, p_ant, fctype)
+        assign_exog_data!(x, exog_ant, gdata)
         if verbose
-            @info "Simulating $(p.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
+            @info "Simulating $(p_ant.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
         end
-        sim_nr!(x, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
+        converged = sim_nr!(x, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
+        if warn_maxiter && !converged
+            @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
+        end
     else # unanticipated shocks
+
+        #=== prepare sub-ranges ===#
         init = 1:m.maxlag
         term = NT .+ (1-m.maxlead:0)
         sim = 1+m.maxlag:NT-m.maxlead
-        nvars = length(m.variables)
-        nshks = length(m.shocks)
+
+        #=== prepare lists of indices according to types of variables ===#
+        shkinds = findall(isshock, m.varshks)
+        nshks = length(shkinds)
+
+        varinds = findall(!isshock, m.varshks)
+        nvars = length(varinds)
+
+        # auxiliary vars are always last
+        nvarshks = nvars + nshks
+        varshkinds = 1:nvarshks
+
         nauxs = length(m.auxvars)
-        shkinds = nvars .+ (1:nshks)
-        auxinds = nvars .+ nshks .+ (1:nauxs)
-        varshkinds = 1:(nvars+nshks)
-        allvarinds = 1:(nvars+nshks+nauxs)
-        x[init, allvarinds] .= exog_data[init, allvarinds]
-        # x[term, allvarinds] .= exog_data[term, allvarinds]
-        x[sim, shkinds] .= 0.0
+        auxinds = nvarshks .+ (1:nauxs)
+
+        nallvars = nvarshks + nauxs
+        allvarinds = 1:nallvars
+
+        if unant_given
+            #=== check compatibility of unanticipated inputs (data and plan) ===#
+            if p_unant.range != p_ant.range
+                error("Anticipated and unanticipated ranges don't match.")
+            end
+            if size(exog_unant) != size(exog_ant)
+                error("Anticipated and unanticipated data  don't match.")
+            end
+            if deviation_unant
+                exog_unant[:, logvars] .*= baseline[:, logvars]
+                exog_unant[:, .!logvars] .+= baseline[:, .!logvars]
+            end
+            exog_unant = ModelBaseEcon.update_auxvars(transform(exog_unant, m), m)
+        else
+            #=== prepare unanticipated data and plan (backward compatibility) ===#
+            p_unant = p_ant
+            p_ant = Plan(m, p_unant.range[sim])
+            exog_unant = copy(exog_ant)
+            exog_ant[sim, shkinds] .= 0
+            x[sim, shkinds] .= 0
+        end
+
+        x[init, allvarinds] .= exog_ant[init, allvarinds]
         t0 = first(sim)
         T = last(sim)
         if expectation_horizon === nothing
-            # the original code, where we always simulate until the end with the true final conditions
+            # when expectation_horizon is not given, we simulate each iteration until the end and with the true final condition
+            last_run = Workspace(; t=t0)
             for t in sim
-                exog_inds = p[t, Val(:inds)]
+                exog_inds = p_unant[t, Val(:inds)]
                 psim = Plan(m, t:T)
-                if (t != t0) && (psim[t0, Val(:inds)] == exog_inds) && (maximum(abs, exog_data[t, shkinds]) < tol)
+                psim.exogenous .= p_ant.exogenous[begin+Int(t - t0):end, :]
+                if t == t0
+                    imaxiter = maxiter
+                    itol = tol
+                elseif (maximum(abs, x[t, exog_inds] .- exog_unant[t, exog_inds]) < tol) #= && (psim[t0, Val(:inds)] == exog_inds) =#
                     continue
+                else
+                    imaxiter = 5
+                    itol = sqrt(tol)
                 end
                 setexog!(psim, t0, exog_inds)
                 gdata = StackedTimeSolverData(m, psim, fctype)
-                x[t, exog_inds] = exog_data[t, exog_inds]
+                x[t, exog_inds] = exog_unant[t, exog_inds]
                 # assign_exog_data!(x[psim.range,:], exog_data[psim.range,:], gdata)
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
-                assign_final_condition!(xx, exog_data[sim_range, :], gdata)
+                assign_final_condition!(xx, exog_unant[sim_range, :], gdata)
                 if verbose
-                    @info "Simulating $(p.range[t:T])" # anticipate expectation_horizon gdata.FC
+                    @info "Simulating $(p_ant.range[t:T]) with $((itol, imaxiter))" # anticipate expectation_horizon gdata.FC
                 end
-                sim_nr!(xx, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
-                # if verbose
-                #     @info "Result at $t: " x[[t], :]
-                # end
+                converged = sim_nr!(xx, gdata, imaxiter, itol, verbose, sparse_solver, linesearch)
+                if warn_maxiter && !converged
+                    @warn("Newton-Raphson reached maximum number of iterations (`imaxiter`).")
+                end
+                last_run = Workspace(; t, xx, gdata)
+            end
+            if last_run.t > t0
+                local t = last_run.t
+                xx = last_run.xx
+                gdata = last_run.gdata
+                if verbose
+                    @info "Simulating $(p_ant.range[t:T]) with $((tol, maxiter))" # anticipate expectation_horizon gdata.FC
+                end
+                converged = sim_nr!(xx, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
+                if warn_maxiter && !converged
+                    @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
+                end
             end
         else
-            # the new code, where the first and last simulations use the true 
+            # when expectation_horizon is not given,
+            # the first and last simulations use the true 
             # simulation range and final condition, while the intermediate 
             # simulations use expectation_horizon steps with fcnatural
             if expectation_horizon == 0
@@ -223,37 +309,53 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
             let t = t0
                 # first run is with the full range, the true fctype, 
                 # and only the first period is imposed
-                exog_inds = p[t, Val(:inds)]
+                exog_inds = p_unant[t, Val(:inds)]
                 psim = Plan(m, t:T)
+                psim.exogenous .= p_ant.exogenous[begin+Int(t - t0):end, :]
                 setexog!(psim, t0, exog_inds)
                 sdata = StackedTimeSolverData(m, psim, fctype)
-                x[t, exog_inds] = exog_data[t, exog_inds]
+                x[t, exog_inds] = exog_unant[t, exog_inds]
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
-                assign_final_condition!(xx, exog_data[sim_range, :], sdata)
+                assign_final_condition!(xx, exog_unant[sim_range, :], sdata)
                 if verbose
-                    @info "Simulating $(p.range[t:T])" # anticipate expectation_horizon sdata.FC
+                    @info "Simulating $(p_ant.range[t:T])" # anticipate expectation_horizon sdata.FC
                 end
-                sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
-                # if verbose
-                #     @info "Result at $t: " x[[t], :]
-                # end
+                converged = sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
+                if warn_maxiter && !converged
+                    @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
+                end
             end
             # intermediate simulations
             last_t::Int64 = t0
             psim = Plan(m, 0:expectation_horizon-1)
             sdata = StackedTimeSolverData(m, psim, fcnatural)
             for t in sim[2:end]
-                exog_inds = p[t, Val(:inds)]
+                exog_inds = p_unant[t, Val(:inds)]
                 # we need to run a simulation if a variable is exogenous, or if a shock value is not zero
                 # these intermediate simulations are always with fcnatural, 
                 #       have length equal to expectation_horizon and 
                 #       only the first period is imposed
-                if (exog_inds == shkinds) && (maximum(abs, exog_data[t, shkinds]) <= tol)
+                if (maximum(abs, x[t, exog_inds] .- exog_unant[t, exog_inds]) < tol) #= && (exog_inds == shkinds) =#
                     continue
                 end
-                setexog!(psim, t0, exog_inds)
-                update_plan!(sdata, m, psim)
+                psim1 = copy(psim)
+                # the range of psim1 might extend beyond the range of p_ant.
+                # we copy from p_ant as far as we have and copy the last line beyond that
+                tmp_rng = t:min(t + expectation_horizon - 1, T)
+                psim1.exogenous[t0.+(0:length(tmp_rng)-1), :] .= p_ant.exogenous[tmp_rng, :]
+
+                # ===> must leave the psim1 plan empty beyond the end of p_ant
+                # becasue we don't have data in exog_and for any exogenized
+                # variables.
+                # #=
+                # for tt = length(tmp_rng)+1:expectation_horizon
+                #     psim1.exogenous[t0+tt, :] .= p_ant.exogenous[T, :]
+                # end
+                # =#
+
+                setexog!(psim1, t0, exog_inds)
+                update_plan!(sdata, m, psim1)
                 # note that the range always goes from 0 to expectation_horizon-1, 
                 # so we need to add t in order to get the correct set of rows of x
                 sim_range = t .+ UnitRange{Int}(psim.range)
@@ -261,16 +363,16 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 # The initial conditions are already set
                 # The exogenous values are already set as well, except for the first period
                 # In other words, we only need to impose the first period here
-                xx[t0, exog_inds] = exog_data[t, exog_inds]
+                xx[t0, exog_inds] = exog_unant[t, exog_inds]
                 # Update the final conditions (the second argument is not used with fcnatural)
-                assign_final_condition!(xx, xx, sdata)
+                assign_final_condition!(xx, zeros(0, nallvars), sdata)
                 if verbose
-                    @info "Simulating $(p.range[t] .+ (0:expectation_horizon - 1))" # anticipate expectation_horizon sdata.FC
+                    @info("Simulating $(p_ant.range[t] .+ (0:expectation_horizon - 1))") # anticipate expectation_horizon sdata.FC
                 end
-                sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
-                # if verbose
-                #     @info "Result at $t: " x[[t], :]
-                # end
+                converged = sim_nr!(xx, sdata, 5, sqrt(tol), verbose, sparse_solver, linesearch)
+                if warn_maxiter && !converged
+                    @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
+                end
                 last_t = t  # keep track of last simulation time
             end
             # last simulation
@@ -278,33 +380,34 @@ function simulate(m::Model, p::Plan, exog_data::AbstractArray{Float64,2};
                 # do we need to re-run the last simulation?
                 # if it didn't reach T, then yes
                 # if the final condition is not fcnatural, then yes
-                if (last_t + expectation_horizon < T) || (fctype != fcnatural)
+                if (last_t + expectation_horizon != T) || (fctype != fcnatural)
                     psim = Plan(m, min(last_t + 1, T):T)
+                    psim.exogenous .= p_ant.exogenous[end.+(1-length(psim.range):0), :]
                     # there are no unanticipated shocks in this simulation
                     sdata = StackedTimeSolverData(m, psim, fctype)
                     # the initial conditions and the exogenous data are already in x
                     # we only need the final conditions
                     sim_range = UnitRange{Int}(psim.range)
                     xx = view(x, sim_range, :)
-                    assign_final_condition!(xx, exog_data[sim_range, :], sdata)
+                    assign_final_condition!(xx, exog_unant[sim_range, :], sdata)
                     if verbose
-                        @info "Simulating $(p.range[last_t + 1:T])" # anticipate expectation_horizon sdata.FC
+                        @info "Simulating $(p_ant.range[last_t + 1:T])" # anticipate expectation_horizon sdata.FC
                     end
-                    sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
-                    # if verbose
-                    #     @info "Result at $(last_t + 1): " x[[last_t + 1], :]
-                    # end
+                    converged = sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
+                    if warn_maxiter && !converged
+                        @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
+                    end
                 end
             end
             # x = x[begin:end-expectation_horizon, :]
         end
     end
 
-    x = x[axes(exog_data)...]
+    x = x[axes(exog_ant)...]
     x .= inverse_transform(x, m)
     if deviation
-        x[:, logvars] ./= ss_data[:, logvars]
-        x[:, .!logvars] .-= ss_data[:, .!logvars]
+        x[:, logvars] ./= baseline[:, logvars]
+        x[:, .!logvars] .-= baseline[:, .!logvars]
     end
 
     return x
@@ -312,19 +415,19 @@ end
 
 # The versions of simulate with Dict/Workspace/SimData
 
-simulate(m::Model, p::Plan, data::Dict; kwargs...) = simulate(m, p, dict2data(data, m, p; copy = true); kwargs...)
-simulate(m::Model, p::Plan, data::Workspace; kwargs...) = simulate(m, p, workspace2data(data, m, p; copy = true); kwargs...)
+simulate(m::Model, p::Plan, data::AbstractDict; kwargs...) = simulate(m, p, dict2data(data, m, p; copy=true); kwargs...)
+simulate(m::Model, p::Plan, data::Workspace; kwargs...) = simulate(m, p, workspace2data(data, m, p; copy=true); kwargs...)
 
 # this is the main interface.
 function simulate(m::Model, p::Plan, data::SimData; kwargs...)
     exog = data2array(data, m, p)
     initial_guess = get(kwargs, :initial_guess, nothing)
     if initial_guess isa SimData
-        kw = (; initial_guess = data2array(initial_guess, m, p))
+        kw = (; initial_guess=data2array(initial_guess, m, p))
     elseif initial_guess isa Workspace
-        kw = (; initial_guess = workspace2data(initial_guess, m, p))
+        kw = (; initial_guess=workspace2data(initial_guess, m, p))
     elseif initial_guess isa AbstractDict
-        kw = (; initial_guess = dict2array(initial_guess, m, p))
+        kw = (; initial_guess=dict2array(initial_guess, m, p))
     else
         kw = (;)
     end

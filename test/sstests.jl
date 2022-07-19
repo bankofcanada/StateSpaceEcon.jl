@@ -252,7 +252,6 @@ end
 module DiagnoseSState
 using ModelBaseEcon
 model = Model()
-println(model)
 @steadyvariables model a b
 @variables model c
 @equations model begin
@@ -309,9 +308,12 @@ end
         @test issssolved(m) == false
         out = @capture_err begin
             @test_throws ErrorException check_sstate(m) == 8
+        end
+        @test occursin("Inadmissible point in steady state equation", out)
+        out = @capture_err begin
             @test_throws ErrorException sssolve!(m; presolve=true)
         end
-        @test occursin("Inadmissible point in equation", out)
+        @test occursin("Inadmissible point in steady state equation", out)
     end
 end
 

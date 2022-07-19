@@ -408,6 +408,65 @@ end
     end
 end
 
+@testset "new.unant" begin
+    m = E1.model
+    m.α = m.β = 0.5
+
+    test_rng = 20Q1:22Q1
+    shk_per = first(test_rng) + 3
+
+    p_a = Plan(m, test_rng)
+    p_u = copy(p_a)
+    data = zerodata(m, p_a)
+    data[begin, :y] = 1
+    data[end, :y] = 11
+    res_a = simulate(m, p_a, data; anticipate=true)
+    # anticipated shock of 0.1 at period 4
+    sadata = copy(data)
+    sadata[shk_per, :y_shk] = 0.1
+    res_sa = simulate(m, p_a, sadata; anticipate=true)
+    # unanticipated shock of 0.2 at period 4
+    sudata = copy(data)
+    sudata[shk_per, :y_shk] = 0.2
+    res_su = simulate(m, p_u, sudata; anticipate=false)
+    @test res_su[begin:shk_per-1, :] ≈ res_a[begin:20Q3, :]
+    @test !isapprox(res_su[shk_per:end, :y], res_a[20Q4:end, :y])
+    # mixed shock at period 4 - anticipated 0.1, unanticipated 0.2
+    res_sm = simulate(m, p_a, sadata, p_u, sudata)
+    @test res_sm[begin:shk_per-1, :] ≈ res_sa[begin:20Q3, :]
+    @test !isapprox(res_sm[shk_per:end, :y], res_sa[20Q4:end, :y])
+
+    # now attempt to recover shocks from solutions
+    p_a2 = autoexogenize!(copy(p_a), m, test_rng)
+    p_u2 = copy(p_a2)
+    # recover 
+    chk_a = let data = copy(res_a)
+        data.y_shk[test_rng] .= 100rand(length(test_rng))
+        simulate(m, p_a2, data)
+    end
+    @test chk_a ≈ res_a
+
+    chk_sa = let data = copy(res_sa)
+        data.y_shk[test_rng] .= 100rand(length(test_rng))
+        simulate(m, p_a2, data)
+    end
+    @test chk_sa ≈ res_sa
+
+    chk_su = let data = copy(res_su)
+        data.y_shk[test_rng] .= 100rand(length(test_rng))
+        simulate(m, p_u2, data; anticipate=false)
+    end
+    @test chk_su ≈ res_su
+
+    chk_sm = let data_a = copy(res_sa), data_u = copy(res_sm)
+        data_a.y[test_rng] .= 100rand(length(test_rng))
+        data_u.y_shk[test_rng] .= 100rand(length(test_rng))
+        @test_throws ErrorException simulate(m, p_a, data_a, p_u2, data_u; anticipate=true)
+        simulate(m, p_a, data_a, p_u2, data_u)
+    end
+    @test chk_sm ≈ res_sm
+end
+
 @testset "linesearch, deviation" begin
     # linesearch should get the same results
     let m = deepcopy(E3nl.model)
