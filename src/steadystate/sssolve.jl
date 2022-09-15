@@ -133,6 +133,16 @@ function sssolve!(model::Model;
             break
         end
     end
+    xx[abs.(xx).<tol] .= 0.0
+    ss.values[sd.solve_var] .= xx
+    ss.mask[sd.solve_var] .= true
+    if run_nr
+        foo = (1:ss_nvars)[sd.solve_var] # global indexes of active unknowns
+        for v in findall(.!nr.updated)
+            # mark unknowns that were not updated as not solved
+            ss.mask[foo[v]] = false
+        end
+    end
     if verbose && nf > tol
         bad_eqn, bad_var = diagnose_sstate(model)
         lbva = length(bad_var)
@@ -146,16 +156,6 @@ function sssolve!(model::Model;
             bad_eqn = (lbeq > 10) ? (join(bad_eqn[1:10], "\n   ") * "\n   . . .") : join(bad_eqn, "\n   ")
             eqns_str = "System may be inconsistent. Couldn't solve $(lbeq) equations to the required accuracy:\n   $bad_eqn"
             @warn eqns_str
-        end
-    end
-    xx[abs.(xx).<tol] .= 0.0
-    ss.values[sd.solve_var] .= xx
-    ss.mask[sd.solve_var] .= true
-    if run_nr
-        foo = (1:ss_nvars)[sd.solve_var] # global indexes of active unknowns
-        for v in findall(.!nr.updated)
-            # mark unknowns that were not updated as not solved
-            ss.mask[foo[v]] = false
         end
     end
     return ss.values
