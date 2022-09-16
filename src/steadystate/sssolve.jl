@@ -51,7 +51,11 @@ function sssolve!(model::Model;
     if sd.nvars == 0
         # Nothing left to solve for
         return sd.point
-    end    
+    end
+    
+    # nvars = length(model.sstate.mask)
+    # vsyms = Symbol[ModelBaseEcon.ss_symbol(model.sstate, vi) for vi = 1:nvars]
+    # presolved_var = vsyms[model.sstate.mask]
 
     lm = LMData(model, sd; lmopts...)
     nr = NRData(model, sd; nropts...)
@@ -145,12 +149,13 @@ function sssolve!(model::Model;
     end
     if verbose && nf > tol
         bad_eqn, bad_var = diagnose_sstate(model)
-        lbva = length(bad_var)
-        if lbva > 0
-            bad_var = join(bad_var, ",")
-            vars_str = "Unable to solve for $(lbva) variables:\n   $bad_var"
-            @warn vars_str
-        end
+        # bad_var = setdiff(bad_var,presolved_var)
+        # lbva = length(bad_var)
+        # if lbva > 0
+        #     bad_var = join(bad_var, ",")
+        #     vars_str = "Unable to solve for $(lbva) variables:\n   $bad_var"
+        #     @warn vars_str
+        # end
         lbeq = length(bad_eqn)
         if lbeq > 0
             bad_eqn = (lbeq > 10) ? (join(bad_eqn[1:10], "\n   ") * "\n   . . .") : join(bad_eqn, "\n   ")
