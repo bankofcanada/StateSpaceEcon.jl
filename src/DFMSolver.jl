@@ -5,23 +5,23 @@
 # All rights reserved.
 ##################################################################################
 
-"""
-    StateSpaceEcon
+module DFMSolver
 
-A package for Macroeconomic modelling.
+using LinearAlgebra
+using Distributions
 
-"""
-module StateSpaceEcon
-
-using TimeSeriesEcon
 using ModelBaseEcon
+using TimeSeriesEcon
 
-include("simdata.jl")
-include("misc.jl")
-include("SteadyStateSolver.jl")
-include("Plans.jl")
-include("plandata.jl")
-include("StackedTimeSolver.jl")
-include("DFMSolver.jl")
+using ..StateSpaceEcon
+using ..Plans
 
-end # module
+
+include("dfm/plandata.jl")
+include("dfm/simulate.jl")
+
+end
+
+using .DFMSolver
+export rand_shocks!
+
