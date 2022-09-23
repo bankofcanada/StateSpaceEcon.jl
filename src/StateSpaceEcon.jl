@@ -40,4 +40,6 @@ end
 
 include("simulate.jl")
 
+include("DFMSolver.jl")
+
 end # module
