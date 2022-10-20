@@ -16,6 +16,7 @@ module StateSpaceEcon
 using TimeSeriesEcon
 using ModelBaseEcon
 
+include("Kalman.jl")
 include("simdata.jl")
 include("misc.jl")
 include("SteadyStateSolver.jl")
