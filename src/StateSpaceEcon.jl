@@ -17,10 +17,11 @@ using TimeSeriesEcon
 using ModelBaseEcon
 using ModelBaseEcon.OrderedCollections
 
+include("Kalman.jl")
+include("simdata.jl")
 include("misc.jl")
 include("SteadyStateSolver.jl")
 include("Plans.jl")
-include("simdata.jl")
 include("plandata.jl")
 include("StackedTimeSolver.jl")
 include("FirstOrderSolver.jl")

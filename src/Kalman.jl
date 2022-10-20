@@ -5,25 +5,18 @@
 # All rights reserved.
 ##################################################################################
 
-module DFMSolver
+
+module Kalman
 
 using LinearAlgebra
-using Distributions
 
-using ModelBaseEcon
 using TimeSeriesEcon
-
+using ModelBaseEcon
 using ..StateSpaceEcon
-using ..Plans
-import ..Kalman
 
-
-include("dfm/plandata.jl")
-include("dfm/simulate.jl")
-include("dfm/kalman.jl")
+include("kalman/common.jl")
+include("kalman/plain.jl")
+include("kalman/sqrt.jl")
+include("kalman/smoother.jl")
 
 end
-
-using .DFMSolver
-export rand_shocks!
-
