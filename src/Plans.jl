@@ -92,6 +92,15 @@ Base.IndexStyle(::Plan) = IndexLinear()
 Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
 Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
 
+function Base.copyto!(dest::Plan,rng::AbstractUnitRange,scr::Plan)
+    @assert dest.varshks === scr.varshks
+    for t in rng
+        endogenize!(dest,keys(dest.varshks),t)
+        exogenize!(dest,scr[t],t)
+    end
+end
+Base.copyto!(dest::Plan,rng::MIT,scr::Plan) = Base.copyto!(dest,rng:rng,scr)
+
 _offset(p::Plan{T}, idx::T) where {T<:MIT} = convert(Int, idx - first(p.range) + 1)
 _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where {T<:MIT} =
     _offset(p, first(idx)):_offset(p, last(idx))
