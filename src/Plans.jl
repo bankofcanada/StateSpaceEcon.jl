@@ -93,7 +93,7 @@ Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
 Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
 
 function Base.copyto!(dest::Plan,rng::AbstractUnitRange,scr::Plan)
-    @assert dest.varshks === scr.varshks "Both plans must have the same variables and shocks in the same order."
+    dest.varshks !== srv.varshks || throw(ArgumentError("Both plans must have the same variables and shocks in the same order."))
     idx2 = axes(dest.exogenous, 2)  # same for both dest and scr
     copyto!(dest.exogenous, _offset(dest, rng), idx2, scr.exogenous, _offset(scr, rng), idx2)
 end
