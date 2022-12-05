@@ -46,9 +46,7 @@ export FCMatchSSRate, fcslope, fcrate
 export FCConstRate, fcnatural
 export setfc
 
-export simulate, shockdecomp
-export array2data, array2workspace, data2array, data2workspace, workspace2array, workspace2data
+export shockdecomp #=, simulate =#
 # the following are deprecated
 export seriesoverlay, dictoverlay
-export dict2array, array2dict, dict2data, data2dict
 

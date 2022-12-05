@@ -80,45 +80,6 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
 end
 
 
-export simulate
-"""
-    simulate(model, plan, data; <options>)
-
-Run a simulation for the given model, simulation plan and exogenous data.
-
-### Arguments
-  * `model` - the [`Model`](@ref ModelBaseEcon.Model) instance to simulate.
-  * `plan` - the [`Plan`](@ref) for the simulation.
-  * `data` - a 2D `Array` containing the exogenous data. This includes the
-    initial and final conditions.
-
-### Options as keyword arguments
-  * `fctype::`[`FinalCondition`](@ref) - set the desired final condition type
-    for the simulation. The default value is [`fcgiven`](@ref). Other possible
-    values include [`fclevel`](@ref), [`fcslope`](@ref) and
-    [`fcnatural`](@ref).
-  * `initial_guess::AbstractMatrix{Float64}` - a 2D `Array` containing the
-    initial guess for the solution. This is used to start the Newton-Raphson
-    algorithm. The default value is an empty array (`zeros(0,0)`), in which case
-    we use the exogenous data for the initial condition. You can use the steady
-    state solution using [`steadystatearray`](@ref).
-  * `deviation::Bool` - set to `true` if the `data` is given in deviations from
-    the steady state. In this case the simulation result is also returned as a
-    deviation from the steady state. Default value is `false`.
-  * `anticipate::Bool` - set to `false` to instruct the solver that all shocks
-    are unanticipated by the agents. Default value is `true`.
-  * `verbose::Bool` - control whether or not to print progress information.
-    Default value is taken from `model.options`.
-  * `tol::Float64` - set the desired accuracy. Default value is taken from
-    `model.options`.
-  * `maxiter::Int` - algorithm fails if the desired accuracy is not reached
-    within this maximum number of iterations. Default value is taken from
-    `model.options`.
-  * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a 
-    search along the descent direction for a sufficient decrease in f. It will 
-    do this at each iteration. Default is `false`.
-"""
-function simulate end
 
 function simulate(m::Model,
     p_ant::Plan,
@@ -412,29 +373,5 @@ function simulate(m::Model,
 
     return x
 end
-
-# The versions of simulate with Dict/Workspace/SimData
-
-simulate(m::Model, p::Plan, data::AbstractDict; kwargs...) = simulate(m, p, dict2data(data, m, p; copy=true); kwargs...)
-simulate(m::Model, p::Plan, data::Workspace; kwargs...) = simulate(m, p, workspace2data(data, m, p; copy=true); kwargs...)
-
-# this is the main interface.
-function simulate(m::Model, p::Plan, data::SimData; kwargs...)
-    exog = data2array(data, m, p)
-    initial_guess = get(kwargs, :initial_guess, nothing)
-    if initial_guess isa SimData
-        kw = (; initial_guess=data2array(initial_guess, m, p))
-    elseif initial_guess isa Workspace
-        kw = (; initial_guess=workspace2data(initial_guess, m, p))
-    elseif initial_guess isa AbstractDict
-        kw = (; initial_guess=dict2array(initial_guess, m, p))
-    else
-        kw = (;)
-    end
-    result = copy(data)
-    result[p.range, m.varshks] .= simulate(m, p, exog; kwargs..., kw...)
-    return result
-end
-
 
 
