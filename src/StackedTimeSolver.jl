@@ -25,6 +25,10 @@ using TimeSeriesEcon
 
 using ..Plans
 
+import ..steadystatearray
+import ..SimData
+import ..rawdata
+
 include("stackedtime/abstract.jl")
 include("stackedtime/fctypes.jl")
 include("stackedtime/misc.jl")

@@ -5,9 +5,6 @@
 # All rights reserved.
 ##################################################################################
 
-import ..SimData
-import ..rawdata
-
 """
     seriesoverlay(ts1, ts2)
 

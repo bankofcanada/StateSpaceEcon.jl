@@ -285,8 +285,6 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=fals
     return sd
 end
 
-import ..steadystatearray
-
 """
     make_BI(J, II)
 

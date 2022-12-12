@@ -22,6 +22,8 @@ include("Plans.jl")
 include("simdata.jl")
 include("plandata.jl")
 include("StackedTimeSolver.jl")
+include("FirstOrderSolver.jl")
+include("solve.jl")
 include("simulate.jl")
 
 end # module
