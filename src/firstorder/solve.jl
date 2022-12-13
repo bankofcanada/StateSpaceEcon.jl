@@ -75,10 +75,16 @@ function FirstOrderSD(model::Model)
     S, T, Q, Z, α, β = F
 
     n_stable = sum(zip(α, β)) do ((a, b))
-        abs(a) * (1.0 - √eps(1.0)) > abs(b)
+        abs(a) * (1.0 + √eps(1.0)) > abs(b)
     end
-    if n_stable != nbck
-        error("We have $n_stable stable eigen-values while we need $nbck.")
+    n_unstable = sum(zip(α, β)) do ((a, b))
+        abs(b) * (1.0 + √eps(1.0)) > abs(a)
+    end
+    if n_stable < nbck
+        error("We have only $n_stable stable eigen-values while we need at least $nbck.")
+    end
+    if n_unstable < nfwd
+        error("We have only $n_unstable unstable eigen-values while we need at least $nfwd.")
     end
 
     Zbb = lu(Z[1:nbck, 1:nbck])

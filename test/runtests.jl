@@ -21,6 +21,7 @@ using ModelBaseEcon
 @using_example S2
 
 using Test
+using Random
 using Suppressor
 
 @testset "1dsolvers" begin
@@ -216,6 +217,7 @@ end
 
 include("simtests.jl")
 include("logsimtests.jl")
+include("sim_fo.jl")
 
 include("shockdecomp.jl")
 
