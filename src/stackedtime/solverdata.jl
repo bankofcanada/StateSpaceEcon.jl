@@ -368,14 +368,14 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCo
     Jblock = [ti + NT * (ModelBaseEcon._index_of_var(var, unknowns) - 1) for eqn in equations for (var, ti) in keys(eqn.tsrefs)]
     Iblock = [i for (i, eqn) in enumerate(equations) for _ in eqn.tsrefs]
     Tblock = -m.maxlag:m.maxlead
-    @timer for t in sim
+    for t in sim
         push!(TT, t .+ Tblock)
         push!(II, neq .+ Iblock)
         push!(JJ, t .+ Jblock)
         neq += nequations
     end
     # Construct the
-    @timer begin
+    begin
         I = vcat(II...)
         J = vcat(JJ...)
         JMAT = sparse(I, J, fill(NaN64, size(I)), NTSIM * nequations, NT * nunknowns)
@@ -383,7 +383,7 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCo
 
     # We no longer need the exact indexes of all non-zero entires in the Jacobian matrix.
     # We do however need the set of equation indexes for each sim period
-    @timer foreach(unique! ∘ sort!, II)
+    foreach(unique! ∘ sort!, II)
 
     # BI holds the indexes in JMAT.nzval for each block of equations
     BI = make_BI(JMAT, II)  # same as the two lines above, but faster
@@ -411,7 +411,7 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCo
         m.evaldata, exog_mask, fc_mask, solve_mask,
         Ref{Any}(nothing), getoption(m, :factorization, :lu))
 
-    return @timer update_plan!(sd, m, p; changed=true)
+    return update_plan!(sd, m, p; changed=true)
 end
 
 """
@@ -593,12 +593,12 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
     haveLU = sd.J_factorized[] !== nothing
     if haveJ
         # update only RES
-        @timer "globalRJ/evalR!" for i = 1:length(sd.BI)
+        for i = 1:length(sd.BI)
             eval_R!(view(RES, sd.II[i]), point[sd.TT[i], :], sd.evaldata)
         end
     else
         # update both RES and JAC
-        @timer "globalRJ/evalRJ" for i = 1:length(sd.BI)
+        for i = 1:length(sd.BI)
             R, J = eval_RJ(point[sd.TT[i], :], sd.evaldata)
             RES[sd.II[i]] .= R
             JAC.nzval[sd.BI[i]] .= J.nzval
@@ -614,7 +614,7 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
         end
         try
             # compute lu decomposition of the active part of J and cache it.
-            @timer "J Factorization" sd.J_factorized[] = sd.factorization == :qr ? qr(JJ) : lu(JJ)
+            sd.J_factorized[] = sd.factorization == :qr ? qr(JJ) : lu(JJ)
         catch e
             if e isa SingularException
                 @error("The system is underdetermined with the given set of equations and final conditions.")

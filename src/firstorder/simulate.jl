@@ -9,16 +9,67 @@ import ModelBaseEcon.FirstOrderMED
 
 # specialization of simulate() for first-order solution
 
+"""
+Find the last period in which the plan is non-empty.
+
+Reminder: an empty plan is one in which all variables are endogenous and all
+shocks are exogenous, i.e., no swapping has been done.
+"""
+function _last_swapped_period(plan::Plan, model::Model)
+    shks = Bool[isshock(v) || isexog(v) for v in model.varshks]
+    vars = .!shks
+    simrng = model.maxlag+1:length(plan.range)-model.maxlead
+    for per in reverse(simrng)
+        is_empty = all(plan.exogenous[per, shks]) && !any(plan.exogenous[per, vars])
+        if !is_empty
+            return per
+        end
+    end
+    return -1
+end
+
+mutable struct FOSimulatorData{A}
+    t_last_swap::Int
+    empty_plan::Bool
+    vi::LittleDict{Symbol,Int}
+    nbck::Int
+    nfwd::Int
+    nex::Int
+    oex::Int
+    ibck::UnitRange{Int}
+    ifwd::UnitRange{Int}
+    iex::UnitRange{Int}
+    inds_map
+    sol_t::Vector{Float64}
+    RHS::Vector{Float64}
+end
+function FOSimulatorData(plan, model, anticipate)
+    t_last_swap = _last_swapped_period(plan, model)
+    vi = LittleDict{Symbol,Int}(var.name => ind for (ind, var) in enumerate(model.allvars))
+
+    ed = model.evaldata::FirstOrderMED
+    sd = model.solverdata::FirstOrderSD
+
+    nbck = length(ed.bck_vars)
+    nfwd = length(ed.fwd_vars)
+    nex = length(ed.ex_vars)
+    oex = nbck + nfwd
+    return FOSimulatorData{anticipate}(t_last_swap, t_last_swap <= model.maxlag,
+        vi, nbck, nfwd, nex, oex,
+        1:nbck, nbck .+ (1:nfwd), oex .+ (1:nex), # ibck, ifwd, iex
+        sd.inds_map,
+        Vector{Float64}(undef, nbck + nfwd + nex), # sol_t
+        Vector{Float64}(undef, nbck + nfwd), #RHS
+    )
+end
+
 function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
     deviation::Bool=false,
     anticipate::Bool=false,
     baseline::AbstractMatrix{Float64}=zeros(0, 0),
-    verbose::Bool=model.options.verbose
+    verbose::Bool=model.options.verbose,
+    kwargs...
 )
-
-    if anticipate
-        error("`anticipate=true` not yet implemented")
-    end
 
     # make sure we have first order solution
     if !isfirstorder(model) || !(model.solverdata isa FirstOrderSD)
@@ -26,15 +77,18 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
     end
 
     if !isempty(model.auxvars)
-        error("Found auxiliary variables. Not yet implemented.")
+        error("Found auxiliary variables. First-order solver not yet implemented for models with auxiliary variables.")
     end
 
-    #= 
-    #TODO: what about log vars ?!
-    if any(islog, model.varshks) || any(isneglog, model.varshks)
-        error("Found log/neglog vars. Not yet implemented.")
+    S = FOSimulatorData(plan, model, anticipate)
+    ed = model.evaldata::FirstOrderMED
+    sd = model.solverdata::FirstOrderSD
+
+    if anticipate && !S.empty_plan
+        @warn "Running linearized stacked-time solver."
+        return simulate(model, plan, exog;
+            deviation, anticipate, verbose, baseline, kwargs...)
     end
-    =#
 
     # transform exogenous data 
     logvars = [islog(var) | isneglog(var) for var in model.varshks]
@@ -63,30 +117,11 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
         exog .-= baseline_tr
     end
 
-    ed = model.evaldata::FirstOrderMED
-    sd = model.solverdata::FirstOrderSD
-    vi = LittleDict{Symbol,Int}(
-        var.name => ind for (ind, var) in enumerate(model.allvars)
-    )
-
-    nbck = length(ed.bck_vars)
-    nfwd = length(ed.fwd_vars)
-    nex = length(ed.ex_vars)
-
     # running solution vector
-    sol_t = Vector{Float64}(undef, nbck + nfwd + nex)
-
-    # indexes of the different types of variables within sol_t
-    ibck = 1:nbck
-    bck_t = view(sol_t, ibck)
-    ifwd = nbck .+ (1:nfwd)
-    fwd_t = view(sol_t, ifwd)
-    ex_offset = nbck + nfwd
-    iex = ex_offset .+ (1:nex)
-    ex_t = view(sol_t, iex)
+    sol_t = S.sol_t
 
     # the transformed bck_t
-    α_t = similar(bck_t)
+    α_t = Vector{Float64}(undef, S.nbck)
 
     # exogenous flags (true = exogenous, false = endogenous)
     xflags_t = similar(sol_t, Bool)
@@ -103,32 +138,29 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
     tnow = model.maxlag
 
     # prepare initial conditions (only bck_t are used)
-    let ind = 1
-        while ind <= nbck
-            vind, tt = sd.inds_map[ind]
-            bck_t[ind] = exog[tnow+tt, vind]
-            ind += 1
-        end
+    for ind in S.ibck
+        vind, tt = S.inds_map[ind]
+        sol_t[ind] = exog[tnow+tt, vind]
     end
 
     ##################
     # The loop
     ##################
 
-    RHS = Vector{Float64}(undef, nbck + nfwd)
+    RHS = S.RHS
     for tnow in model.maxlag+1:size(sim, 1)
 
         # prepare the right-hand-side of the system (that's the αₜ₋₁ part of the equation)
         # α_t .= sd.Zbb \ bck_t
-        ldiv!(α_t, sd.Zbb, bck_t)
+        ldiv!(α_t, sd.Zbb, view(sol_t, S.ibck))
         # RHS .= sd.R * α_t
         copyto!(RHS, sd.R * α_t)
 
         # prepare the exogenous mask vector xflags_t
         # default is all bck & fwd are endo and all ex are exog
         fill!(xflags_t, false)
-        xflags_t[iex] .= true
-        for (solind, (varind, tt)) in zip(iex, sd.inds_map[iex])
+        xflags_t[S.iex] .= true
+        for (solind, (varind, tt)) in zip(S.iex, sd.inds_map[S.iex])
             sol_t[solind] = exog[tnow+tt, varind]
         end
         # modify according to plan (only contemporaneous)
@@ -140,7 +172,7 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
                 xflags_t[solind] = xflag
                 if xflag
                     empty_plan = false
-                    sol_t[solind] = exog[tnow, vi[vname]]
+                    sol_t[solind] = exog[tnow, S.vi[vname]]
                 end
                 continue
                 # it's possible for (var,0) to be both in bck and fwd (mixed variable)
@@ -152,13 +184,13 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
                 xflags_t[solind] = xflag
                 if xflag
                     empty_plan = false
-                    sol_t[solind] = exog[tnow, vi[vname]]
+                    sol_t[solind] = exog[tnow, S.vi[vname]]
                 end
                 continue
             end
             solind = get(ed.ex_inds, (vname, 0), -1)
             if solind > -1
-                xflags_t[ex_offset+solind] = xflag
+                xflags_t[S.oex+solind] = xflag
                 if !xflag
                     empty_plan = false
                 end
@@ -167,7 +199,7 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
             error("Variable $(vname)[t] not found in solution vector!?!?!")
         end
 
-        @assert length(xflags_t) - sum(xflags_t) == nbck + nfwd "Incorrect number of endogenous unknowns at $(plan.range[tnow])."
+        @assert length(xflags_t) - sum(xflags_t) == S.nbck + S.nfwd "Incorrect number of endogenous unknowns at $(plan.range[tnow])."
 
         # solve for the endogenous
         if empty_plan
@@ -192,7 +224,7 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
             end
             solind = get(ed.ex_inds, (vname, 0), -1)
             if solind > -1
-                sim[tnow, simind] = sol_t[ex_offset+solind]
+                sim[tnow, simind] = sol_t[S.oex+solind]
                 continue
             end
             error("Variable $(vname)[t] not found in solution vector!?!?!")

@@ -106,17 +106,17 @@ function FirstOrderSD(model::Model)
 
     R = vcat(-Tbb, Zff'Zfb)
 
-    TMP = Tff \ QEX[nbck.+(1:nfwd), :]
+    TiXf = Tff \ QEX[nbck.+(1:nfwd), :]
 
     MAT = zeros(nbck + nfwd, nbck + nfwd + nex)
 
     MAT[1:nbck, 1:nbck] = Sbb / Zbb
     # MAT[1:nbck, nbck .+(1:nfwd)] .= 0
-    MAT[1:nbck, ex_offset.+(1:nex)] = QEX[1:nbck, :] - (Tbf - Tbb * (Zbb \ Zbf)) * TMP
+    MAT[1:nbck, ex_offset.+(1:nex)] = QEX[1:nbck, :] - (Tbf - Tbb * (Zbb \ Zbf)) * TiXf
 
     # MAT[nbck .+ (1:nfwd), 1:nbck] .= 0
     MAT[nbck.+(1:nfwd), nbck.+(1:nfwd)] = Zff'
-    MAT[nbck.+(1:nfwd), ex_offset.+(1:nex)] = TMP
+    MAT[nbck.+(1:nfwd), ex_offset.+(1:nex)] = TiXf
 
 
 

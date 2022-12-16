@@ -74,7 +74,7 @@ function sssolve!(model::Model;
     undef_vars = Set{Int64}()
 
     if method ∈ (:lm, :auto)
-        @timer r0, j0 = global_SS_RJ(xx, sd)
+        r0, j0 = global_SS_RJ(xx, sd)
         first_step_lm!(xx, dx, r0, j0, lm; verbose = verbose)
         nf = nr0 = norm(r0, Inf)
         if verbose
@@ -92,7 +92,7 @@ function sssolve!(model::Model;
             error("Nan detected.")
         end
 
-        @timer r0, j0 = global_SS_RJ(xx, sd)
+        r0, j0 = global_SS_RJ(xx, sd)
         nf = norm(r0, Inf)
 
         if (method == :nr) || ((method == :auto) && run_nr)
