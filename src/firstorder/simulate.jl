@@ -31,7 +31,6 @@ end
 mutable struct FOSimulatorData{A}
     t_last_swap::Int
     empty_plan::Bool
-    vi::LittleDict{Symbol,Int}
     nbck::Int
     nfwd::Int
     nex::Int
@@ -45,7 +44,6 @@ mutable struct FOSimulatorData{A}
 end
 function FOSimulatorData(plan, model, anticipate)
     t_last_swap = _last_swapped_period(plan, model)
-    vi = LittleDict{Symbol,Int}(var.name => ind for (ind, var) in enumerate(model.allvars))
 
     ed = model.evaldata::FirstOrderMED
     sd = model.solverdata::FirstOrderSD
@@ -55,7 +53,7 @@ function FOSimulatorData(plan, model, anticipate)
     nex = length(ed.ex_vars)
     oex = nbck + nfwd
     return FOSimulatorData{anticipate}(t_last_swap, t_last_swap <= model.maxlag,
-        vi, nbck, nfwd, nex, oex,
+        nbck, nfwd, nex, oex,
         1:nbck, nbck .+ (1:nfwd), oex .+ (1:nex), # ibck, ifwd, iex
         sd.inds_map,
         Vector{Float64}(undef, nbck + nfwd + nex), # sol_t
@@ -172,7 +170,7 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
                 xflags_t[solind] = xflag
                 if xflag
                     empty_plan = false
-                    sol_t[solind] = exog[tnow, S.vi[vname]]
+                    sol_t[solind] = exog[tnow, sd.vi[vname]]
                 end
                 continue
                 # it's possible for (var,0) to be both in bck and fwd (mixed variable)
@@ -184,7 +182,7 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
                 xflags_t[solind] = xflag
                 if xflag
                     empty_plan = false
-                    sol_t[solind] = exog[tnow, S.vi[vname]]
+                    sol_t[solind] = exog[tnow, sd.vi[vname]]
                 end
                 continue
             end

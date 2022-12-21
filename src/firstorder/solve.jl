@@ -15,7 +15,8 @@ function solve!(m::Model)
 end
 
 struct FirstOrderSD
-    F::Factorization
+    qz::QZData
+    vi::LittleDict{Symbol,Int}
     # translations from FO variable index to Var-Lag pair
     inds_map::Vector{Tuple{Int,Int}}
     # steady state (or point of linearization)
@@ -44,10 +45,6 @@ function FirstOrderSD(model::Model)
 
     ed = model.evaldata::FirstOrderMED
 
-    # compute the Schur decomposition
-    # TODO: use low-level call to LAPACK to compute and re-order in a single call
-    F = schur(ed.FWD, ed.BCK)
-    ordschur!(F, @. abs(F.α) > abs(F.β))
     vi = LittleDict{Symbol,Int}(
         var.name => ind for (ind, var) in enumerate(model.allvars)
     )
@@ -72,37 +69,25 @@ function FirstOrderSD(model::Model)
         ss_vec[ex_offset+i] = model.sstate[v][t]
     end
 
-    S, T, Q, Z, α, β = F
+    # compute the Schur decomposition
+    qz = run_qz(ed.FWD, ed.BCK, nbck)
+    
+    Zbb = lu(qz.Z[1:nbck, 1:nbck])
+    Zbf = qz.Z[1:nbck, nbck.+(1:nfwd)]
+    Zfb = qz.Z[nbck.+(1:nfwd), 1:nbck]
+    Zff = qz.Z[nbck.+(1:nfwd), nbck.+(1:nfwd)]
 
-    n_stable = sum(zip(α, β)) do ((a, b))
-        abs(a) * (1.0 + √eps(1.0)) > abs(b)
-    end
-    n_unstable = sum(zip(α, β)) do ((a, b))
-        abs(b) * (1.0 + √eps(1.0)) > abs(a)
-    end
-    if n_stable < nbck
-        error("We have only $n_stable stable eigen-values while we need at least $nbck.")
-    end
-    if n_unstable < nfwd
-        error("We have only $n_unstable unstable eigen-values while we need at least $nfwd.")
-    end
+    Tbb = qz.T[1:nbck, 1:nbck]
+    Tbf = qz.T[1:nbck, nbck.+(1:nfwd)]
+    # Tfb = qz.T[nbck.+(1:nfwd), 1:nbck]  # this one is 0
+    Tff = lu(qz.T[nbck.+(1:nfwd), nbck.+(1:nfwd)])
 
-    Zbb = lu(Z[1:nbck, 1:nbck])
-    Zbf = Z[1:nbck, nbck.+(1:nfwd)]
-    Zfb = Z[nbck.+(1:nfwd), 1:nbck]
-    Zff = Z[nbck.+(1:nfwd), nbck.+(1:nfwd)]
+    Sbb = qz.S[1:nbck, 1:nbck]
+    Sbf = qz.S[1:nbck, nbck.+(1:nfwd)]
+    # Sfb = qz.S[nbck.+(1:nfwd), 1:nbck]  # this one is 0
+    Sff = qz.S[nbck.+(1:nfwd), nbck.+(1:nfwd)]
 
-    Tbb = T[1:nbck, 1:nbck]
-    Tbf = T[1:nbck, nbck.+(1:nfwd)]
-    # Tfb = T[nbck.+(1:nfwd), 1:nbck]  # this one is 0
-    Tff = lu(T[nbck.+(1:nfwd), nbck.+(1:nfwd)])
-
-    Sbb = S[1:nbck, 1:nbck]
-    Sbf = S[1:nbck, nbck.+(1:nfwd)]
-    # Sfb = S[nbck.+(1:nfwd), 1:nbck]  # this one is 0
-    Sff = S[nbck.+(1:nfwd), nbck.+(1:nfwd)]
-
-    QEX = Q'ed.EX
+    QEX = qz.Q'ed.EX
 
     R = vcat(-Tbb, Zff'Zfb)
 
@@ -118,9 +103,8 @@ function FirstOrderSD(model::Model)
     MAT[nbck.+(1:nfwd), nbck.+(1:nfwd)] = Zff'
     MAT[nbck.+(1:nfwd), ex_offset.+(1:nex)] = TiXf
 
-
-
-    return FirstOrderSD(F, inds_map, ss_vec,
+    return FirstOrderSD(qz, vi,
+        inds_map, ss_vec,
         Zbb, R, MAT,
         lu(MAT[:, 1:(nbck+nfwd)]),
         view(MAT, :, ex_offset .+ (1:nex)))

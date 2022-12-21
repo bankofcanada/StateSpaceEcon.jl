@@ -20,6 +20,7 @@ using ..Plans
 
 import ..steadystatearray
 
+include("firstorder/QZ.jl")
 include("firstorder/solve.jl")
 include("firstorder/simulate.jl")
 
