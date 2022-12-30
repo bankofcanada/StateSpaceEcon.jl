@@ -23,6 +23,7 @@ struct FirstOrderSD
     ss_vec::Vector{Float64}
     # various matrices 
     Zbb::Factorization
+    ZfbByZbb::Matrix{Float64}
     R::Matrix{Float64}
     MAT::Matrix{Float64}
     # precomputed for empty plan
@@ -30,13 +31,6 @@ struct FirstOrderSD
     MAT_x::SubArray{Float64,2,Matrix{Float64}}
 end
 
-# function _make_inds_map(inds, vi)
-#     inds_map = Vector{Tuple{Int,Int}}(undef, length(inds))
-#     for ((v, t), i) in inds
-#         inds_map[i] = (vi[v], t)
-#     end
-#     return inds_map
-# end
 function FirstOrderSD(model::Model)
 
     if !isempty(model.auxvars)
@@ -52,7 +46,7 @@ function FirstOrderSD(model::Model)
     nbck = length(ed.bck_vars)
     nfwd = length(ed.fwd_vars)
     nex = length(ed.ex_vars)
-    ex_offset = nbck + nfwd
+    oex = nbck + nfwd
 
     inds_map = Vector{Tuple{Int,Int}}(undef, nbck + nfwd + nex)
     ss_vec = Vector{Float64}(undef, nbck + nfwd + nex)
@@ -65,13 +59,29 @@ function FirstOrderSD(model::Model)
         ss_vec[i] = model.sstate[v][t]
     end
     for ((v, t), i) in ed.ex_inds
-        inds_map[ex_offset+i] = (vi[v], t)
-        ss_vec[ex_offset+i] = model.sstate[v][t]
+        inds_map[oex+i] = (vi[v], t)
+        ss_vec[oex+i] = model.sstate[v][t]
     end
 
     # compute the Schur decomposition
     qz = run_qz(ed.FWD, ed.BCK, nbck)
+    # compute the system matrices
+    Zbb, ZfbByZbb, R, MAT = first_order_system(qz, ed.EX, nbck, nfwd, nex)
+
     
+    return FirstOrderSD(qz, vi,
+        inds_map,
+        ss_vec,
+        Zbb, ZfbByZbb, R, MAT,
+        # pre-compute factorization for most common case (empty plan)
+        lu(MAT[:, 1:(nbck+nfwd)]),
+        view(MAT, :, oex .+ (1:nex)))
+end
+
+
+function first_order_system(qz::QZData, EX::Matrix{Float64}, nbck::Int, nfwd::Int, nex::Int)
+    oex = nbck + nfwd
+
     Zbb = lu(qz.Z[1:nbck, 1:nbck])
     Zbf = qz.Z[1:nbck, nbck.+(1:nfwd)]
     Zfb = qz.Z[nbck.+(1:nfwd), 1:nbck]
@@ -87,7 +97,7 @@ function FirstOrderSD(model::Model)
     # Sfb = qz.S[nbck.+(1:nfwd), 1:nbck]  # this one is 0
     Sff = qz.S[nbck.+(1:nfwd), nbck.+(1:nfwd)]
 
-    QEX = qz.Q'ed.EX
+    QEX = qz.Q'EX
 
     R = vcat(-Tbb, Zff'Zfb)
 
@@ -96,19 +106,13 @@ function FirstOrderSD(model::Model)
     MAT = zeros(nbck + nfwd, nbck + nfwd + nex)
 
     MAT[1:nbck, 1:nbck] = Sbb / Zbb
-    # MAT[1:nbck, nbck .+(1:nfwd)] .= 0
-    MAT[1:nbck, ex_offset.+(1:nex)] = QEX[1:nbck, :] - (Tbf - Tbb * (Zbb \ Zbf)) * TiXf
+    # MAT[1:nbck, nbck .+(1:nfwd)] .= 0  # already zero 
+    MAT[1:nbck, oex.+(1:nex)] = QEX[1:nbck, :] - (Tbf - Tbb * (Zbb \ Zbf)) * TiXf
 
-    # MAT[nbck .+ (1:nfwd), 1:nbck] .= 0
+    # MAT[nbck .+ (1:nfwd), 1:nbck] .= 0  # already zero 
     MAT[nbck.+(1:nfwd), nbck.+(1:nfwd)] = Zff'
-    MAT[nbck.+(1:nfwd), ex_offset.+(1:nex)] = TiXf
+    MAT[nbck.+(1:nfwd), oex.+(1:nex)] = TiXf
 
-    return FirstOrderSD(qz, vi,
-        inds_map, ss_vec,
-        Zbb, R, MAT,
-        lu(MAT[:, 1:(nbck+nfwd)]),
-        view(MAT, :, ex_offset .+ (1:nex)))
+    return Zbb, Zfb / Zbb, R, MAT
 end
-
-
 

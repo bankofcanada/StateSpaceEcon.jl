@@ -12,7 +12,7 @@ export solve!
 Solve the given model and update its `m.solverdata` according to the specified
 solver.  The solver is specified as a `Symbol`.  The default is `solve=:stackedtime`. 
 
-`sover=:firstorder` is still experimental.
+`solver=:firstorder` is experimental.
 
 """
 function solve!(m::Model, solver::Symbol=:stackedtime)

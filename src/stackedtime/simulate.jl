@@ -97,7 +97,7 @@ function simulate(m::Model,
     #= Solver options =#
     verbose::Bool=m.options.verbose,
     tol::Float64=m.options.tol,
-    maxiter::Int64=m.options.maxiter,
+    maxiter::Int=m.options.maxiter,
     fctype=getoption(m, :fctype, fcgiven),
     expectation_horizon::Union{Nothing,Int64}=nothing,
     #= Newton-Raphson options =#

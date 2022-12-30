@@ -31,6 +31,9 @@ struct QZData
     info::Ref{BlasInt}
 end
 
+# reuse the space allocated in bwork for iwork -- in Fortran INTEGER and LOGICAL are both 32-bit.
+# CAREFUL not to use both in the same call to lapack. 
+# bwork is used in call to dgges, iwork is used in call to dtgsen
 Base.getproperty(qz::QZData, name::Symbol) = getfield(qz, name === :iwork ? :bwork :
                                                           name === :liwork ? :lbwork :
                                                           name === :M ? :sdim :
@@ -50,16 +53,6 @@ function QZData(A::AbstractMatrix{Float64}, B::AbstractMatrix{Float64})
     bwork = Vector{BlasInt}(undef, 0)
     return QZData(N, S, T, Q, Z, α_re, α_im, β, work, Ref(1), bwork, Ref(0), Ref(0), Ref(0))
 end
-
-# macro _select_stable(cutoff::Float64=0.0)
-#     return quote
-#         @cfunction(function (a_re, a_im, b)
-#                 return BlasInt(unsafe_load(a_re)^2 + unsafe_load(a_im)^2 - unsafe_load(b)^2 > $cutoff)
-#             end,
-#             BlasInt, (Ptr{Float64}, Ptr{Float64}, Ptr{Float64})
-#         )
-#     end |> esc
-# end
 
 function _dgges!(qz::QZData, selctg=C_NULL)
     # https://netlib.org/lapack/explore-html/d9/d8e/group__double_g_eeigen_ga8637d4b822e19d10327ddcb4235dc08e.html#ga8637d4b822e19d10327ddcb4235dc08e
@@ -93,6 +86,23 @@ function _dgges!(qz::QZData, selctg=C_NULL)
     return qz.info[]
 end
 
+function call_dgges!(qz)
+    # first call to ask how much work space it needs 
+    qz.lwork[] = -1
+    info = _dgges!(qz)
+    if info != 0
+        error("Call to dgges failed with INFO = $(qz.info[])" * qz.info[] > qz.N ? " (N=$(qz.N))." : ".")
+    end
+    # allocate work space and call again
+    qz.lwork[] = BlasInt(qz.work[1])
+    resize!(qz.work, qz.lwork[])
+    info = _dgges!(qz)
+    if info != 0
+        error("Call to dgges failed with INFO = $(qz.info[])" * qz.info[] > qz.N ? " (N=$(qz.N))." : ".")
+    end
+    return nothing
+end
+
 function _dtgsen!(qz::QZData, select::Vector{BlasInt})
     # https://netlib.org/lapack/explore-html/da/dba/group__double_o_t_h_e_rcomputational_gaba8441d4f7374bbcf6c093dbec0b517e.html#gaba8441d4f7374bbcf6c093dbec0b517e
     _zero = BlasInt(0)
@@ -109,7 +119,7 @@ function _dtgsen!(qz::QZData, select::Vector{BlasInt})
             Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, # PL, PR, DIF
             Ptr{Float64}, Ref{BlasInt}, # WORK, LWORK
             Ptr{BlasInt}, Ref{BlasInt}, # IWORK, LIWORK
-            Ptr{BlasInt},    # INFO
+            Ptr{BlasInt}, # INFO
         ),
         _zero, _one, _one,
         select,
@@ -127,8 +137,40 @@ function _dtgsen!(qz::QZData, select::Vector{BlasInt})
     return qz.info[]
 end
 
+function call_dtgsen!(qz, select)
+    # first call to figure out how much work space is needed 
+    qz.lwork[] = -1
+    resize!(qz.work, max(length(qz.work), 1))
+    qz.liwork[] = -1
+    resize!(qz.iwork, max(length(qz.iwork), 1))
+    info = _dtgsen!(qz, select)
+    if info != 0
+        error("Call to dtgsen failed with INFO = $(qz.info[]).")
+    end
+    # resize work arrays, if necessary, and call again, this time for real 
+    resize!(qz.work, max(length(qz.work), Int(qz.work[1])))
+    qz.lwork[] = length(qz.work)
+    resize!(qz.iwork, max(length(qz.iwork), Int(qz.iwork[1])))
+    qz.liwork[] = length(qz.iwork)
+    info = _dtgsen!(qz, select)
+    if info != 0
+        error("Call to dtgsen failed with INFO = $(qz.info[]).")
+    end
+    return nothing
+end
+
 "returns >0 for stable and <0 for unstable eigenvalues"
 _diffg(qz) = @.(qz.α_re^2 + qz.α_im^2 - qz.β^2)
+
+# macro _select_stable(cutoff::Float64=0.0)
+#     return quote
+#         @cfunction(function (a_re, a_im, b)
+#                 return BlasInt(unsafe_load(a_re)^2 + unsafe_load(a_im)^2 - unsafe_load(b)^2 > $cutoff)
+#             end,
+#             BlasInt, (Ptr{Float64}, Ptr{Float64}, Ptr{Float64})
+#         )
+#     end |> esc
+# end
 
 """
     run_qz(A, B [, nstable])
@@ -146,41 +188,46 @@ go in the bottom-right block.
 """
 function run_qz(A::Matrix, B::Matrix, want_stable::Int=-1)
     qz = QZData(A, B)
-    # first call to ask how much work space it needs 
-    qz.lwork[] = -1
-    if _dgges!(qz) != 0
-        error("Call to dgges failed with INFO = $(qz.info[])" * qz.info[] > qz.N ? " (N=$(qz.N))." : ".")
-    end
-    # allocate work space and call again
-    qz.lwork[] = BlasInt(qz.work[1])
-    resize!(qz.work, qz.lwork[])
-    if _dgges!(qz) != 0
-        error("Call to dgges failed with INFO = $(qz.info[])" * qz.info[] > qz.N ? " (N=$(qz.N))." : ".")
-    end
-    want_stable < 0 && return qz
-    # we need sorting
-    # _dgges!(qz, @_select_stable)
-    # doesn't work due to round-off errors: there may be unit eigenvalues that are eps()
-    # instead, find a "cutoff value" in the vector of eigenvalues, such that we have
-    # want_stable of them strictly above the cutoff and the rest below or at the cutoff.
-    cutoff = want_stable == 0 ? 0.0 : partialsort(_diffg(qz), qz.N-want_stable)
-    select = BlasInt[_diffg(qz) .> cutoff;]
-    # first call to figure out how much work space is needed 
-    qz.lwork[] = -1
-    resize!(qz.work, max(length(qz.work), 1))
-    qz.liwork[] = -1
-    resize!(qz.iwork, max(length(qz.iwork), 1))
-    if _dtgsen!(qz, select) != 0
-        error("Call to dtgsen failed with INFO = $(qz.info[]).")
-    end
-    # resize work arrays, if necessary, and call again, this time for real 
-    resize!(qz.work, max(length(qz.work), Int(qz.work[1])))
-    qz.lwork[] = length(qz.work)
-    resize!(qz.iwork, max(length(qz.iwork), Int(qz.iwork[1])))
-    qz.liwork[] = length(qz.iwork)
-    if _dtgsen!(qz, select) != 0
-        error("Call to dtgsen failed with INFO = $(qz.info[]).")
-    end
+    _run_qz!(qz, want_stable)
     return qz
 end
 
+function _run_qz!(qz::QZData, want_stable::Int)
+    call_dgges!(qz)
+    want_stable < 0 && return qz
+    # we need sorting
+    #           _dgges!(qz, @_select_stable)
+    # doesn't work due to round-off errors: there may be unit eigenvalues that are ±eps()
+    # 
+    # instead, find a "cutoff value" in the vector of eigenvalues, such that we have
+    # `want_stable` of them strictly above the cutoff and the rest below or at the cutoff.
+    N = qz.N
+    if qz.lwork[] < N
+        resize!(qz.work, N)
+        qz.lwork[] = N
+    end
+    copyto!(qz.work, _diffg(qz))
+    cutoff = want_stable == 0 ? 0.0 : partialsort(qz.work[1:N], N - want_stable)
+    select = BlasInt[w > cutoff for w in qz.work[1:N]]
+    call_dtgsen!(qz, select)
+    return qz
+end
+
+
+"""
+    run_qz!(qz, A, B, [nstable])
+
+Like [`run_qz`](@ref) but reuses the given `qz` data structure. Dimensions of
+`A` and `B` must be `(qz.N, qz.N)`.
+"""
+function run_qz!(qz::QZData, A::Matrix{Float64}, B::Matrix{Float64}, want_stable::Int=-1)
+    if size(A) == size(B) == (qz.N, qz.N)
+        nothing
+    else
+        throw(ArgumentError("Matrices of incompatible sizes."))
+    end
+    copyto!(qz.S, A)
+    copyto!(qz.T, B)
+    _run_qz!(qz, want_stable)
+    return qz
+end
