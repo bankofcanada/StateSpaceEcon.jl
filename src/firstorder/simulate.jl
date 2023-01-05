@@ -48,11 +48,11 @@ mutable struct FOSimulatorData{A}
     varmaxlead::Vector{Int}
     uniq_inds_map::Vector{Int}
 end
-function FOSimulatorData(plan, model, anticipate)
+function FOSimulatorData(plan::Plan, model::Model, anticipate::Bool)
     t_last_swap = _last_swapped_period(plan, model)
 
-    ed = model.evaldata::FirstOrderMED
-    sd = model.solverdata::FirstOrderSD
+    ed = getevaldata(model, :firstorder)::FirstOrderMED
+    sd = getsolverdata(model, :firstorder)::FirstOrderSD
 
     nbck = length(ed.bck_vars)
     nfwd = length(ed.fwd_vars)
@@ -90,7 +90,7 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
 )
 
     # make sure we have first order solution
-    if !isfirstorder(model) || !(model.solverdata isa FirstOrderSD)
+    if !isfirstorder(model) || !hassolverdata(model, :firstorder)
         error("First-order solution is not ready. Call `solve!(m, :firstorder)`")
     end
 
@@ -99,8 +99,8 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
     end
 
     S = FOSimulatorData(plan, model, anticipate)
-    ed = model.evaldata::FirstOrderMED
-    sd = model.solverdata::FirstOrderSD
+    ed = getevaldata(model, :firstorder)::FirstOrderMED
+    sd = getsolverdata(model, :firstorder)::FirstOrderSD
 
     if anticipate && !S.empty_plan
         @warn "Running linearized stacked-time solver."

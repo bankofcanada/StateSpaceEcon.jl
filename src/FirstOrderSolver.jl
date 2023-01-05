@@ -16,6 +16,11 @@ using Printf
 using ModelBaseEcon
 using TimeSeriesEcon
 
+import ModelBaseEcon.getevaldata
+import ModelBaseEcon.getsolverdata
+import ModelBaseEcon.hassolverdata
+import ModelBaseEcon.setsolverdata!
+
 using ..Plans
 
 import ..steadystatearray

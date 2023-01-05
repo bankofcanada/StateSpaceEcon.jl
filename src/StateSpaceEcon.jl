@@ -15,6 +15,7 @@ module StateSpaceEcon
 
 using TimeSeriesEcon
 using ModelBaseEcon
+using ModelBaseEcon.OrderedCollections
 
 include("misc.jl")
 include("SteadyStateSolver.jl")
@@ -23,7 +24,20 @@ include("simdata.jl")
 include("plandata.jl")
 include("StackedTimeSolver.jl")
 include("FirstOrderSolver.jl")
-include("solve.jl")
+
+const _solvers = LittleDict{Symbol, Module}(
+    :stackedtime => StackedTimeSolver,
+    :firstorder => FirstOrderSolver
+)
+
+function getsolvermodule(solvername::Symbol) 
+    SolverModule = get(_solvers, solvername, nothing)
+    if SolverModule === nothing
+        error(ArgumentError("Unknown solver :$solver."))
+    end
+    return SolverModule
+end
+
 include("simulate.jl")
 
 end # module

@@ -29,7 +29,13 @@ import ..steadystatearray
 import ..SimData
 import ..rawdata
 
-include("stackedtime/abstract.jl")
+import ModelBaseEcon.hasevaldata
+import ModelBaseEcon.getevaldata
+import ModelBaseEcon.setevaldata!
+import ModelBaseEcon.hassolverdata
+import ModelBaseEcon.getsolverdata
+import ModelBaseEcon.setsolverdata!
+
 include("stackedtime/fctypes.jl")
 include("stackedtime/misc.jl")
 include("stackedtime/solverdata.jl")

@@ -9,8 +9,29 @@
 # It processes user inputs and dispatches to the appropriate 
 # specialization.  Each solver should have its own version of simulate().
 
+# same for solve!() and shockdecomp()
 
-export simulate
+
+#####  solve!() #####
+
+"""
+    solve!(m::Model, [solver::Symbol])
+
+Solve the given model and update its `m.solverdata` according to the specified
+solver.  The solver is specified as a `Symbol`.  The default is `solve=:stackedtime`. 
+
+`solver=:firstorder` is experimental.
+
+"""
+function solve! end
+export solve!
+
+function solve!(m::Model, solver::Symbol=:stackedtime, args...; kwargs...)
+    getsolvermodule(solver).solve!(m, args...; kwargs...)
+end
+
+#####  simulate() #####
+
 """
     simulate(model, plan, data; <options>)
 
@@ -49,7 +70,7 @@ Run a simulation for the given model, simulation plan and exogenous data.
     do this at each iteration. Default is `false`.
 """
 function simulate end
-
+export simulate
 
 # The versions of simulate with Dict/Workspace -> convert to SimData
 simulate(m::Model, p::Plan, data::AbstractDict; kwargs...) = simulate(m, p, dict2data(data, m, p; copy=true); kwargs...)

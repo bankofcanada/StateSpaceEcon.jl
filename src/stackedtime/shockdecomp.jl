@@ -71,14 +71,14 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     # check the residual.           why are we doing this? we know it's 0!
     shocked = copy(exog_data)
     res_shocked = Vector{Float64}(undef, size(gdata.J, 1))
-    global_R!(res_shocked, shocked, shocked, gdata)    # Run the "shocked" simulation with the given exogenous data.
+    stackedtime_R!(res_shocked, shocked, shocked, gdata)    # Run the "shocked" simulation with the given exogenous data.
     if norm(res_shocked, Inf) > tol
         assign_exog_data!(shocked, exog_data, gdata)
         sim_nr!(shocked, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
     end
 
     # We need the Jacobian matrix evaluated at the control solution.
-    res_control, _ = global_RJ(control, control, gdata)
+    res_control, _ = stackedtime_RJ(control, control, gdata)
     if norm(res_control, Inf) > tol
         # What to do if it's not a solution? We just give a warning for now, but maybe we should error()?!
         @warn "Control is not a solution:" norm(res_control, Inf)

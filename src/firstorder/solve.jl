@@ -8,10 +8,10 @@
 import ModelBaseEcon.FirstOrderMED
 import ModelBaseEcon.LittleDict
 
-function solve!(m::Model)
-    firstorder!(m)
-    m.solverdata = FirstOrderSD(m)
-    return m
+function solve!(model::Model)
+    firstorder!(model)
+    setsolverdata!(model, firstorder = FirstOrderSD(model))
+    return model
 end
 
 struct FirstOrderSD
@@ -37,7 +37,7 @@ function FirstOrderSD(model::Model)
         error("Found auxiliary variables. Not yet implemented.")
     end
 
-    ed = model.evaldata::FirstOrderMED
+    ed = getevaldata(model, :firstorder)::FirstOrderMED
 
     vi = LittleDict{Symbol,Int}(
         var.name => ind for (ind, var) in enumerate(model.allvars)

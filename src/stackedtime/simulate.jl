@@ -5,6 +5,10 @@
 # All rights reserved.
 ##################################################################################
 
+@inline function solve!(model::Model)
+    return model
+end
+
 """
     sim_nr!(x, sd, maxiter, tol, verbose [, sparse_solver [, linesearch]])
 
@@ -27,7 +31,7 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     maxiter::Int64, tol::Float64, verbose::Bool,
     sparse_solver::Function=(A, b) -> A \ b, linesearch::Bool=false)
     for it = 1:maxiter
-        Fx, Jx = global_RJ(x, x, sd)
+        Fx, Jx = stackedtime_RJ(x, x, sd)
         nFx = norm(Fx, Inf)
         if nFx < tol
             if verbose
@@ -46,7 +50,7 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
                 x_buf = copy(x)
                 assign_update_step!(x_buf, -λ, Δx, sd)
                 nrb2 = try
-                    global_R!(Fx, x_buf, x_buf, sd)
+                    stackedtime_R!(Fx, x_buf, x_buf, sd)
                     norm(Fx)
                 catch e
                     Inf
