@@ -10,28 +10,30 @@ using Random
 function run_fo_unant_tests(model)
     clear_sstate!(model)
     sssolve!(model)
-    lm = linearize!(model)
-    fm = solve!(deepcopy(model), :firstorder)
-    p = Plan(lm, 1U:1000U)
-    xp = autoexogenize!(deepcopy(p), lm, 1U:500U)
-    test_rng = first(p.range) .+ (0:500)
+    linearize!(model)
+    firstorder!(model)
+    solve!(model, solver=:stackedtime)
+    solve!(model, solver=:firstorder)
+    plan = Plan(model, 1U:1000U)
+    xplan = autoexogenize!(deepcopy(plan), model, 1U:500U)
+    test_rng = first(plan.range) .+ (0:500)
     Random.seed!(0xFF)
     for i = 1:30
-        data = steadystatedata(lm, p)
+        data = steadystatedata(model, plan)
         if i <= 5
-            data[begin:1U-1, lm.variables] .+= 0.3 * rand(lm.maxlag, length(lm.variables))
+            data[begin:1U-1, model.variables] .+= 0.3 * rand(model.maxlag, length(model.variables))
         else
-            data[1U.+(0:i-5), lm.shocks] .+= 0.3 * rand(1 + i - 5, length(lm.shocks))
+            data[1U.+(0:i-5), model.shocks] .+= 0.3 * rand(1 + i - 5, length(model.shocks))
         end
         # can we replicate stacked time?
-        sol = simulate(lm, p, data, fctype=fcslope, anticipate=false)
-        fsol = StateSpaceEcon.FirstOrderSolver.simulate(fm, p, data, anticipate=false)
+        sol = simulate(model, plan, data, solver=:stackedtime, fctype=fcslope, anticipate=false)
+        fsol = simulate(model, plan, data, solver=:firstorder, anticipate=false)
         @test sol[test_rng] ≈ fsol[test_rng]
         # can we back out unanticipated shocks
         copyto!(data, fsol)
-        data[.!xp.exogenous] .= 0
+        data[.!xplan.exogenous] .= 0
         data[begin:1U-1, :] .= fsol
-        xsol = StateSpaceEcon.FirstOrderSolver.simulate(fm, xp, data, anticipate=false)
+        xsol = simulate(model, xplan, data, solver=:firstorder, anticipate=false)
         @test xsol[test_rng] ≈ fsol[test_rng]
     end
 end

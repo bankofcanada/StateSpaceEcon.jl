@@ -12,6 +12,8 @@
 # same for solve!() and shockdecomp()
 
 
+const defaultsolver = :stackedtime
+
 #####  solve!() #####
 
 """
@@ -26,8 +28,8 @@ solver.  The solver is specified as a `Symbol`.  The default is `solve=:stackedt
 function solve! end
 export solve!
 
-function solve!(m::Model, solver::Symbol=:stackedtime, args...; kwargs...)
-    getsolvermodule(solver).solve!(m, args...; kwargs...)
+function solve!(model::Model; solver::Symbol=defaultsolver, kwargs...)
+    getsolvermodule(solver).solve!(model; kwargs...)
 end
 
 #####  simulate() #####
@@ -73,8 +75,14 @@ function simulate end
 export simulate
 
 # The versions of simulate with Dict/Workspace -> convert to SimData
-simulate(m::Model, p::Plan, data::AbstractDict; kwargs...) = simulate(m, p, dict2data(data, m, p; copy=true); kwargs...)
-simulate(m::Model, p::Plan, data::Workspace; kwargs...) = simulate(m, p, workspace2data(data, m, p; copy=true); kwargs...)
+simulate(m::Model, p::Plan, data::Union{Workspace,AbstractDict}; kwargs...) =
+    simulate(m, p, workspace2data(TimeSeriesEcon._dict_to_workspace(data), m, p; copy=true); kwargs...)
+
+simulate(m::Model, p_ant::Plan, data_ant::Union{Workspace,AbstractDict},
+    p_unant::Plan, data_unant::Union{Workspace,AbstractDict}; kwargs...) =
+    simulate(m, p_ant, workspace2data(TimeSeriesEcon._dict_to_workspace(data_ant), m, p_ant; copy=true),
+        p_unant, workspace2data(TimeSeriesEcon._dict_to_workspace(data_unant), m, p_unant; copy=true), ;
+        kwargs...)
 
 function _initial_guess_to_array(initial_guess, m, p)
     return initial_guess isa SimData ? (; initial_guess=data2array(initial_guess, m, p)) :
@@ -84,7 +92,7 @@ function _initial_guess_to_array(initial_guess, m, p)
 end
 
 # Handle initial conditions and assign result only within the plan range (in case range of given data is larger)
-function simulate(m::Model, p::Plan, data::SimData, ; kwargs...)
+function simulate(m::Model, p::Plan, data::SimData; kwargs...)
     exog = data2array(data, m, p)
     kw_ig = _initial_guess_to_array(get(kwargs, :initial_guess, nothing), m, p)
     result = copy(data)
@@ -93,7 +101,8 @@ function simulate(m::Model, p::Plan, data::SimData, ; kwargs...)
 end
 
 # this is the dispatcher -> call the appropriate solver
-simulate(m::Model, p::Plan, exog::AbstractMatrix; kwargs...) = StackedTimeSolver.simulate(m, p, exog; kwargs...)
+simulate(m::Model, p::Plan, exog::AbstractMatrix; solver::Symbol=defaultsolver, kwargs...) =
+    getsolvermodule(solver).simulate(m, p, exog; kwargs...)
 
 # Handle the case with 2 sets of plan-data for mixture of ant and unant shocks
 function simulate(m::Model, p_ant::Plan, data_ant::SimData, p_unant::Plan, data_unant::SimData; kwargs...)
@@ -105,4 +114,8 @@ function simulate(m::Model, p_ant::Plan, data_ant::SimData, p_unant::Plan, data_
     return result
 end
 
-simulate(m::Model, p_ant::Plan, data_ant::AbstractMatrix, p_unant::Plan, data_unant::AbstractMatrix; kwargs...) = StackedTimeSolver.simulate(m, p_ant, data_ant, p_unant, data_unant; kwargs...)
+# this is the dispatcher -> call the appropriate solver
+simulate(m::Model, p_ant::Plan, data_ant::AbstractMatrix,
+    p_unant::Plan, data_unant::AbstractMatrix;
+    solver::Symbol=defaultsolver, kwargs...) =
+    getsolvermodule(solver).simulate(m, p_ant, data_ant, p_unant, data_unant; kwargs...)
