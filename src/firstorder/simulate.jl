@@ -5,8 +5,6 @@
 # All rights reserved.
 ##################################################################################
 
-import ModelBaseEcon.FirstOrderMED
-
 # specialization of simulate() for first-order solution
 
 """
@@ -51,16 +49,16 @@ end
 function FOSimulatorData(plan::Plan, model::Model, anticipate::Bool)
     t_last_swap = _last_swapped_period(plan, model)
 
-    ed = getevaldata(model, :firstorder)::FirstOrderMED
     sd = getsolverdata(model, :firstorder)::FirstOrderSD
+    vm = sd.vm
 
-    nbck = length(ed.bck_vars)
-    nfwd = length(ed.fwd_vars)
-    nex = length(ed.ex_vars)
-    oex = nbck + nfwd
+    nbck = vm.nbck
+    nfwd = vm.nfwd
+    nex = vm.nex
+    oex = vm.oex
 
     varmaxlead = zeros(Int, model.nvarshks)
-    for (vind, tt) in sd.inds_map[nbck.+(1:nfwd)]
+    for (vind, tt) in vm.inds_map[nbck.+(1:nfwd)]
         if tt > varmaxlead[vind]
             varmaxlead[vind] = tt
         end
@@ -76,7 +74,7 @@ function FOSimulatorData(plan::Plan, model::Model, anticipate::Bool)
         Vector{Float64}(undef, nbck + nfwd), # RHS
         Vector{Bool}(undef, nbck + nfwd + nex), # xflags_t
         varmaxlead,
-        indexin(unique(sd.inds_map), sd.inds_map),
+        indexin(unique(vm.inds_map), vm.inds_map),
     )
 end
 
@@ -85,12 +83,12 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
     anticipate::Bool=false,
     baseline::AbstractMatrix{Float64}=zeros(0, 0),
     verbose::Bool=model.options.verbose,
-    nlcorrect::Bool=false,
+    #= nlcorrect::Bool=false, =#
     kwargs...
 )
 
     # make sure we have first order solution
-    if !isfirstorder(model) || !hassolverdata(model, :firstorder)
+    if !hassolverdata(model, :firstorder)
         error("First-order solution is not ready. Call `solve!(m, :firstorder)`")
     end
 
@@ -99,8 +97,8 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
     end
 
     S = FOSimulatorData(plan, model, anticipate)
-    ed = getevaldata(model, :firstorder)::FirstOrderMED
     sd = getsolverdata(model, :firstorder)::FirstOrderSD
+    vm = sd.vm
 
     if anticipate && !S.empty_plan
         @warn "Running linearized stacked-time solver."
@@ -148,7 +146,7 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
 
     # prepare initial conditions (only bck_t are used)
     for ind in S.ibck
-        vind, tt = sd.inds_map[ind]
+        vind, tt = vm.inds_map[ind]
         S.sol_t[ind] = exog[tnow+tt, vind]
     end
 
@@ -168,38 +166,38 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
         BLAS.gemv!('N', 1.0, sd.R, S.α_t, 0.0, S.RHS)
 
         # fill exogenous data
-        for (ind, (varind, tt)) in zip(S.iex, sd.inds_map[S.iex])
+        for (ind, (varind, tt)) in zip(S.iex, vm.inds_map[S.iex])
             S.sol_t[ind] = exog[tnow+tt, varind]
         end
 
         dispatch = tnow > S.t_last_swap ? Val(:empty_plan) : Val(:swapped_plan)
 
-        fo_sim_step!(tnow, S, sd, ed,
+        fo_sim_step!(tnow, S, sd,
             model, plan, exog,
             dispatch)
 
-        if nlcorrect && tnow + model.maxlead <= size(sim, 1)
+        #= if nlcorrect && tnow + model.maxlead <= size(sim, 1)
             fo_nl_correct!(tnow, S, sd, ed,
                 model, plan, exog,
                 baseline_tr[tnow-model.maxlag:tnow+model.maxlead, :],
                 dispatch)
-        end
+        end =#
 
         # TODO: This mapping can be precomputed!  
         # Populate the sim
         for (simind, var) in enumerate(model.varshks)
             vname = var.name
-            solind = get(ed.bck_inds, (vname, 0), -1)
+            solind = get(vm.bck_inds, (vname, 0), -1)
             if solind > -1
                 sim[tnow, simind] = S.sol_t[solind]
                 continue
             end
-            solind = get(ed.fwd_inds, (vname, 0), -1)
+            solind = get(vm.fwd_inds, (vname, 0), -1)
             if solind > -1
                 sim[tnow, simind] = S.sol_t[solind]
                 continue
             end
-            solind = get(ed.ex_inds, (vname, 0), -1)
+            solind = get(vm.ex_inds, (vname, 0), -1)
             if solind > -1
                 sim[tnow, simind] = S.sol_t[S.oex+solind]
                 continue
@@ -230,7 +228,6 @@ function fo_sim_step!(
     tnow::Int,
     S::FOSimulatorData,
     sd::FirstOrderSD,
-    ed::FirstOrderMED,
     model::Model,
     plan::Plan,
     exog::AbstractMatrix{Float64},
@@ -246,12 +243,12 @@ function fo_sim_step!(
     tnow::Int,
     S::FOSimulatorData,
     sd::FirstOrderSD,
-    ed::FirstOrderMED,
     model::Model,
     plan::Plan,
     exog::AbstractMatrix{Float64},
     ::Val{:swapped_plan}
 )
+    vm = sd.vm
     # prepare exogenous flags and data according to plan
     fill!(S.xflags_t, false)
     S.xflags_t[S.iex] .= true
@@ -259,9 +256,9 @@ function fo_sim_step!(
     for (var, xflag) in zip(model.varshks, plan.exogenous[tnow, :])
         vname = var.name
         ind = -1
-        for (inds, def_xflag, offset) in ((ed.bck_inds, false, 0),
-            (ed.fwd_inds, false, 0),
-            (ed.ex_inds, true, S.oex))
+        for (inds, def_xflag, offset) in ((vm.bck_inds, false, 0),
+            (vm.fwd_inds, false, 0),
+            (vm.ex_inds, true, S.oex))
             # def_xflag : default xflag in empty plan, i.e. `false` for variables, `true` for shocks 
             # Note: bck_inds listed first for a good reason
             # it's possible for (var,0) to be both in bck and fwd (mixed variable)
@@ -272,7 +269,7 @@ function fo_sim_step!(
                 oind = offset + ind
                 S.xflags_t[oind] = xflag
                 if xflag
-                    S.sol_t[oind] = exog[tnow, sd.vi[vname]]
+                    S.sol_t[oind] = exog[tnow, vm.vi[vname]]
                 end
                 if xflag != def_xflag
                     empty_plan = false
@@ -301,6 +298,9 @@ end
 #############################
 #  fo_nl_correct!
 #############################
+
+#=  
+# This is a failed experiment
 
 function update_tpoint!(tpoint, tzero, sd, S, check=true, tol=eps() * 1024)
     update = fill!(similar(tpoint), 0.0)
@@ -423,5 +423,5 @@ function fo_nl_correct!(tnow::Int,
 
 end
 
-
+=#
 
