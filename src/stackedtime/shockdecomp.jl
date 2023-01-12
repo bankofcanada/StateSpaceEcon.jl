@@ -33,6 +33,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     control::SimData = steadystatedata(m, p),
     deviation::Bool = false,
     anticipate::Bool = true,
+    which::Symbol=m.options.which,
     verbose::Bool = getoption(m, :verbose, false),
     maxiter::Int = getoption(m, :maxiter, 20),
     tol::Float64 = getoption(m, :tol, 1e-12),
@@ -42,7 +43,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     _debug = false
 )
 
-    refresh_med!(m)
+    refresh_med!(m, which)
 
     if !anticipate
         error("Not yet implemented with `anticipate=false`. Try again later.")
@@ -66,7 +67,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     end
 
     # prepare the stacked-time
-    gdata = StackedTimeSolverData(m, p, fctype)
+    gdata = StackedTimeSolverData(m, p, fctype, which)
 
     # check the residual.           why are we doing this? we know it's 0!
     shocked = copy(exog_data)

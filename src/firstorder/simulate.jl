@@ -87,18 +87,14 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
     kwargs...
 )
 
-    # make sure we have first order solution
-    if !hassolverdata(model, :firstorder)
-        error("First-order solution is not ready. Call `solve!(m, :firstorder)`")
-    end
-
     if !isempty(model.auxvars)
         error("Found auxiliary variables. First-order solver not yet implemented for models with auxiliary variables.")
     end
 
-    S = FOSimulatorData(plan, model, anticipate)
+    # make sure we have first order solution
     sd = getsolverdata(model, :firstorder)::FirstOrderSD
     vm = sd.vm
+    S = FOSimulatorData(plan, model, anticipate)
 
     if anticipate && !S.empty_plan
         @warn "Running linearized stacked-time solver."
@@ -281,15 +277,15 @@ function fo_sim_step!(
             error("Variable not found in plan: $vname")
         end
     end
-    # check plan
-    if sum(S.xflags_t) != S.nex
-        error("Incorrect number of endogenous unknowns in plan at $(plan.range[tnow]).")
-    end
     # solve for the endogenous unknowns
     if empty_plan
         # MAT_n is already LU-factorized, so this branch should be faster
         S.sol_t[S.ien] = sd.MAT_n \ (S.RHS - sd.MAT_x * S.sol_t[S.iex])
     else
+        # check plan
+        if sum(S.xflags_t) != S.nex
+            error("Incorrect number of endogenous unknowns in plan at $(plan.range[tnow]).")
+        end
         S.sol_t[.!S.xflags_t] = sd.MAT[:, .!S.xflags_t] \ (S.RHS - sd.MAT[:, S.xflags_t] * S.sol_t[S.xflags_t])
     end
     return nothing
@@ -299,8 +295,9 @@ end
 #  fo_nl_correct!
 #############################
 
-#=  
-# This is a failed experiment
+#= 
+
+##### Ignore. This is a failed experiment - might come back to it later.
 
 function update_tpoint!(tpoint, tzero, sd, S, check=true, tol=eps() * 1024)
     update = fill!(similar(tpoint), 0.0)

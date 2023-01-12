@@ -122,7 +122,7 @@ function simulate(m::Model,
     end
 
     # make sure the model evaluation data is up to date
-    refresh_med!(m)
+    refresh_med!(m, which)
 
     NT = length(p_ant.range)
     nauxs = length(m.auxvars)

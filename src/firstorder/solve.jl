@@ -170,6 +170,7 @@ function fill_fosystem!(sys::FirstOrderSystem, JAC::SparseMatrixCSC, model::Mode
                 BCK[eqind, fwd_i] = val
             end
         end
+        continue
     end
     # add links
     eqn = length(model.alleqns)
@@ -226,7 +227,10 @@ function FirstOrderSD(model::Model)
     if !islinearized(model)
         linearize!(model)
     end
-    lmed = getevaldata(model, :linearize)
+
+    which = :linearize
+    refresh_med!(model, which)
+    lmed = getevaldata(model, which)
 
     vm = VarMaps(model)
     sys = FirstOrderSystem(lmed.med.J, model, vm)

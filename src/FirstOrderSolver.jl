@@ -28,6 +28,7 @@ import ..steadystatearray
 include("firstorder/QZ.jl")
 include("firstorder/solve.jl")
 include("firstorder/simulate.jl")
+include("firstorder/shockdecomp.jl")
 
 end
 
