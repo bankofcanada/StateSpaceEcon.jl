@@ -202,6 +202,7 @@ function _run_qz!(qz::QZData, want_stable::Int)
     # instead, find a "cutoff value" in the vector of eigenvalues, such that we have
     # `want_stable` of them strictly above the cutoff and the rest below or at the cutoff.
     N = qz.N
+    want_stable >= N && return qz
     if qz.lwork[] < N
         resize!(qz.work, N)
         qz.lwork[] = N

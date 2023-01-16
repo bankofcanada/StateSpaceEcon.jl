@@ -22,6 +22,7 @@ import ModelBaseEcon.hassolverdata
 import ModelBaseEcon.setsolverdata!
 
 using ..Plans
+import ..SimData
 
 import ..steadystatearray
 
