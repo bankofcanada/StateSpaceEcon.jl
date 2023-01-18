@@ -318,10 +318,10 @@ function make_BI(JMAT::SparseMatrixCSC{Float64,Int}, II::AbstractVector{<:Abstra
     return BI
 end
 
-StackedTimeSolverData(model::Model, plan::Plan, fctype::FinalCondition, which::Symbol=model.options.which) = StackedTimeSolverData(model, plan, setfc(model, fctype), which)
-function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{FinalCondition}, which::Symbol=model.options.which)
+StackedTimeSolverData(model::Model, plan::Plan, fctype::FinalCondition, variant::Symbol=model.options.variant) = StackedTimeSolverData(model, plan, setfc(model, fctype), variant)
+function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{FinalCondition}, variant::Symbol=model.options.variant)
 
-    evaldata = getevaldata(model, which)
+    evaldata = getevaldata(model, variant)
 
     NT = length(plan.range)
     init = 1:model.maxlag

@@ -228,9 +228,9 @@ function FirstOrderSD(model::Model)
         linearize!(model)
     end
 
-    which = :linearize
-    refresh_med!(model, which)
-    lmed = getevaldata(model, which)
+    variant = :linearize
+    refresh_med!(model, variant)
+    lmed = getevaldata(model, variant)
 
     vm = VarMaps(model)
     sys = FirstOrderSystem(lmed.med.J, model, vm)

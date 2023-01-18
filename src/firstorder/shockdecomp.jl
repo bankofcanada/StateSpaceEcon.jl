@@ -10,7 +10,7 @@ function shockdecomp(model::Model, p::Plan, exog_data::SimData;
     control::SimData=steadystatedata(model, p),
     deviation::Bool=false,
     anticipate::Bool=false,
-    which::Symbol=model.options.which,
+    variant::Symbol=model.options.variant,
     verbose::Bool=getoption(model, :verbose, false),
     maxiter::Int=getoption(model, :maxiter, 20),
     tol::Float64=getoption(model, :tol, 1e-12),

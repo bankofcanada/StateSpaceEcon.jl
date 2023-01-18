@@ -23,6 +23,9 @@ function run_fo_unant_tests(model)
             data[begin.+(0:model.maxlag-1), model.variables] .+= 0.3 * rand(model.maxlag, length(model.variables))
         elseif i > 5
             data[1U.+(0:i-5), model.shocks] .+= 0.3 * rand(1 + i - 5, length(model.shocks))
+            if i > 10
+                exog_endo!(xplan, values(model.autoexogenize), keys(model.autoexogenize), 2U:5U)
+            end
         end
         # can we replicate stacked time?
         sol = simulate(model, plan, data, solver=:stackedtime, fctype=fcslope, anticipate=false)
@@ -64,6 +67,9 @@ model = Model()
     @shock x_shk
 end
 @parameters model rho = 0.6
+@autoexogenize model begin
+    x = x_shk
+end
 @equations model begin
     log(x[t]) = 0.6 * log(x[t-1]) + x_shk[t]
 end

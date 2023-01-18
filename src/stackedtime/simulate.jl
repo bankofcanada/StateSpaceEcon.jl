@@ -99,7 +99,7 @@ function simulate(m::Model,
     deviation_ant=deviation,
     deviation_unant=deviation,
     #= Solver options =#
-    which::Symbol=m.options.which,
+    variant::Symbol=m.options.variant,
     verbose::Bool=m.options.verbose,
     tol::Float64=m.options.tol,
     maxiter::Int=m.options.maxiter,
@@ -122,7 +122,7 @@ function simulate(m::Model,
     end
 
     # make sure the model evaluation data is up to date
-    refresh_med!(m, which)
+    refresh_med!(m, variant)
 
     NT = length(p_ant.range)
     nauxs = length(m.auxvars)
@@ -156,7 +156,7 @@ function simulate(m::Model,
     end
 
     if anticipate
-        gdata = StackedTimeSolverData(m, p_ant, fctype, which)
+        gdata = StackedTimeSolverData(m, p_ant, fctype, variant)
         assign_exog_data!(x, exog_ant, gdata)
         if verbose
             @info "Simulating $(p_ant.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
@@ -231,7 +231,7 @@ function simulate(m::Model,
                     itol = sqrt(tol)
                 end
                 setexog!(psim, t0, exog_inds)
-                gdata = StackedTimeSolverData(m, psim, fctype, which)
+                gdata = StackedTimeSolverData(m, psim, fctype, variant)
                 x[t, exog_inds] = exog_unant[t, exog_inds]
                 # assign_exog_data!(x[psim.range,:], exog_data[psim.range,:], gdata)
                 sim_range = UnitRange{Int}(psim.range)
@@ -279,7 +279,7 @@ function simulate(m::Model,
                 psim = Plan(m, t:T)
                 psim.exogenous .= p_ant.exogenous[begin+Int(t - t0):end, :]
                 setexog!(psim, t0, exog_inds)
-                sdata = StackedTimeSolverData(m, psim, fctype, which)
+                sdata = StackedTimeSolverData(m, psim, fctype, variant)
                 x[t, exog_inds] = exog_unant[t, exog_inds]
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
@@ -295,7 +295,7 @@ function simulate(m::Model,
             # intermediate simulations
             last_t::Int64 = t0
             psim = Plan(m, 0:expectation_horizon-1)
-            sdata = StackedTimeSolverData(m, psim, fcnatural, which)
+            sdata = StackedTimeSolverData(m, psim, fcnatural, variant)
             for t in sim[2:end]
                 exog_inds = p_unant[t, Val(:inds)]
                 # we need to run a simulation if a variable is exogenous, or if a shock value is not zero
@@ -350,7 +350,7 @@ function simulate(m::Model,
                     psim = Plan(m, min(last_t + 1, T):T)
                     psim.exogenous .= p_ant.exogenous[end.+(1-length(psim.range):0), :]
                     # there are no unanticipated shocks in this simulation
-                    sdata = StackedTimeSolverData(m, psim, fctype, which)
+                    sdata = StackedTimeSolverData(m, psim, fctype, variant)
                     # the initial conditions and the exogenous data are already in x
                     # we only need the final conditions
                     sim_range = UnitRange{Int}(psim.range)
