@@ -215,20 +215,20 @@ function _run_qz!(qz::QZData, want_stable::Int)
 end
 
 
-"""
-    run_qz!(qz, A, B, [nstable])
+# """
+#     run_qz!(qz, A, B, [nstable])
 
-Like [`run_qz`](@ref) but reuses the given `qz` data structure. Dimensions of
-`A` and `B` must be `(qz.N, qz.N)`.
-"""
-function run_qz!(qz::QZData, A::Matrix{Float64}, B::Matrix{Float64}, want_stable::Int=-1)
-    if size(A) == size(B) == (qz.N, qz.N)
-        nothing
-    else
-        throw(ArgumentError("Matrices of incompatible sizes."))
-    end
-    copyto!(qz.S, A)
-    copyto!(qz.T, B)
-    _run_qz!(qz, want_stable)
-    return qz
-end
+# Like [`run_qz`](@ref) but reuses the given `qz` data structure. Dimensions of
+# `A` and `B` must be `(qz.N, qz.N)`.
+# """
+# function run_qz!(qz::QZData, A::Matrix{Float64}, B::Matrix{Float64}, want_stable::Int=-1)
+#     if size(A) == size(B) == (qz.N, qz.N)
+#         nothing
+#     else
+#         throw(ArgumentError("Matrices of incompatible sizes."))
+#     end
+#     copyto!(qz.S, A)
+#     copyto!(qz.T, B)
+#     _run_qz!(qz, want_stable)
+#     return qz
+# end

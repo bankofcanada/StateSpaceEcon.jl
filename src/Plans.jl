@@ -605,9 +605,9 @@ Display a comparison of two plans, or save it in a text file.
   variables will be listed in the same order as in the left plan.
 * `exog_mark="X"` - a short string (ideally 1 character) to mark exogenous
   values.
-* `endo_mark="-"` - a short string (ideally 1 character) to mark endogenous
+* `endo_mark="~"` - a short string (ideally 1 character) to mark endogenous
   values.
-* `missing_mark="M"` - a short string (ideally 1 character) to display when a
+* `missing_mark="."` - a short string (ideally 1 character) to display when a
   variable is missing from one of the plans.
 * `delim=" "` - delimiter. Use `","`` to make it a CSV file.
 * `pagelines=0` - Set to a positive integer to enable pagination. Number is

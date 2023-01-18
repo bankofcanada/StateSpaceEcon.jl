@@ -39,8 +39,8 @@ mutable struct FOSimulatorData{A}
     iex::UnitRange{Int}
     sol_t::Vector{Float64}
     α_t::Vector{Float64}
-    bck_tm1::Vector{Float64}
-    sol_tp1::Vector{Float64}
+    #= bck_tm1::Vector{Float64} =#
+    #= sol_tp1::Vector{Float64} =#
     RHS::Vector{Float64}
     xflags_t::Vector{Bool}
     varmaxlead::Vector{Int}
@@ -69,8 +69,8 @@ function FOSimulatorData(plan::Plan, model::Model, anticipate::Bool)
         1:nbck, nbck .+ (1:nfwd), 1:oex, oex .+ (1:nex), # ibck, ifwd, ien, iex
         Vector{Float64}(undef, nbck + nfwd + nex), # sol_t
         Vector{Float64}(undef, nbck), # α_t
-        Vector{Float64}(undef, nbck), # bck_tm1
-        Vector{Float64}(undef, nbck + nfwd + nex), # sol_tp1
+        #= Vector{Float64}(undef, nbck), # bck_tm1 =#
+        #= Vector{Float64}(undef, nbck + nfwd + nex), # sol_tp1 =#
         Vector{Float64}(undef, nbck + nfwd), # RHS
         Vector{Bool}(undef, nbck + nfwd + nex), # xflags_t
         varmaxlead,
@@ -152,14 +152,16 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
 
     for tnow in model.maxlag+1:size(sim, 1)
 
-        copyto!(S.bck_tm1, 1:S.nbck, S.sol_t, S.ibck)
+        #= copyto!(S.bck_tm1, 1:S.nbck, S.sol_t, S.ibck) =#
 
-        # prepare the right-hand-side of the system (that's the αₜ₋₁ part of the equation)
-        # α_t .= sd.Zbb \ bck_t
-        ldiv!(S.α_t, sd.Zbb, view(S.sol_t, S.ibck))
-        # RHS .= sd.R * α_t
-        # copyto!(S.RHS, sd.R * S.α_t)
-        BLAS.gemv!('N', 1.0, sd.R, S.α_t, 0.0, S.RHS)
+        if S.nbck > 0
+            # prepare the right-hand-side of the system (that's the αₜ₋₁ part of the equation)
+            # α_t .= sd.Zbb \ bck_t
+            ldiv!(S.α_t, sd.Zbb, view(S.sol_t, S.ibck))
+            # RHS .= sd.R * α_t
+            # copyto!(S.RHS, sd.R * S.α_t)
+            BLAS.gemv!('N', 1.0, sd.R, S.α_t, 0.0, S.RHS)
+        end
 
         # fill exogenous data
         for (ind, (varind, tt)) in zip(S.iex, vm.inds_map[S.iex])
@@ -231,7 +233,11 @@ function fo_sim_step!(
 )
     fill!(S.xflags_t, false)
     S.xflags_t[S.iex] .= true
-    S.sol_t[S.ien] = sd.MAT_n \ (S.RHS - sd.MAT_x * S.sol_t[S.iex])
+    if S.nbck > 0
+        S.sol_t[S.ien] = sd.MAT_n \ (S.RHS - sd.MAT_x * S.sol_t[S.iex])
+    else
+        S.sol_t[S.ien] = -(sd.MAT_n \ (sd.MAT_x * S.sol_t[S.iex]))
+    end
     return nothing
 end
 
@@ -280,13 +286,21 @@ function fo_sim_step!(
     # solve for the endogenous unknowns
     if empty_plan
         # MAT_n is already LU-factorized, so this branch should be faster
-        S.sol_t[S.ien] = sd.MAT_n \ (S.RHS - sd.MAT_x * S.sol_t[S.iex])
+        if S.nbck > 0
+            S.sol_t[S.ien] = sd.MAT_n \ (S.RHS - sd.MAT_x * S.sol_t[S.iex])
+        else
+            S.sol_t[S.ien] = sd.MAT_n \ (-sd.MAT_x * S.sol_t[S.iex])
+        end
     else
         # check plan
         if sum(S.xflags_t) != S.nex
             error("Incorrect number of endogenous unknowns in plan at $(plan.range[tnow]).")
         end
-        S.sol_t[.!S.xflags_t] = sd.MAT[:, .!S.xflags_t] \ (S.RHS - sd.MAT[:, S.xflags_t] * S.sol_t[S.xflags_t])
+        if S.nbck > 0
+            S.sol_t[.!S.xflags_t] = sd.MAT[:, .!S.xflags_t] \ (S.RHS - sd.MAT[:, S.xflags_t] * S.sol_t[S.xflags_t])
+        else
+            S.sol_t[.!S.xflags_t] = sd.MAT[:, .!S.xflags_t] \ (-sd.MAT[:, S.xflags_t] * S.sol_t[S.xflags_t])
+        end
     end
     return nothing
 end

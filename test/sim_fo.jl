@@ -19,9 +19,9 @@ function run_fo_unant_tests(model)
     Random.seed!(0xFF)
     for i = 1:30
         data = steadystatedata(model, plan)
-        if i <= 5
-            data[begin:1U-1, model.variables] .+= 0.3 * rand(model.maxlag, length(model.variables))
-        else
+        if (i <= 5) && (model.maxlag > 0)
+            data[begin.+(0:model.maxlag-1), model.variables] .+= 0.3 * rand(model.maxlag, length(model.variables))
+        elseif i > 5
             data[1U.+(0:i-5), model.shocks] .+= 0.3 * rand(1 + i - 5, length(model.shocks))
         end
         # can we replicate stacked time?
@@ -37,19 +37,56 @@ function run_fo_unant_tests(model)
     end
 end
 
+module M
+using ModelBaseEcon
+model = Model()
+@variables model x
+@shocks model x_shk
+@parameters model rho = 0.6
+@equations model begin
+    x[t+1] = rho * x[t] + x_shk[t]
+end
+@autoexogenize model begin
+    x = x_shk
+end
+@initialize model
+end
+
+@testset "M.fo.unant" begin
+    run_fo_unant_tests(M.model)
+end
+
+module R
+using ModelBaseEcon
+model = Model()
+@variables model begin
+    @log x
+    @shock x_shk
+end
+@parameters model rho = 0.6
+@equations model begin
+    log(x[t]) = 0.6 * log(x[t-1]) + x_shk[t]
+end
+@initialize model
+end
+@testset "R.fo.unant" begin
+    run_fo_unant_tests(R.model)
+end
+
 
 @using_example E2
 @testset "E2.fo.unant" begin
-    run_fo_unant_tests(deepcopy(E2.model))
+    run_fo_unant_tests(E2.model)
 end
 
 @using_example E3
 @testset "E3.fo.unant" begin
-    run_fo_unant_tests(deepcopy(E3.model))
+    run_fo_unant_tests(E3.model)
 end
 
+@using_example E6
 @testset "E6.fo.unant" begin
-    let m = deepcopy(E6.model)
+    let m = E6.model
         # set slopes to 0, otherwise we're not allowed to linearize
         m.p_dly = 0
         m.p_dlp = 0
