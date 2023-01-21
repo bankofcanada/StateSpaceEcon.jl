@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -210,8 +210,7 @@ struct FirstOrderSD
     sys::FirstOrderSystem
     qz::QZData
     # various matrices 
-    Zbb::Factorization
-    R::Matrix{Float64}
+    RbyZbb::Matrix{Float64}
     MAT::Matrix{Float64}
     # precomputed for empty plan
     MAT_n::Factorization
@@ -238,11 +237,11 @@ function FirstOrderSD(model::Model)
     # compute the Schur decomposition
     qz = run_qz(sys.FWD, sys.BCK, vm.nbck)
     # compute the system matrices
-    Zbb, R, MAT = first_order_system(qz, sys.EX, vm.nbck, vm.nfwd, vm.nex)
+    RbyZbb, MAT = first_order_system(qz, sys.EX, vm.nbck, vm.nfwd, vm.nex)
 
     return FirstOrderSD(
         vm, sys, qz,
-        Zbb, R, MAT,
+        RbyZbb, MAT,
         # pre-compute factorization for most common case (empty plan)
         lu(MAT[:, 1:(vm.oex)]),
         view(MAT, :, vm.oex .+ (1:vm.nex)))
@@ -259,13 +258,13 @@ function first_order_system(qz::QZData, EX::Matrix{Float64}, nbck::Int, nfwd::In
 
     Tbb = qz.T[1:nbck, 1:nbck]
     Tbf = qz.T[1:nbck, nbck.+(1:nfwd)]
-    # Tfb = qz.T[nbck.+(1:nfwd), 1:nbck]  # this one is 0
+    # Tfb = qz.T[nbck.+(1:nfwd), 1:nbck]            # this one is 0
     Tff = lu(qz.T[nbck.+(1:nfwd), nbck.+(1:nfwd)])
 
     Sbb = qz.S[1:nbck, 1:nbck]
-    Sbf = qz.S[1:nbck, nbck.+(1:nfwd)]
-    # Sfb = qz.S[nbck.+(1:nfwd), 1:nbck]  # this one is 0
-    Sff = qz.S[nbck.+(1:nfwd), nbck.+(1:nfwd)]
+    # Sbf = qz.S[1:nbck, nbck.+(1:nfwd)]            # not needed
+    # Sfb = qz.S[nbck.+(1:nfwd), 1:nbck]            # this one is 0
+    # Sff = qz.S[nbck.+(1:nfwd), nbck.+(1:nfwd)]    # not needed
 
     QEX = qz.Q'EX
 
@@ -275,14 +274,16 @@ function first_order_system(qz::QZData, EX::Matrix{Float64}, nbck::Int, nfwd::In
 
     MAT = zeros(nbck + nfwd, nbck + nfwd + nex)
 
+    ### fill the backward-looking rows
     MAT[1:nbck, 1:nbck] = Sbb / Zbb
     # MAT[1:nbck, nbck .+(1:nfwd)] .= 0  # already zero 
     MAT[1:nbck, oex.+(1:nex)] = QEX[1:nbck, :] - (Tbf - Tbb * (Zbb \ Zbf)) * TiXf
 
+    ### fill the forward-looking rows
     # MAT[nbck .+ (1:nfwd), 1:nbck] .= 0  # already zero 
     MAT[nbck.+(1:nfwd), nbck.+(1:nfwd)] = Zff'
     MAT[nbck.+(1:nfwd), oex.+(1:nex)] = TiXf
 
-    return Zbb, R, MAT
+    return rdiv!(R, Zbb), MAT
 end
 

@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -33,7 +33,7 @@ const _solvers = LittleDict{Symbol, Module}(
 function getsolvermodule(solvername::Symbol) 
     SolverModule = get(_solvers, solvername, nothing)
     if SolverModule === nothing
-        error(ArgumentError("Unknown solver :$solversolvername."))
+        error(ArgumentError("Unknown solver :$solvername."))
     end
     return SolverModule
 end

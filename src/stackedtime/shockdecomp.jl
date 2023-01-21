@@ -1,11 +1,10 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
-export shockdecomp
 import ..steadystatedata
 
 """
@@ -161,7 +160,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     end
 
     result.s = copy(result.c)
-    result.s[p.range, :] .= shocked
+    result.s[p.range, :] .= inverse_transform(shocked, m)
 
     if deviation
         logvars = islog.(m.varshks) .| isneglog.(m.varshks)

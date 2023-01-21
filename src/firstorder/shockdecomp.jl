@@ -1,13 +1,13 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
 
-function shockdecomp(model::Model, p::Plan, exog_data::SimData;
-    control::SimData=steadystatedata(model, p),
+function shockdecomp(model::Model, plan::Plan, exog_data::SimData;
+    control::SimData=steadystatedata(model, plan),
     deviation::Bool=false,
     anticipate::Bool=false,
     variant::Symbol=model.options.variant,
@@ -17,9 +17,6 @@ function shockdecomp(model::Model, p::Plan, exog_data::SimData;
     _debug=false
 )
 
-    if deviation
-        error("`deviation` must be set to `false`.")
-    end
 
     if anticipate
         error("`anticipate` must be set to `false`.")
@@ -35,15 +32,21 @@ function shockdecomp(model::Model, p::Plan, exog_data::SimData;
     result.c = copy(control)
 
     # apply data transformations of @log variables
-    exog_data = transform(exog_data[p.range, :], model)
-    control = transform(control[p.range, :], model)
+    exog_data = transform(exog_data[plan.range, :], model)
+    control = transform(control[plan.range, :], model)
+    SS = transform(steadystatedata(model, plan), model)
+
+    if !deviation
+        exog_data .-= SS
+        control .-= SS
+    end
 
     # preallocate the shockdecomp MVTSeries
     result.sd = Workspace()
     let colnames = [:init, (v for (v, t) in vm.ex_vars if t == 0)..., :nonlinear]
         for v in model.varshks
             if !(isshock(v) || isexog(v))
-                push!(result.sd, v.name => MVTSeries(p.range, colnames, zeros))
+                push!(result.sd, v.name => MVTSeries(plan.range, colnames, zeros))
             end
             continue
         end
@@ -56,7 +59,7 @@ function shockdecomp(model::Model, p::Plan, exog_data::SimData;
     # shock-decomp contributions (rows = endog, cols = exog)
     nrhs = 1 + S.nex
     SD_t = zeros(S.nbck + S.nfwd, nrhs)
-    SD_RHS = similar(SD_t)
+    SD_RHS = zeros(S.nbck + S.nfwd, nrhs)
     SD_EX = zeros(S.nex, S.nex)
 
     # tnow is the Int index corresponding to the current period 
@@ -70,33 +73,36 @@ function shockdecomp(model::Model, p::Plan, exog_data::SimData;
         result.sd[vname][tnow+tt] = SD_t[ind, 1] = S1 - C1
     end
 
-    # pre-compute the matrix of t-1
-    RbyZbb = copy(sd.R)
-    rdiv!(RbyZbb, sd.Zbb)
+    magic_coef = float(S.nbck > 0)
 
     for tnow in model.maxlag+1:size(shocked, 1)
 
         # RHS related to t-1
-        # for shocked
-        BLAS.gemv!('N', 1.0, RbyZbb, view(S.sol_t, S.ibck), 0.0, S.RHS)
-        # for contributions
-        BLAS.gemm!('N', 'N', 1.0, RbyZbb, view(SD_t, S.ibck, :), 0.0, SD_RHS)
-
+        if S.nbck > 0
+            # for shocked
+            BLAS.gemv!('N', 1.0, sd.RbyZbb, view(S.sol_t, S.ibck), 0.0, S.RHS)
+            # for contributions
+            BLAS.gemm!('N', 'N', 1.0, sd.RbyZbb, view(SD_t, S.ibck, :), 0.0, SD_RHS)
+        end
 
         # fill exogenous data
         for (ind0, ind, (varind, tt)) in zip(1:S.nex, S.iex, vm.inds_map[S.iex])
             # for shocked
             S.sol_t[ind] = S1 = exog_data[tnow+tt, varind]
             # for contributions
-            C1 = control[tnow+tt, varind]        #= C_sol_t[ind] = =#
+            C1 = control[tnow+tt, varind]
             SD_EX[ind0, ind0] = S1 - C1
         end
 
         # RHS related to exogenous
         # for shocked
-        BLAS.gemv!('N', -1.0, sd.MAT_x, view(S.sol_t, S.iex), 1.0, S.RHS)
+        BLAS.gemv!('N', -1.0, sd.MAT_x, view(S.sol_t, S.iex), magic_coef, S.RHS)
         # for contributions
-        BLAS.gemm!('N', 'N', -1.0, sd.MAT_x, SD_EX, 1.0, view(SD_RHS, :, 2:nrhs))
+        BLAS.gemm!('N', 'N', -1.0, sd.MAT_x, SD_EX, magic_coef, view(SD_RHS, :, 2:nrhs))
+        # NOTE the use of magic_coef above.
+        #    if S.nbck == 0, then the contribution to RHS from initial conditions is 0, so magic_coef is set to 0.0.
+        #    otherwise, the contribution is already in RHS, so magic_coef is set to 1.0 to take it into account.
+
 
         # solve 
         # for shocked
@@ -124,9 +130,15 @@ function shockdecomp(model::Model, p::Plan, exog_data::SimData;
         data.nonlinear .= shocked[var] - control[var] - sum(data, dims=2)
     end
 
+    if !deviation
+        shocked .+= SS
+    end
+
+    shocked .= inverse_transform(shocked, model)
+
     # assign shocked to the result
     result.s = copy(result.c)
-    result.s[p.range, :] .= shocked
+    result.s[plan.range, :] .= shocked
 
     return result
 end

@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -39,8 +39,6 @@ mutable struct FOSimulatorData{A}
     iex::UnitRange{Int}
     sol_t::Vector{Float64}
     α_t::Vector{Float64}
-    #= bck_tm1::Vector{Float64} =#
-    #= sol_tp1::Vector{Float64} =#
     RHS::Vector{Float64}
     xflags_t::Vector{Bool}
     varmaxlead::Vector{Int}
@@ -69,8 +67,6 @@ function FOSimulatorData(plan::Plan, model::Model, anticipate::Bool)
         1:nbck, nbck .+ (1:nfwd), 1:oex, oex .+ (1:nex), # ibck, ifwd, ien, iex
         Vector{Float64}(undef, nbck + nfwd + nex), # sol_t
         Vector{Float64}(undef, nbck), # α_t
-        #= Vector{Float64}(undef, nbck), # bck_tm1 =#
-        #= Vector{Float64}(undef, nbck + nfwd + nex), # sol_tp1 =#
         Vector{Float64}(undef, nbck + nfwd), # RHS
         Vector{Bool}(undef, nbck + nfwd + nex), # xflags_t
         varmaxlead,
@@ -150,17 +146,15 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
     # The loop
     ##################
 
-    for tnow in model.maxlag+1:size(sim, 1)
+    sol_bck_t = view(S.sol_t, S.ibck)
 
-        #= copyto!(S.bck_tm1, 1:S.nbck, S.sol_t, S.ibck) =#
+    for tnow in model.maxlag+1:size(sim, 1)
 
         if S.nbck > 0
             # prepare the right-hand-side of the system (that's the αₜ₋₁ part of the equation)
             # α_t .= sd.Zbb \ bck_t
-            ldiv!(S.α_t, sd.Zbb, view(S.sol_t, S.ibck))
             # RHS .= sd.R * α_t
-            # copyto!(S.RHS, sd.R * S.α_t)
-            BLAS.gemv!('N', 1.0, sd.R, S.α_t, 0.0, S.RHS)
+            BLAS.gemv!('N', 1.0, sd.RbyZbb, sol_bck_t, 0.0, S.RHS)
         end
 
         # fill exogenous data
@@ -304,135 +298,4 @@ function fo_sim_step!(
     end
     return nothing
 end
-
-#############################
-#  fo_nl_correct!
-#############################
-
-#= 
-
-##### Ignore. This is a failed experiment - might come back to it later.
-
-function update_tpoint!(tpoint, tzero, sd, S, check=true, tol=eps() * 1024)
-    update = fill!(similar(tpoint), 0.0)
-    # t-1
-    for ((vind, tt), val) in zip(sd.inds_map[S.ibck], S.bck_tm1)
-        update[tzero-1+tt, vind] = val
-    end
-    # t
-    for ((vind, tt), val) in zip(sd.inds_map, S.sol_t)
-        if tt < 0
-            if check
-                val1 = update[tzero+tt, vind]
-                @assert ≈(val1, val, atol=tol, rtol=sqrt(tol) / 128)
-            end
-        else
-            update[tzero+tt, vind] = val
-        end
-    end
-    # t+1
-    for ((vind, tt), val) in zip(sd.inds_map, S.sol_tp1)
-        if tt < S.varmaxlead[vind]
-            if check
-                val1 = update[tzero+1+tt, vind]
-                @assert ≈(val1, val, atol=tol, rtol=sqrt(tol) / 128)
-            end
-        else
-            update[tzero+1+tt, vind] = val
-        end
-    end
-    tpoint .+= update
-    return tpoint
-end
-
-
-function fo_nl_correct!(tnow::Int,
-    S::FOSimulatorData,
-    sd::FirstOrderSD,
-    ed::FirstOrderMED,
-    model::Model,
-    plan::Plan,
-    exog::AbstractMatrix{Float64},
-    baseline::AbstractMatrix{Float64},
-    ::Val{:empty_plan};
-    tol::Float64=getoption(model, :tol, eps() * 1024),
-    maxiter::Int=getoption(model, :maxiter, 5))
-
-    tpoint = copy(baseline)
-    tzero = model.maxlag + 1
-    # S.fwd_tp1 .= sd.ZfbByZbb * S.sol_t[1:S.nbck]
-    # copyto!(S.fwd_tp1, sd.ZfbByZbb * S.sol_t[1:S.nbck])
-    # BLAS.gemv!('N', 1.0, sd.ZfbByZbb, S.sol_t[1:S.nbck], 0.0, S.fwd_tp1)
-    S.sol_tp1[S.iex] .= 0
-    S.sol_tp1[S.ien] = sd.MAT_n \ (sd.R * (sd.Zbb \ S.sol_t[S.ibck]))
-    update_tpoint!(tpoint, tzero, sd, S)
-
-    S1 = deepcopy(S)
-    fill!(S1.bck_tm1, 0.0)
-    fill!(S1.sol_t, 0.0)
-    fill!(S1.sol_tp1, 0.0)
-    fill!(S1.RHS, 0.0)
-    qz1 = deepcopy(sd.qz)
-
-    med = ModelBaseEcon.ModelEvaluationData(model)
-    RES, JAC = eval_RJ(tpoint, med)
-    nres = length(RES)
-
-    # we need the endogenous indexes
-    # the mask S.xflags_t won't work becasue MAT is a different 2-nd dimension
-    #   (because we're appending the residual "shocks")
-    ninds = findall(!, S.xflags_t)
-    # indexes corresponding to residual "shocks" 
-    #   ( they are added at the very end, beyond the regular MAT columns)
-    rinds = size(sd.MAT, 2) .+ (1:nres)
-
-    EX0 = similar(ed.EX)
-
-    iter = 0
-    while norm(RES) > tol && iter <= maxiter
-        iter += 1
-
-        # prepare FWD, BCK and EX given JAC
-        ModelBaseEcon.fill_fo_matrices!(qz1.S, qz1.T, EX0, JAC, model, ed)
-        # compute the Schur decomposition
-        _run_qz!(qz1, S.nbck)
-        # append the columns for the residual to the EX matrix
-        EX1 = hcat(EX0, diagm(S.nbck + S.nfwd, nres, RES))
-        # build the system matrix 
-        Zbb, ZfbByZbb, R, MAT = first_order_system(qz1, EX1, S.nbck, S.nfwd, S.nex + nres)
-
-        MAT_n = lu(MAT[:, ninds])
-        RESSHK = sum(MAT[:, rinds], dims=2)
-
-        # Solve for the endogenous unknowns
-        S1.sol_t[ninds] = -(MAT_n \ RESSHK)
-        # NOTE 1: It should be MAT[:, rinds] * ones(nres), but this is the sum the columns of MAT[:,rinds]
-        # NOTE 2: the contribution of alpha_t-1 to the RHS is 0.
-        # Also, the regular exogenous columns of MAT are multiplied by 0.
-        # We simply don't include these two, and we include only the contribution
-        #      from the residual.
-
-        if norm(S1.sol_t) < tol
-            break
-        end
-
-        # Solve for fwd unknowns one period forward
-        S1.sol_tp1[S.iex] .= 0
-        S1.sol_tp1[S.ien] = MAT_n \ (R * (Zbb \ S1.sol_t[S.ibck]) - 0RESSHK)
-        # BLAS.gemv!('N', 1.0, ZfbByZbb, S1.sol_t[1:S.nbck], 0.0, S1.fwd_tp1)
-
-        # update the solution 
-        S.sol_t .+= S1.sol_t
-
-        # update tpoint
-        update_tpoint!(tpoint, tzero, sd, S1)
-
-        RES, JAC = eval_RJ(tpoint, med)
-    end
-
-    return
-
-end
-
-=#
 

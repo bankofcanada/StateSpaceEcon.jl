@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -71,7 +71,7 @@ end
     x = x_shk
 end
 @equations model begin
-    log(x[t]) = 0.6 * log(x[t-1]) + x_shk[t]
+    log(x[t]) = rho * log(x[t-1]) + x_shk[t]
 end
 @initialize model
 end
@@ -102,5 +102,52 @@ end
         @steadystate m lyn = 1.1
         m
     end |> run_fo_unant_tests
+end
+
+
+function test_shockdecomp_firstorder(m, rng=1U:20U, fctype=fcslope)
+    clear_sstate!(m)
+    sssolve!(m)
+    # printsstate(m)
+    linearize!(m)
+    solve!(m, solver=:firstorder)
+
+    p = Plan(m, rng)
+    control = steadystatedata(m, p)
+    data = copy(control)
+    data[1U, m.shocks] .+= 1.0
+    r1 = shockdecomp(m, p, data; control, solver=:stackedtime, fctype)
+    r2 = shockdecomp(m, p, data; control, solver=:firstorder)
+
+    @test simulate(m, p, data; solver=:stackedtime, fctype) ≈ r1.s
+    @test simulate(m, p, data; solver=:firstorder) ≈ r2.s
+    @test compare(r1, r2, quiet=true, ignoremissing=true, atol=2^10*eps(1.0), rtol=sqrt(eps(1.0)), trange=rng)
+
+    return (; r1, r2)
+end
+
+@testset "shkdcmp.fo" begin
+    for m in (M.model, R.model)
+        m.rho = 0.6
+        empty!(m.sstate.constraints)
+        test_shockdecomp_firstorder(m)
+        m.rho = 1
+        @steadystate m x = 6
+        test_shockdecomp_firstorder(m, 1U:20U, fclevel)
+    end
+    for m in (E2.model, E3.model)
+        empty!(m.sstate.constraints)
+        test_shockdecomp_firstorder(m, 1U:500U)
+    end
+    let m = E6.model
+        # set slopes to 0, otherwise we're not allowed to linearize
+        m.p_dly = 0
+        m.p_dlp = 0
+        empty!(m.sstate.constraints)
+        @steadystate m lp = 1.5
+        @steadystate m ly = 1.1
+        @steadystate m lyn = 1.1
+        test_shockdecomp_firstorder(m, 1U:100U)
+    end
 end
 
