@@ -121,7 +121,7 @@ function test_shockdecomp_firstorder(m, rng=1U:20U, fctype=fcslope)
 
     @test simulate(m, p, data; solver=:stackedtime, fctype) ≈ r1.s
     @test simulate(m, p, data; solver=:firstorder) ≈ r2.s
-    @test compare(r1, r2, quiet=true, ignoremissing=true, atol=2^10*eps(1.0), rtol=sqrt(eps(1.0)), trange=rng)
+    @test compare(r1, r2, quiet=true, ignoremissing=true, atol=2^10*eps(1.0), rtol=sqrt(eps(1.0)))
 
     return (; r1, r2)
 end

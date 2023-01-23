@@ -44,9 +44,11 @@ function shockdecomp(model::Model, plan::Plan, exog_data::SimData;
     # preallocate the shockdecomp MVTSeries
     result.sd = Workspace()
     let colnames = [:init, (v for (v, t) in vm.ex_vars if t == 0)..., :nonlinear]
-        for v in model.varshks
+        init = plan.range[1:model.maxlag]
+        for v in model.allvars
             if !(isshock(v) || isexog(v))
                 push!(result.sd, v.name => MVTSeries(plan.range, colnames, zeros))
+                result.sd[v.name].init[init] = exog_data[init, v.name] - control[init, v.name]
             end
             continue
         end
@@ -70,7 +72,7 @@ function shockdecomp(model::Model, plan::Plan, exog_data::SimData;
         vname = model.variables[vind].name
         S.sol_t[ind] = S1 = exog_data[tnow+tt, vind]
         C1 = control[tnow+tt, vind]
-        result.sd[vname][tnow+tt] = SD_t[ind, 1] = S1 - C1
+        result.sd[vname].init[tnow+tt] = SD_t[ind, 1] = S1 - C1
     end
 
     magic_coef = float(S.nbck > 0)

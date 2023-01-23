@@ -152,7 +152,24 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
             end
             v_inv_endo_inds = inv_endo_inds[v_inds[v_endo_mask]]
             v_data = MVTSeries(p.range, keys(exog_inds), zeros)
+            # assign contributions to endogenous points
             v_data[v_endo_mask, :] .= SDMAT[v_inv_endo_inds, :]
+            # assign contributions to initial conditions
+            v_data[begin - 1 .+ init, :init] .= delta[v.name][init]
+            # assign contributions to final conditions
+            if fctype === fcgiven || fctype === fclevel
+                v_data[begin - 1 .+ term, :term] .= delta[v.name][term]
+            elseif fctype === fcrate 
+                for tt in term
+                    v_data[begin - 1 + tt, :] = v_data[begin - 2 + tt, :]
+                end
+            elseif fctype === fcnatural 
+                for tt in term
+                    v_data[begin - 1 + tt, :] = 2*v_data[begin - 2 + tt, :] - v_data[begin - 3 + tt, :]
+                end
+            else
+                error("Not supported `fctype = $fctype` ")
+            end
             # we also append the truncation error due to linear approximation of the decomposition.
             v_data = hcat(v_data; nonlinear = delta[v.name] - sum(v_data, dims = 2))
             push!(result.sd, v.name => v_data)
