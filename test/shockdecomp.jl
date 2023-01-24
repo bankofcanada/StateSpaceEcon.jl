@@ -3,6 +3,7 @@ using JLD2
 @testset "shkdcmp" begin
     m = deepcopy(E7A.model)
     expected = Workspace(load("data/shkdcmp_E7A.jld2"))
+    clean_old_frequencies!(expected)
 
     empty!(m.sstate.constraints)
     @steadystate m lc = 1
@@ -11,11 +12,13 @@ using JLD2
     sssolve!(m)
     @test 0 == check_sstate(m)
 
+    rng = 2021Q1:2035Q4
+
     p = Plan(m, 2021Q1:2035Q4)
     exog_data = steadystatedata(m, p)
     exog_data[2021Q1, m.shocks] .+= 0.1
     result = shockdecomp(m, p, exog_data; fctype = fcnatural)
-    @test compare(result, expected; atol=1.0e-9, quiet=true)
+    @test compare(result, expected; atol=1.0e-9, quiet=true, trange=rng)
 
     # shock on dly is half inventory half consumption
     dlinv_shk = result.sd.dlinv.dlinv_shk[result.sd.dlinv.dlinv_shk .> 1e-9]; # positive shock values
@@ -78,7 +81,7 @@ using JLD2
         result2 = shockdecomp(m, p, exog_data2; control=exog_data, fctype = fcnatural)
     end
     for var in m.variables
-        @test compare(result2.sd[var][m.shocks], expected.sd[var][m.shocks]; atol=1.0e-9, quiet=true)
+        @test compare(result2.sd[var][m.shocks], expected.sd[var][m.shocks]; atol=1.0e-9, quiet=true, trnage=rng)
     end
     # but the comparison produces a warning:
     @test occursin("Control is not a solution", out)

@@ -7,19 +7,15 @@
 
 
 function shockdecomp(model::Model, plan::Plan, exog_data::SimData;
-    control::SimData=steadystatedata(model, plan),
+    initdecomp::Workspace,
+    control::SimData,
     deviation::Bool=false,
     anticipate::Bool=false,
-    variant::Symbol=model.options.variant,
-    verbose::Bool=getoption(model, :verbose, false),
-    maxiter::Int=getoption(model, :maxiter, 20),
-    tol::Float64=getoption(model, :tol, 1e-12),
-    _debug=false
+    variant::Symbol=model.options.variant
 )
 
-
     if anticipate
-        error("`anticipate` must be set to `false`.")
+        error("Not implemented: `shockdecomp` with `solver=:firstorder` and `anticipate=true`. Use `solver=:stackedtime`.")
     end
 
     # make sure we have first order solution
@@ -42,13 +38,24 @@ function shockdecomp(model::Model, plan::Plan, exog_data::SimData;
     end
 
     # preallocate the shockdecomp MVTSeries
+    id = get(initdecomp, :sd, Workspace())
     result.sd = Workspace()
     let colnames = [:init, (v for (v, t) in vm.ex_vars if t == 0)..., :nonlinear]
         init = plan.range[1:model.maxlag]
         for v in model.allvars
             if !(isshock(v) || isexog(v))
                 push!(result.sd, v.name => MVTSeries(plan.range, colnames, zeros))
-                result.sd[v.name].init[init] = exog_data[init, v.name] - control[init, v.name]
+                rsdv = result.sd[v.name]
+                # set initial conditions
+                if haskey(id, v.name)
+                    rsdv[init] .= id[v.name]
+                    if !isapprox(exog_data[init, v.name] - control[init, v.name], sum(rsdv[init, :], dims=2))
+                        error("The given `initdecomp` does not add up for $(v.name).")
+                    end
+                else
+                    # initdecomp not given - assign full contribution to :init column
+                    rsdv.init[init] = exog_data[init, v.name] - control[init, v.name]
+                end
             end
             continue
         end
@@ -71,8 +78,12 @@ function shockdecomp(model::Model, plan::Plan, exog_data::SimData;
         vind, tt = vm.inds_map[ind]
         vname = model.variables[vind].name
         S.sol_t[ind] = S1 = exog_data[tnow+tt, vind]
-        C1 = control[tnow+tt, vind]
-        result.sd[vname].init[tnow+tt] = SD_t[ind, 1] = S1 - C1
+        # C1 = control[tnow+tt, vind]
+        # result.sd[vname].init[tnow+tt] = SD_t[ind, 1] = S1 - C1
+        SD_t[ind, 1] = result.sd[vname][begin-1+tnow+tt, :init]
+        for (sind, (sname, _)) in enumerate(vm.ex_vars)
+            SD_t[ind, 1+sind] = result.sd[vname][sname][begin-1+tnow+tt]
+        end
     end
 
     magic_coef = float(S.nbck > 0)
@@ -142,5 +153,5 @@ function shockdecomp(model::Model, plan::Plan, exog_data::SimData;
     result.s = copy(result.c)
     result.s[plan.range, :] .= shocked
 
-    return result
+    return overlay(result, initdecomp)
 end

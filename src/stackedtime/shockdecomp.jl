@@ -29,17 +29,18 @@ As part of the algorithm we run a simulation with the given `plan`,
 
 """
 function shockdecomp(m::Model, p::Plan, exog_data::SimData;
-    control::SimData = steadystatedata(m, p),
-    deviation::Bool = false,
-    anticipate::Bool = true,
+    initdecomp::Workspace,
+    control::SimData,
+    deviation::Bool=false,
+    anticipate::Bool=true,
     variant::Symbol=m.options.variant,
-    verbose::Bool = getoption(m, :verbose, false),
-    maxiter::Int = getoption(m, :maxiter, 20),
-    tol::Float64 = getoption(m, :tol, 1e-12),
-    sparse_solver::Function = (A, b) -> A \ b,
-    linesearch::Bool  = getoption(m, :linesearch, false),
-    fctype::FinalCondition = getoption(m, :fctype, fcgiven),
-    _debug = false
+    verbose::Bool=getoption(m, :verbose, false),
+    maxiter::Int=getoption(m, :maxiter, 20),
+    tol::Float64=getoption(m, :tol, 1e-12),
+    sparse_solver::Function=(A, b) -> A \ b,
+    linesearch::Bool=getoption(m, :linesearch, false),
+    fctype::FinalCondition=getoption(m, :fctype, fcgiven),
+    _debug=false
 )
 
     refresh_med!(m, variant)
@@ -100,7 +101,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
 
         # indices of endogenous variable-points (the unknowns we were solving for)
         endo_inds = vec(vcat(
-            (LI[sim, index] for (index,v) in enumerate(m.allvars) if !(isexog(v) || isshock(v)))...
+            (LI[sim, index] for (index, v) in enumerate(m.allvars) if !(isexog(v) || isshock(v)))...
         ))
 
         if length(endo_inds) != sum(gdata.solve_mask) || !all(gdata.solve_mask[endo_inds])
@@ -110,13 +111,13 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
         # indices for the exogenous variable-points split into groups
         exog_inds = Workspace(;
             # contributions of initial conditions
-            init = vec(LI[init, :]),
+            init=vec(LI[init, :]),
             # contributions of final conditions
-            term = vec(LI[term, :]),
+            term=vec(LI[term, :]),
             # contributions of shocks
-            (v.name => vec(LI[sim, index]) for (index,v) in enumerate(m.allvars) if isshock(v))...,
+            (v.name => vec(LI[sim, index]) for (index, v) in enumerate(m.allvars) if isshock(v))...,
             # contributions of @exog variables
-            (v.name => vec(LI[sim, index]) for (index,v) in enumerate(m.allvars) if isexog(v))...
+            (v.name => vec(LI[sim, index]) for (index, v) in enumerate(m.allvars) if isexog(v))...
         )
         # Note: we use a Workspace() because it preserves the order in which
         #     members were added to it
@@ -132,7 +133,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
         SDMAT = zeros(size(gdata.J, 1), length(exog_inds))
         # Fill it with the right-hand side of the system
         for (col, inds) in enumerate(values(exog_inds))
-            SDMAT[:, [col]] .-= sum(gdata.J[:, inds] .* delta[inds]', dims = 2)
+            SDMAT[:, [col]] .-= sum(gdata.J[:, inds] .* delta[inds]', dims=2)
         end
         # solve the system (in-place)
         ldiv!(gdata.J_factorized[], SDMAT)
@@ -144,7 +145,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
         # in order to split the rows of SDMAT by variable, we need the inverse indexing map
         inv_endo_inds = zeros(Int, size(gdata.solve_mask))
         inv_endo_inds[gdata.solve_mask] .= 1:sum(gdata.solve_mask)
-        for (index,v) in enumerate(m.allvars)
+        for (index, v) in enumerate(m.allvars)
             v_inds = vec(LI[:, index])
             v_endo_mask = gdata.solve_mask[v_inds]
             if !any(v_endo_mask)
@@ -155,23 +156,23 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
             # assign contributions to endogenous points
             v_data[v_endo_mask, :] .= SDMAT[v_inv_endo_inds, :]
             # assign contributions to initial conditions
-            v_data[begin - 1 .+ init, :init] .= delta[v.name][init]
+            v_data[(begin-1).+init, :init] .= delta[v.name][init]
             # assign contributions to final conditions
             if fctype === fcgiven || fctype === fclevel
-                v_data[begin - 1 .+ term, :term] .= delta[v.name][term]
-            elseif fctype === fcrate 
+                v_data[(begin-1).+term, :term] .= delta[v.name][term]
+            elseif fctype === fcrate
                 for tt in term
-                    v_data[begin - 1 + tt, :] = v_data[begin - 2 + tt, :]
+                    v_data[begin-1+tt, :] = v_data[begin-2+tt, :]
                 end
-            elseif fctype === fcnatural 
+            elseif fctype === fcnatural
                 for tt in term
-                    v_data[begin - 1 + tt, :] = 2*v_data[begin - 2 + tt, :] - v_data[begin - 3 + tt, :]
+                    v_data[begin-1+tt, :] = 2 * v_data[begin-2+tt, :] - v_data[begin-3+tt, :]
                 end
             else
                 error("Not supported `fctype = $fctype` ")
             end
             # we also append the truncation error due to linear approximation of the decomposition.
-            v_data = hcat(v_data; nonlinear = delta[v.name] - sum(v_data, dims = 2))
+            v_data = hcat(v_data; nonlinear=delta[v.name] - sum(v_data, dims=2))
             push!(result.sd, v.name => v_data)
         end
     end

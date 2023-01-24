@@ -62,8 +62,9 @@ function shockdecomp end
 export shockdecomp
 
 function shockdecomp(model::Model, plan::Plan, exogdata::MVTSeries;
-  control::MVTSeries=steadystatedata(model, plan), solver::Symbol=defaultsolver, kwargs...)
-  return getsolvermodule(solver).shockdecomp(model, plan, exogdata; control, kwargs...)
+  solver::Symbol=defaultsolver, initdecomp::Workspace=Workspace(),
+  control::MVTSeries=steadystatedata(model, plan), kwargs...)
+  return getsolvermodule(solver).shockdecomp(model, plan, exogdata; control, initdecomp, kwargs...)
 end
 
 #####  simulate() #####

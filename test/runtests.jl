@@ -86,7 +86,7 @@ end
 
         pio = IOBuffer()
         exportplan(pio, p)
-        seek(pio, 0)
+        seekstart(pio)
         q = importplan(pio)
         @test p == q
     end
