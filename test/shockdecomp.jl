@@ -12,7 +12,8 @@ using JLD2
     sssolve!(m)
     @test 0 == check_sstate(m)
 
-    p = Plan(m, 2021Q1:2035Q4)
+    rng = 2021Q1:2035Q4
+    p = Plan(m, rng)
     exog_data = steadystatedata(m, p)
     exog_data[2021Q1, m.shocks] .+= 0.1
     result = shockdecomp(m, p, exog_data; fctype=fcnatural)
@@ -71,31 +72,50 @@ using JLD2
     # @test norm(result_dev.sd.dly.nonlinear, Inf) < 1e-12
 
 
-    #=  disable these tests - not true with this non-linear model.  Maybe will test with linearized version 
-        # providing the shocked data as control and applying the same shock produced the same decomp
-        exog_data2 = copy(exog_data)
-        exog_data2[2021Q1, m.shocks] .+= 0.1
-        result2 = nothing
-        out = @capture_err begin
-            result2 = shockdecomp(m, p, exog_data2; control=result.s, fctype = fcnatural)
-        end
-        for var in m.variables
-            @test compare(result2.sd[var][m.shocks], expected.sd[var][m.shocks]; atol=1.0e-9, quiet=true)
-        end
-        # but the comparison produces a warning:
-        @test occursin("Control is not a solution", out)
+    m.p_dlinv_ss = 0
+    m.p_dlc_ss = 0
+    m.delta = 0.6
+    clear_sstate!(m)
+    sssolve!(m)
+    @test 0 == check_sstate(m)
 
+    linearize!(m)
+    solve!(m, solver=:firstorder)
 
-        # in deviation space (where the control is subtracted), the shocks are twice as large
-        result2_dev = nothing
-        out = @capture_err begin
-            result2_dev = shockdecomp(m, p, exog_data2; control=exog_data, deviation=true, fctype = fcnatural)
-        end
-        for var in m.variables
-            @test compare(result2_dev.sd[var][m.shocks], expected.sd[var][m.shocks] .* 2; atol=1.0e-9, quiet=true)
-        end
-        @test occursin("Control is not a solution", out)
-     =#
+    exog_data3 = steadystatedata(m, p)
+    exog_data3[first(rng), m.shocks] .+= 0.1
+    result3 = shockdecomp(m, p, exog_data3; variant=:linearize, fctype=fcnatural)
+
+    foreach(result3.sd) do ((var, sd))
+        @test norm(sd.nonlinear, Inf) < 1e-12
+        @test norm(sd.init, Inf) < 1e-12
+        @test norm(sd.term, Inf) < 1e-12
+    end
+    @test norm(result3.sd.dlc.dlinv_shk, Inf) < 1e-12
+    @test norm(result3.sd.dlinv.dlc_shk, Inf) < 1e-12
+
+    @test all(result3.sd) do ((var, sd))
+        norm(sd.init, Inf) < 1e-12
+    end
+    @test all(result3.sd) do ((var, sd))
+        norm(sd.term, Inf) < 1e-12
+    end
+
+    # for linearized model with stacked time (result3) must be the same as firstorder (result4)
+    result3fo = shockdecomp(m, p, exog_data3; solver=:firstorder)
+    @test compare(result3, result3fo; ignoremissing=true, atol=2^10 * eps(), quiet=true)
+
+    # additive for linearized model 
+    exog_data4 = copy(exog_data3)
+    exog_data4[first(rng), m.shocks] .+= 0.1
+    result4 = shockdecomp(m, p, exog_data4; control=result3.s, variant=:linearize, fctype=fcnatural)
+
+    @test result3.s ≈ result4.c
+    @test result3.s - result3.c ≈ result4.s - result4.c
+    @test compare(result3.sd, result4.sd, ignoremissing=true, atol=2^10 * eps(), quiet=true)
+
+    result4fo = shockdecomp(m, p, exog_data4; control=result3.s, solver=:firstorder)
+    @test compare(result4, result4fo; ignoremissing=true, atol=2^10 * eps(), quiet=false)
 
 end
 
