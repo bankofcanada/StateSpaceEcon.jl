@@ -23,7 +23,7 @@ function shockdecomp(model::Model, plan::Plan, exog_data::SimData;
     vm = sd.vm
     S = FOSimulatorData(plan, model, anticipate)
 
-    # we will return result at the end
+    # we will return `result` at the end
     result = Workspace()
     result.c = copy(control)
 

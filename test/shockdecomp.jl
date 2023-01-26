@@ -115,7 +115,7 @@ using JLD2
     @test compare(result3.sd, result4.sd, ignoremissing=true, atol=2^10 * eps(), quiet=true)
 
     result4fo = shockdecomp(m, p, exog_data4; control=result3.s, solver=:firstorder)
-    @test compare(result4, result4fo; ignoremissing=true, atol=2^10 * eps(), quiet=false)
+    @test compare(result4, result4fo; ignoremissing=true, atol=2^10 * eps(), quiet=true)
 
 end
 

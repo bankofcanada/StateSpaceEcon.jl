@@ -121,7 +121,7 @@ function test_shockdecomp_firstorder(m, rng=1U:20U, fctype=fcslope)
 
     @test simulate(m, p, data; solver=:stackedtime, fctype) ≈ r1.s
     @test simulate(m, p, data; solver=:firstorder) ≈ r2.s
-    @test compare(r1, r2, quiet=true, ignoremissing=true, atol=2^10*eps(1.0), rtol=sqrt(eps(1.0)))
+    @test compare(r1, r2, quiet=true, ignoremissing=true, atol=2^10 * eps(1.0), rtol=sqrt(eps(1.0)))
 
     return (; r1, r2)
 end
@@ -150,4 +150,61 @@ end
         test_shockdecomp_firstorder(m, 1U:100U)
     end
 end
+
+
+function test_initdecomp_firstorder(m, rng=2001Q1:2020Q4, step=max(2, length(rng) ÷ 5))
+    clear_sstate!(m)
+    sssolve!(m)
+    # printsstate(m)
+    linearize!(m)
+    solve!(m, solver=:firstorder)
+
+    p = Plan(m, rng)
+    exog = steadystatedata(m, p)
+    exog[begin:first(rng)-1, m.variables] .= rand(m.maxlag, m.nvars)
+    exog[rng, m.shocks] .= randn(length(rng), m.nshks)
+
+    res = shockdecomp(m, p, exog; solver=:firstorder)
+
+    rs = Workspace[]
+    res1 = Workspace(s=res.s[begin:first(rng)-1, :])
+    for i = 0:step:length(rng)-(step-1)
+        rr = rng[begin+i:begin+i+(step-1)]
+        pp = Plan(m, rr)
+        ee = zerodata(m, pp)
+        ee[rr] .= exog
+        ee[begin:first(rr)-1, :] .= res1.s
+        res1 = shockdecomp(m, pp, ee; solver=:firstorder, initdecomp=res1)
+        push!(rs, res1)
+        @test compare(res, res1, trange=first(p.range):last(rr), atol=2^10 * eps(), quiet=true)
+    end
+    return rs
+end
+
+
+@testset "inidcmp.fo" begin
+    for m in (M.model, R.model)
+        m.rho = 0.6
+        empty!(m.sstate.constraints)
+        test_initdecomp_firstorder(m)
+        m.rho = 1
+        @steadystate m x = 6
+        test_initdecomp_firstorder(m)
+    end
+    for m in (E2.model, E3.model)
+        empty!(m.sstate.constraints)
+        test_initdecomp_firstorder(m)
+    end
+    let m = E6.model
+        # set slopes to 0, otherwise we're not allowed to linearize
+        m.p_dly = 0
+        m.p_dlp = 0
+        empty!(m.sstate.constraints)
+        @steadystate m lp = 1.5
+        @steadystate m ly = 1.1
+        @steadystate m lyn = 1.1
+        test_initdecomp_firstorder(m)
+    end
+end
+
 
