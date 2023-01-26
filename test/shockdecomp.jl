@@ -4,6 +4,7 @@ using JLD2
 @testset "shkdcmp" begin
     m = deepcopy(E7A.model)
     expected = Workspace(load("data/shkdcmp_E7A.jld2"))
+    TimeSeriesEcon.clean_old_frequencies!(expected)
 
     empty!(m.sstate.constraints)
     @steadystate m lc = 1
