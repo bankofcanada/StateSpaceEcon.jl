@@ -43,6 +43,7 @@ end
 module M
 using ModelBaseEcon
 model = Model()
+model.flags.linear = true
 @variables model x
 @shocks model x_shk
 @parameters model rho = 0.6
@@ -62,6 +63,7 @@ end
 module R
 using ModelBaseEcon
 model = Model()
+model.flags.linear = true
 @variables model begin
     @log x
     @shock x_shk
@@ -204,6 +206,129 @@ end
         @steadystate m ly = 1.1
         @steadystate m lyn = 1.1
         test_initdecomp_firstorder(m)
+    end
+end
+
+function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fctype=fcnatural)
+    solver = :stackedtime
+    atol = 2^10 * eps()
+    shks = filter(v -> isshock(v) || isexog(v), m.allvars)
+    vars = filter(v -> !isshock(v) && !isexog(v), m.allvars)
+
+    clear_sstate!(m)
+    sssolve!(m)
+    linearize!(m)
+    solve!(m; solver)
+
+    # test 1 - only initial conditions, no shocks
+    p = Plan(m, rng)
+    exog = steadystatedata(m, p)
+    exog[begin:first(rng)-1, vars] = rand(m.maxlag, m.nvars)
+    # zero shocks 
+    ref = shockdecomp(m, p, exog; solver, fctype)
+    for v in vars, s in shks
+        @test norm(ref.sd[v][:, s], Inf) < atol
+    end
+
+    rng1 = rng[5:end]
+    p1 = Plan(m, rng1)
+    exog1 = zerodata(m, p1)
+    exog1[begin:first(rng1)-1, vars] = ref.s
+    exog1[rng1, shks] = ref.s[rng1, shks]
+    if fctype === fclevel
+        exog1[last(rng1)+1:end,vars] = ref.s
+    end
+    res1 = shockdecomp(m, p1, exog1; solver, fctype, initdecomp=ref)
+    res1a = shockdecomp(m, p1, exog1; solver, fctype)
+    for v in vars, s in shks
+        @test norm(res1.sd[v][:, s], Inf) < atol
+        @test norm(res1a.sd[v][:, s], Inf) < atol
+    end
+    @test rangeof(ref) == rangeof(res1)
+    @test compare(ref, res1; atol, quiet=true)
+    # without initdecomp the resulting range is shorter
+    # and the numbers will be identical for linear models
+    @test rangeof(ref) ≠ rangeof(res1a)
+    @test compare(ref, res1a; atol, quiet=true) == !nonlin
+
+    #test 2 - only 1 shock at a time
+    for shk in shks
+        exog = steadystatedata(m, p)
+        exog[rng[1:4], shk] = 0.5 * randn(4)
+        ref = shockdecomp(m, p, exog; solver, fctype)
+        for v in vars, s in (:init, shks...)
+            s === shk && continue
+            @test norm(ref.sd[v][:, s], Inf) < atol
+        end
+
+        rng1 = rng[5:end]
+        p1 = Plan(m, rng1)
+        exog1 = zerodata(m, p1)
+        exog1[begin:first(rng1)-1, vars] = ref.s
+        exog1[begin:first(rng1)-1, shks] .= NaN
+        exog1[rng1, shks] = ref.s[rng1, shks]
+        if fctype === fclevel
+            exog1[last(rng1)+1:end,vars] = ref.s
+        end
+        res1 = shockdecomp(m, p1, exog1; solver, fctype, initdecomp=ref)
+        res1a = shockdecomp(m, p1, exog1; solver, fctype)
+        for v in vars, s in (:init, shks...)
+            s === shk && continue
+            @test norm(res1.sd[v][:, s], Inf) < atol
+            @test s == :init || norm(res1a.sd[v][:, s], Inf) < atol
+        end
+        @test rangeof(ref) == rangeof(res1)
+        @test compare(ref, res1; atol, quiet=true)
+        # without initdecomp the resulting range is shorter
+        # and the numbers are totally different
+        @test rangeof(ref) ≠ rangeof(res1a)
+        @test compare(ref, res1a; atol, quiet=true, nans=true) == (m.maxlag == 0)
+    end
+
+    # test 3 - all shocks and init
+    p = Plan(m, rng)
+    exog = steadystatedata(m, p)
+    exog[begin:first(rng)-1, vars] = rand(m.maxlag, m.nvars)
+    exog[rng[1:4], shks] = 0.5 * randn(4, length(shks))
+    ref = shockdecomp(m, p, exog; solver, fctype)
+
+    rng1 = rng[5:end]
+    p1 = Plan(m, rng1)
+    exog1 = zerodata(m, p1)
+    exog1[begin:first(rng1)-1, vars] = ref.s
+    exog1[begin:first(rng1)-1, shks] .= NaN   # mask shocks in initial conditions
+    exog1[rng1, shks] = ref.s[rng1, shks]
+    if fctype === fclevel
+        exog1[last(rng1)+1:end,vars] = ref.s
+    end
+    res1 = shockdecomp(m, p1, exog1; solver, fctype, initdecomp=ref)
+    @test rangeof(ref) == rangeof(res1)
+    @test compare(ref, res1; atol, quiet=true)
+    return true
+end
+
+@testset "inidcmp.st" begin
+    for m in (M.model, R.model)
+        m.rho = 0.6
+        empty!(m.sstate.constraints)
+        test_initdecomp_stackedtime(m)
+        m.rho = 1
+        @steadystate m x = 6
+        test_initdecomp_stackedtime(m, fctype=fclevel)
+    end
+    for m in (E2.model, E3.model)
+        empty!(m.sstate.constraints)
+        test_initdecomp_stackedtime(m)
+    end
+    let m = E6.model
+        # set slopes to 0, otherwise we're not allowed to linearize
+        m.p_dly = 0
+        m.p_dlp = 0
+        empty!(m.sstate.constraints)
+        @steadystate m lp = 1.5
+        @steadystate m ly = 1.1
+        @steadystate m lyn = 1.1
+        test_initdecomp_stackedtime(m)
     end
 end
 

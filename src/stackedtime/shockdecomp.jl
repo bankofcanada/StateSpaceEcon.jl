@@ -46,7 +46,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     refresh_med!(m, variant)
 
     if !anticipate
-        error("Not yet implemented with `anticipate=false`. Try again later.")
+        error("Not implemented: `shockdecomp` with `solver=:stackedtime` and `anticipate=false`. If the model is linear, use `solver=:firstorder`.")
     end
 
     # if m.nauxs > 0
@@ -99,7 +99,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
         # simulation range
         sim = m.maxlag+1:NT-m.maxlead
 
-        # indices of endogenous variable-points (the unknowns we were solving for)
+        # indices of endogenous variable-points (the unknowns we are solving for)
         endo_inds = vec(vcat(
             (LI[sim, index] for (index, v) in enumerate(m.allvars) if !(isexog(v) || isshock(v)))...
         ))
@@ -129,18 +129,78 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
 
     # now do the decomposition
     begin
-        # Allocate the shock-decomposition matrix
-        SDMAT = zeros(size(gdata.J, 1), length(exog_inds))
-        # Fill it with the right-hand side of the system
-        for (col, inds) in enumerate(values(exog_inds))
-            SDMAT[:, [col]] .-= sum(gdata.J[:, inds] .* delta[inds]', dims=2)
+        # we build a sparse matrix 
+        SDI = Int[]     # row indexes
+        SDJ = Int[]     # column indexes
+        SDV = Float64[] # values
+
+        # prep init (we build the result.sd on the fly)
+        result.sd = Workspace()
+        id = get(initdecomp, :sd, Workspace())
+        pinit = p.range[init]
+        if isempty(id)
+            colind = 1
+            inds = exog_inds[:init]
+            append!(SDI, inds)
+            append!(SDJ, fill(colind, size(inds)))
+            append!(SDV, delta[inds])
+            for v in m.allvars
+                if isshock(v) || isexog(v)
+                    continue
+                end
+                rsdv = result.sd[v.name] = MVTSeries(p.range, keys(exog_inds), zeros)
+                rsdv[pinit, :init] = delta[pinit, v.name]
+            end
+        else
+            shex = filter(v -> isshock(v) || isexog(v), m.allvars)
+            for (vind, v) in enumerate(m.allvars)
+                if isshock(v) || isexog(v)
+                    continue
+                end
+                rsdv = result.sd[v.name] = MVTSeries(p.range, keys(exog_inds), zeros)
+                if haskey(id, v.name)
+                    # have initial decomposition
+                    idv = id[v.name]
+                    if !isapprox(delta[pinit, v.name], sum(idv[pinit, :], dims=2))
+                        error("The given `initdecomp` does not add up for $(v.name).")
+                    end
+                    rsdv[pinit] .= idv
+                    for (colind, colname) in enumerate(keys(exog_inds))
+                        if haskey(idv, colname) || colname ∈ shex
+                            inds = LI[init, vind]
+                            append!(SDI, inds)
+                            append!(SDJ, fill(colind, size(inds)))
+                            append!(SDV, idv[pinit, colname].values)
+                        end
+                    end
+                else
+                    # no initial decomposition - it all goes in init
+                    rsdv[pinit, :init] = delta[pinit, v.name]
+                    colind = 1
+                    inds = LI[init, vind]
+                    append!(SDI, inds)
+                    append!(SDJ, fill(colind, size(inds)))
+                    append!(SDV, delta[inds])
+                end
+            end
         end
-        # solve the system (in-place)
+
+        # prep shocks
+        for (colind, (colname, inds)) in enumerate(pairs(exog_inds))
+            if colname == :init
+                continue
+            end
+            append!(SDI, inds)
+            append!(SDJ, fill(colind, size(inds)))
+            append!(SDV, delta[inds])
+        end
+
+        SDMAT = Matrix(gdata.J * sparse(SDI, SDJ, -SDV, size(gdata.J, 2), length(exog_inds)))
         ldiv!(gdata.J_factorized[], SDMAT)
+
     end
 
     # now split and decorate the shock-decomposition matrix
-    result.sd = Workspace()
     begin
         # in order to split the rows of SDMAT by variable, we need the inverse indexing map
         inv_endo_inds = zeros(Int, size(gdata.solve_mask))
@@ -152,11 +212,10 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
                 continue
             end
             v_inv_endo_inds = inv_endo_inds[v_inds[v_endo_mask]]
-            v_data = MVTSeries(p.range, keys(exog_inds), zeros)
+            v_data = result.sd[v] 
             # assign contributions to endogenous points
-            v_data[v_endo_mask, :] .= SDMAT[v_inv_endo_inds, :]
-            # assign contributions to initial conditions
-            v_data[(begin-1).+init, :init] .= delta[v.name][init]
+            v_data[v_endo_mask, :] = SDMAT[v_inv_endo_inds, :]
+            # contributions of initial conditions already assigned
             # assign contributions to final conditions
             if fctype === fcgiven || fctype === fclevel
                 v_data[(begin-1).+term, :term] .= delta[v.name][term]
@@ -172,13 +231,12 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
                 error("Not supported `fctype = $fctype` ")
             end
             # we also append the truncation error due to linear approximation of the decomposition.
-            v_data = hcat(v_data; nonlinear=delta[v.name] - sum(v_data, dims=2))
-            push!(result.sd, v.name => v_data)
+            result.sd[v] = hcat(v_data; nonlinear=delta[v.name] - sum(v_data, dims=2))
         end
     end
 
     result.s = copy(result.c)
-    result.s[p.range, :] .= inverse_transform(shocked, m)
+    result.s[p.range, :] = inverse_transform(shocked, m)
 
     if deviation
         logvars = islog.(m.varshks) .| isneglog.(m.varshks)
@@ -189,7 +247,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     if _debug
         return result, gdata
     else
-        return result
+        return overlay(result, initdecomp)
     end
 end
 
