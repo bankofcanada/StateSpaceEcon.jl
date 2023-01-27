@@ -161,7 +161,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
                 if haskey(id, v.name)
                     # have initial decomposition
                     idv = id[v.name]
-                    if !isapprox(delta[pinit, v.name], sum(idv[pinit, :], dims=2))
+                    if norm(delta[pinit, v.name]-sum(idv[pinit, :],dims=2),Inf)>tol
                         error("The given `initdecomp` does not add up for $(v.name).")
                     end
                     rsdv[pinit] .= idv
