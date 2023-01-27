@@ -53,6 +53,12 @@ end
 
 Plan(model::Model, r::Union{MIT,Int}) = Plan(model, r:r)
 
+# account for default frequencies
+Plan{MIT{Quarterly}}(args...) = Plan{MIT{Quarterly{3}}}(args...)
+Plan{MIT{HalfYearly}}(args...) = Plan{MIT{HalfYearly{6}}}(args...)
+Plan{MIT{Yearly}}(args...) = Plan{MIT{Yearly{12}}}(args...)
+Plan{MIT{Weekly}}(args...) = Plan{MIT{Weekly{7}}}(args...)
+
 """
     Plan(model, range)
 
