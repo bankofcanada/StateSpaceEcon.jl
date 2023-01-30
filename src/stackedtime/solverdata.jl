@@ -1,11 +1,10 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
-# export StackedTimeSolverData
 """
     StackedTimeSolverData
 
@@ -205,18 +204,18 @@ plan seems unchanged. This is necessary only in rare circumstances.
 !!! warning
     Internal function not part of the public interface.
 """
-function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=false)
-    if sd.NT != length(p.range)
+function update_plan!(sd::StackedTimeSolverData, model::Model, plan::Plan; changed=false)
+    if sd.NT != length(plan.range)
         error("Unable to update using a simulation plan of different length.")
     end
 
-    unknowns = m.allvars
+    unknowns = model.allvars
 
     # LinearIndices used for indexing the columns of the global matrix
-    LI = LinearIndices((p.range, 1:sd.NU))
+    LI = LinearIndices((plan.range, 1:sd.NU))
 
-    sim = m.maxlag+1:sd.NT-m.maxlead
-    NTFC = m.maxlead
+    sim = model.maxlag+1:sd.NT-model.maxlead
+    NTFC = model.maxlead
 
     # Assume initial conditions are set correctly to exogenous in the constructor
     # We only update the masks during the simulation periods
@@ -224,7 +223,7 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=fals
     for t in sim
         # s = p[t]
         # si = indexin(s, unknowns)
-        si = p[t, Val(:inds)]
+        si = plan[t, Val(:inds)]
         fill!(foo, false)
         foo[si] .= true
         if !all(foo .== sd.exog_mask[LI[t, :]])
@@ -285,8 +284,6 @@ function update_plan!(sd::StackedTimeSolverData, m::Model, p::Plan; changed=fals
     return sd
 end
 
-import ..steadystatearray
-
 """
     make_BI(J, II)
 
@@ -320,13 +317,15 @@ function make_BI(JMAT::SparseMatrixCSC{Float64,Int}, II::AbstractVector{<:Abstra
     return BI
 end
 
-StackedTimeSolverData(m::Model, p::Plan, fctype::FinalCondition) = StackedTimeSolverData(m, p, setfc(m, fctype))
-function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCondition})
+StackedTimeSolverData(model::Model, plan::Plan, fctype::FinalCondition, variant::Symbol=model.options.variant) = StackedTimeSolverData(model, plan, setfc(model, fctype), variant)
+function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{FinalCondition}, variant::Symbol=model.options.variant)
 
-    NT = length(p.range)
-    init = 1:m.maxlag
-    term = NT-m.maxlead+1:NT
-    sim = m.maxlag+1:NT-m.maxlead
+    evaldata = getevaldata(model, variant)
+
+    NT = length(plan.range)
+    init = 1:model.maxlag
+    term = NT-model.maxlead+1:NT
+    sim = model.maxlag+1:NT-model.maxlead
     NTFC = length(term)
     NTSIM = length(sim)
     NTIC = length(init)
@@ -341,26 +340,26 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCo
         end
     end
 
-    if need_SS && !issssolved(m)
+    if need_SS && !issssolved(model)
         # NOTE: we do not verify the steady state, just make sure it's been assigned
         throw(ArgumentError("Steady state must be solved for `fclevel` or `fcslope`."))
     end
 
-    unknowns = m.allvars
+    unknowns = model.allvars
     nunknowns = length(unknowns)
 
-    nvars = length(m.variables)
-    nshks = length(m.shocks)
-    nauxs = length(m.auxvars)
+    nvars = length(model.variables)
+    nshks = length(model.shocks)
+    nauxs = length(model.auxvars)
 
-    equations = m.alleqns
+    equations = model.alleqns
     nequations = length(equations)
 
     # LinearIndices used for indexing the columns of the global matrix
-    LI = LinearIndices((p.range, 1:nunknowns))
+    LI = LinearIndices((plan.range, 1:nunknowns))
 
     # Initialize empty arrays
-    TT = Vector{Int}[] # the time indexes of the block, used when updating values in global_RJ
+    TT = Vector{Int}[] # the time indexes of the block, used when updating values in stackedtime_RJ
     II = Vector{Int}[] # the row indexes
     JJ = Vector{Int}[] # the column indexes
 
@@ -369,15 +368,15 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCo
     # Model equations are the same for each sim period, just shifted according to t
     Jblock = [ti + NT * (ModelBaseEcon._index_of_var(var, unknowns) - 1) for eqn in equations for (var, ti) in keys(eqn.tsrefs)]
     Iblock = [i for (i, eqn) in enumerate(equations) for _ in eqn.tsrefs]
-    Tblock = -m.maxlag:m.maxlead
-    @timer for t in sim
+    Tblock = -model.maxlag:model.maxlead
+    for t in sim
         push!(TT, t .+ Tblock)
         push!(II, neq .+ Iblock)
         push!(JJ, t .+ Jblock)
         neq += nequations
     end
     # Construct the
-    @timer begin
+    begin
         I = vcat(II...)
         J = vcat(JJ...)
         JMAT = sparse(I, J, fill(NaN64, size(I)), NTSIM * nequations, NT * nunknowns)
@@ -385,7 +384,7 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCo
 
     # We no longer need the exact indexes of all non-zero entires in the Jacobian matrix.
     # We do however need the set of equation indexes for each sim period
-    @timer foreach(unique! ∘ sort!, II)
+    foreach(unique! ∘ sort!, II)
 
     # BI holds the indexes in JMAT.nzval for each block of equations
     BI = make_BI(JMAT, II)  # same as the two lines above, but faster
@@ -408,12 +407,12 @@ function StackedTimeSolverData(m::Model, p::Plan, fctype::AbstractVector{FinalCo
 
     sd = StackedTimeSolverData(NT, nvars, nshks, nunknowns, fctype, TT, II, JJ, BI, JMAT,
         sparse([], [], Float64[], NTFC * nunknowns, size(JMAT, 1)),
-        need_SS ? transform(steadystatearray(m, p), m) : zeros(0, 0),
-        islog.(m.allvars) .| isneglog.(m.allvars), islin.(m.allvars),
-        m.evaldata, exog_mask, fc_mask, solve_mask,
-        Ref{Any}(nothing), getoption(m, :factorization, :lu))
+        need_SS ? transform(steadystatearray(model, plan), model) : zeros(0, 0),
+        islog.(model.allvars) .| isneglog.(model.allvars), islin.(model.allvars),
+        evaldata, exog_mask, fc_mask, solve_mask,
+        Ref{Any}(nothing), getoption(model, :factorization, :lu))
 
-    return @timer update_plan!(sd, m, p; changed=true)
+    return update_plan!(sd, model, plan; changed=true)
 end
 
 """
@@ -449,12 +448,12 @@ function assign_final_condition!(x::AbstractArray{Float64,2}, exog::AbstractArra
 end
 
 """
-    global_R!(R::Vector, point::Array, exog::Array, sd::StackedTimeSolverData)
+    stackedtime_R!(R::Vector, point::Array, exog::Array, sd::StackedTimeSolverData)
 
 Compute the residual of the stacked time system at the given `point`. R is
 updated in place and returned.
 """
-function global_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
+function stackedtime_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
     @assert size(point) == size(exog_data) == (sd.NT, sd.NU)
     # point = reshape(point, sd.NT, sd.NU)
     # exog_data = reshape(exog_data, sd.NT, sd.NU)
@@ -577,12 +576,12 @@ end
 
 
 """
-    R, J = global_RJ(point::Array, exog::Array, sd::StackedTimeSolverData)
+    R, J = stackedtime_RJ(point::Array, exog::Array, sd::StackedTimeSolverData)
 
 Compute the residual and Jacobian of the stacked time system at the given
 `point`.
 """
-function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData;
+function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData;
     debugging=false)
     nunknowns = sd.NU
     @assert size(point) == size(exog_data) == (sd.NT, nunknowns)
@@ -595,12 +594,12 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
     haveLU = sd.J_factorized[] !== nothing
     if haveJ
         # update only RES
-        @timer "globalRJ/evalR!" for i = 1:length(sd.BI)
+        for i = 1:length(sd.BI)
             eval_R!(view(RES, sd.II[i]), point[sd.TT[i], :], sd.evaldata)
         end
     else
         # update both RES and JAC
-        @timer "globalRJ/evalRJ" for i = 1:length(sd.BI)
+        for i = 1:length(sd.BI)
             R, J = eval_RJ(point[sd.TT[i], :], sd.evaldata)
             RES[sd.II[i]] .= R
             JAC.nzval[sd.BI[i]] .= J.nzval
@@ -616,7 +615,7 @@ function global_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float
         end
         try
             # compute lu decomposition of the active part of J and cache it.
-            @timer "J Factorization" sd.J_factorized[] = sd.factorization == :qr ? qr(JJ) : lu(JJ)
+            sd.J_factorized[] = sd.factorization == :qr ? qr(JJ) : lu(JJ)
         catch e
             if e isa SingularException
                 @error("The system is underdetermined with the given set of equations and final conditions.")

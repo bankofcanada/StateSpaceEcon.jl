@@ -21,6 +21,7 @@ using ModelBaseEcon
 @using_example S2
 
 using Test
+using Random
 using Suppressor
 
 @testset "1dsolvers" begin
@@ -85,7 +86,7 @@ end
 
         pio = IOBuffer()
         exportplan(pio, p)
-        seek(pio, 0)
+        seekstart(pio)
         q = importplan(pio)
         @test p == q
     end
@@ -216,9 +217,7 @@ end
 
 include("simtests.jl")
 include("logsimtests.jl")
-
+include("sim_fo.jl")
 include("shockdecomp.jl")
-
 include("dynss.jl")
-
 include("misc.jl")

@@ -5,6 +5,10 @@
 # All rights reserved.
 ##################################################################################
 
+@inline function solve!(model::Model)
+    return model
+end
+
 """
     sim_nr!(x, sd, maxiter, tol, verbose [, sparse_solver [, linesearch]])
 
@@ -27,7 +31,7 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     maxiter::Int64, tol::Float64, verbose::Bool,
     sparse_solver::Function=(A, b) -> A \ b, linesearch::Bool=false)
     for it = 1:maxiter
-        Fx, Jx = global_RJ(x, x, sd)
+        Fx, Jx = stackedtime_RJ(x, x, sd)
         nFx = norm(Fx, Inf)
         if nFx < tol
             if verbose
@@ -46,7 +50,7 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
                 x_buf = copy(x)
                 assign_update_step!(x_buf, -λ, Δx, sd)
                 nrb2 = try
-                    global_R!(Fx, x_buf, x_buf, sd)
+                    stackedtime_R!(Fx, x_buf, x_buf, sd)
                     norm(Fx)
                 catch e
                     Inf
@@ -80,45 +84,6 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
 end
 
 
-export simulate
-"""
-    simulate(model, plan, data; <options>)
-
-Run a simulation for the given model, simulation plan and exogenous data.
-
-### Arguments
-  * `model` - the [`Model`](@ref ModelBaseEcon.Model) instance to simulate.
-  * `plan` - the [`Plan`](@ref) for the simulation.
-  * `data` - a 2D `Array` containing the exogenous data. This includes the
-    initial and final conditions.
-
-### Options as keyword arguments
-  * `fctype::`[`FinalCondition`](@ref) - set the desired final condition type
-    for the simulation. The default value is [`fcgiven`](@ref). Other possible
-    values include [`fclevel`](@ref), [`fcslope`](@ref) and
-    [`fcnatural`](@ref).
-  * `initial_guess::AbstractMatrix{Float64}` - a 2D `Array` containing the
-    initial guess for the solution. This is used to start the Newton-Raphson
-    algorithm. The default value is an empty array (`zeros(0,0)`), in which case
-    we use the exogenous data for the initial condition. You can use the steady
-    state solution using [`steadystatearray`](@ref).
-  * `deviation::Bool` - set to `true` if the `data` is given in deviations from
-    the steady state. In this case the simulation result is also returned as a
-    deviation from the steady state. Default value is `false`.
-  * `anticipate::Bool` - set to `false` to instruct the solver that all shocks
-    are unanticipated by the agents. Default value is `true`.
-  * `verbose::Bool` - control whether or not to print progress information.
-    Default value is taken from `model.options`.
-  * `tol::Float64` - set the desired accuracy. Default value is taken from
-    `model.options`.
-  * `maxiter::Int` - algorithm fails if the desired accuracy is not reached
-    within this maximum number of iterations. Default value is taken from
-    `model.options`.
-  * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a 
-    search along the descent direction for a sufficient decrease in f. It will 
-    do this at each iteration. Default is `false`.
-"""
-function simulate end
 
 function simulate(m::Model,
     p_ant::Plan,
@@ -134,9 +99,10 @@ function simulate(m::Model,
     deviation_ant=deviation,
     deviation_unant=deviation,
     #= Solver options =#
+    variant::Symbol=m.options.variant,
     verbose::Bool=m.options.verbose,
     tol::Float64=m.options.tol,
-    maxiter::Int64=m.options.maxiter,
+    maxiter::Int=m.options.maxiter,
     fctype=getoption(m, :fctype, fcgiven),
     expectation_horizon::Union{Nothing,Int64}=nothing,
     #= Newton-Raphson options =#
@@ -156,7 +122,7 @@ function simulate(m::Model,
     end
 
     # make sure the model evaluation data is up to date
-    refresh_med!(m)
+    refresh_med!(m, variant)
 
     NT = length(p_ant.range)
     nauxs = length(m.auxvars)
@@ -190,7 +156,7 @@ function simulate(m::Model,
     end
 
     if anticipate
-        gdata = StackedTimeSolverData(m, p_ant, fctype)
+        gdata = StackedTimeSolverData(m, p_ant, fctype, variant)
         assign_exog_data!(x, exog_ant, gdata)
         if verbose
             @info "Simulating $(p_ant.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
@@ -265,7 +231,7 @@ function simulate(m::Model,
                     itol = sqrt(tol)
                 end
                 setexog!(psim, t0, exog_inds)
-                gdata = StackedTimeSolverData(m, psim, fctype)
+                gdata = StackedTimeSolverData(m, psim, fctype, variant)
                 x[t, exog_inds] = exog_unant[t, exog_inds]
                 # assign_exog_data!(x[psim.range,:], exog_data[psim.range,:], gdata)
                 sim_range = UnitRange{Int}(psim.range)
@@ -313,7 +279,7 @@ function simulate(m::Model,
                 psim = Plan(m, t:T)
                 psim.exogenous .= p_ant.exogenous[begin+Int(t - t0):end, :]
                 setexog!(psim, t0, exog_inds)
-                sdata = StackedTimeSolverData(m, psim, fctype)
+                sdata = StackedTimeSolverData(m, psim, fctype, variant)
                 x[t, exog_inds] = exog_unant[t, exog_inds]
                 sim_range = UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)
@@ -329,7 +295,7 @@ function simulate(m::Model,
             # intermediate simulations
             last_t::Int64 = t0
             psim = Plan(m, 0:expectation_horizon-1)
-            sdata = StackedTimeSolverData(m, psim, fcnatural)
+            sdata = StackedTimeSolverData(m, psim, fcnatural, variant)
             for t in sim[2:end]
                 exog_inds = p_unant[t, Val(:inds)]
                 # we need to run a simulation if a variable is exogenous, or if a shock value is not zero
@@ -384,7 +350,7 @@ function simulate(m::Model,
                     psim = Plan(m, min(last_t + 1, T):T)
                     psim.exogenous .= p_ant.exogenous[end.+(1-length(psim.range):0), :]
                     # there are no unanticipated shocks in this simulation
-                    sdata = StackedTimeSolverData(m, psim, fctype)
+                    sdata = StackedTimeSolverData(m, psim, fctype, variant)
                     # the initial conditions and the exogenous data are already in x
                     # we only need the final conditions
                     sim_range = UnitRange{Int}(psim.range)
@@ -412,29 +378,5 @@ function simulate(m::Model,
 
     return x
 end
-
-# The versions of simulate with Dict/Workspace/SimData
-
-simulate(m::Model, p::Plan, data::AbstractDict; kwargs...) = simulate(m, p, dict2data(data, m, p; copy=true); kwargs...)
-simulate(m::Model, p::Plan, data::Workspace; kwargs...) = simulate(m, p, workspace2data(data, m, p; copy=true); kwargs...)
-
-# this is the main interface.
-function simulate(m::Model, p::Plan, data::SimData; kwargs...)
-    exog = data2array(data, m, p)
-    initial_guess = get(kwargs, :initial_guess, nothing)
-    if initial_guess isa SimData
-        kw = (; initial_guess=data2array(initial_guess, m, p))
-    elseif initial_guess isa Workspace
-        kw = (; initial_guess=workspace2data(initial_guess, m, p))
-    elseif initial_guess isa AbstractDict
-        kw = (; initial_guess=dict2array(initial_guess, m, p))
-    else
-        kw = (;)
-    end
-    result = copy(data)
-    result[p.range, m.varshks] .= simulate(m, p, exog; kwargs..., kw...)
-    return result
-end
-
 
 

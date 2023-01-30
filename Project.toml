@@ -1,7 +1,7 @@
 name = "StateSpaceEcon"
 uuid = "e4c825b0-b65c-11ea-0b5a-6176b64e7b7f"
 authors = ["Atai Akunov <aakunov@bankofcanada.ca>", "Boyan Bejanov <bbejanov@bankofcanada.ca>", "Nicholas Labelle St-Pierre <labs@bankofcanada.ca>"]
-version = "0.3.3"
+version = "0.4"
 
 [deps]
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
@@ -11,6 +11,7 @@ JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 ModelBaseEcon = "1d16192e-b65e-11ea-11ed-0789cee22d2f"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
 TimeSeriesEcon = "8b6756d2-c55c-11ea-2998-5f67ea17da60"
@@ -19,10 +20,10 @@ TimeSeriesEcon = "8b6756d2-c55c-11ea-2998-5f67ea17da60"
 DiffResults = "1.0"
 ForwardDiff = "0.10"
 JLD2 = "0.4"
-ModelBaseEcon = "0.4.1"
+ModelBaseEcon = "0.5"
 Suppressor = "0.2"
-TimeSeriesEcon = "0.4"
-julia = "1.0"
+TimeSeriesEcon = "0.5"
+julia = "1.7"
 
 [extras]
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"

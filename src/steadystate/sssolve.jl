@@ -51,7 +51,11 @@ function sssolve!(model::Model;
     if sd.nvars == 0
         # Nothing left to solve for
         return sd.point
-    end    
+    end
+    
+    # nvars = length(model.sstate.mask)
+    # vsyms = Symbol[ModelBaseEcon.ss_symbol(model.sstate, vi) for vi = 1:nvars]
+    # presolved_var = vsyms[model.sstate.mask]
 
     lm = LMData(model, sd; lmopts...)
     nr = NRData(model, sd; nropts...)
@@ -70,7 +74,7 @@ function sssolve!(model::Model;
     undef_vars = Set{Int64}()
 
     if method ∈ (:lm, :auto)
-        @timer r0, j0 = global_SS_RJ(xx, sd)
+        r0, j0 = global_SS_RJ(xx, sd)
         first_step_lm!(xx, dx, r0, j0, lm; verbose = verbose)
         nf = nr0 = norm(r0, Inf)
         if verbose
@@ -88,7 +92,7 @@ function sssolve!(model::Model;
             error("Nan detected.")
         end
 
-        @timer r0, j0 = global_SS_RJ(xx, sd)
+        r0, j0 = global_SS_RJ(xx, sd)
         nf = norm(r0, Inf)
 
         if (method == :nr) || ((method == :auto) && run_nr)
@@ -133,21 +137,6 @@ function sssolve!(model::Model;
             break
         end
     end
-    if verbose && nf > tol
-        bad_eqn, bad_var = diagnose_sstate(model)
-        lbva = length(bad_var)
-        if lbva > 0
-            bad_var = join(bad_var, ",")
-            vars_str = "Unable to solve for $(lbva) variables:\n   $bad_var"
-            @warn vars_str
-        end
-        lbeq = length(bad_eqn)
-        if lbeq > 0
-            bad_eqn = (lbeq > 10) ? (join(bad_eqn[1:10], "\n   ") * "\n   . . .") : join(bad_eqn, "\n   ")
-            eqns_str = "System may be inconsistent. Couldn't solve $(lbeq) equations to the required accuracy:\n   $bad_eqn"
-            @warn eqns_str
-        end
-    end
     xx[abs.(xx).<tol] .= 0.0
     ss.values[sd.solve_var] .= xx
     ss.mask[sd.solve_var] .= true
@@ -156,6 +145,22 @@ function sssolve!(model::Model;
         for v in findall(.!nr.updated)
             # mark unknowns that were not updated as not solved
             ss.mask[foo[v]] = false
+        end
+    end
+    if verbose && nf > tol
+        bad_eqn, bad_var = diagnose_sstate(model)
+        # bad_var = setdiff(bad_var,presolved_var)
+        # lbva = length(bad_var)
+        # if lbva > 0
+        #     bad_var = join(bad_var, ",")
+        #     vars_str = "Unable to solve for $(lbva) variables:\n   $bad_var"
+        #     @warn vars_str
+        # end
+        lbeq = length(bad_eqn)
+        if lbeq > 0
+            bad_eqn = (lbeq > 10) ? (join(bad_eqn[1:10], "\n   ") * "\n   . . .") : join(bad_eqn, "\n   ")
+            eqns_str = "System may be inconsistent. Couldn't solve $(lbeq) equations to the required accuracy:\n   $bad_eqn"
+            @warn eqns_str
         end
     end
     return ss.values
