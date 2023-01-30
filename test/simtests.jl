@@ -135,10 +135,10 @@ end
         test_simulation(foo, "data/M3_TestData.csv")
     end
 
-    @test isa(m3nl.evaldata, ModelBaseEcon.ModelEvaluationData)
+    @test isa(ModelBaseEcon.getevaldata(m3nl), ModelBaseEcon.ModelEvaluationData)
 
     linearize!(m3)
-    @test isa(m3.evaldata, ModelBaseEcon.LinearizedModelEvaluationData)
+    @test isa(ModelBaseEcon.getevaldata(m3), ModelBaseEcon.LinearizedModelEvaluationData)
     test_simulation(m3, "data/M3_TestData.csv")
 
     m7 = deepcopy(E7.model)
@@ -356,8 +356,8 @@ end
         sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
         @test_throws ErrorException StateSpaceEcon.StackedTimeSolver.update_plan!(sd, m, Plan(m, 3:8))
         x = rand(Float64, size(ed))
-        R1, _ = StateSpaceEcon.StackedTimeSolver.global_RJ(x, ed, sd)
-        R2 = StateSpaceEcon.StackedTimeSolver.global_R!(similar(R1), x, ed, sd)
+        R1, _ = StateSpaceEcon.StackedTimeSolver.stackedtime_RJ(x, ed, sd)
+        R2 = StateSpaceEcon.StackedTimeSolver.stackedtime_R!(similar(R1), x, ed, sd)
         @test R1 ≈ R2
     end
     let m = deepcopy(E3.model)
@@ -382,8 +382,8 @@ end
 
         sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
         x = rand(Float64, size(ed))
-        R1, _ = StateSpaceEcon.StackedTimeSolver.global_RJ(x, ed, sd)
-        R2 = StateSpaceEcon.StackedTimeSolver.global_R!(similar(R1), x, ed, sd)
+        R1, _ = StateSpaceEcon.StackedTimeSolver.stackedtime_RJ(x, ed, sd)
+        R2 = StateSpaceEcon.StackedTimeSolver.stackedtime_R!(similar(R1), x, ed, sd)
         @test R1 ≈ R2
     end
     let m = deepcopy(E6.model)
@@ -403,8 +403,8 @@ end
 
         sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
         x = rand(Float64, size(ed))
-        R1, _ = StateSpaceEcon.StackedTimeSolver.global_RJ(x, ed, sd)
-        R2 = StateSpaceEcon.StackedTimeSolver.global_R!(similar(R1), x, ed, sd)
+        R1, _ = StateSpaceEcon.StackedTimeSolver.stackedtime_RJ(x, ed, sd)
+        R2 = StateSpaceEcon.StackedTimeSolver.stackedtime_R!(similar(R1), x, ed, sd)
     end
 end
 

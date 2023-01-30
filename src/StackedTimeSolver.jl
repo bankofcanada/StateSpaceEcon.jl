@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -25,7 +25,17 @@ using TimeSeriesEcon
 
 using ..Plans
 
-include("stackedtime/abstract.jl")
+import ..steadystatearray
+import ..SimData
+import ..rawdata
+
+import ModelBaseEcon.hasevaldata
+import ModelBaseEcon.getevaldata
+import ModelBaseEcon.setevaldata!
+import ModelBaseEcon.hassolverdata
+import ModelBaseEcon.getsolverdata
+import ModelBaseEcon.setsolverdata!
+
 include("stackedtime/fctypes.jl")
 include("stackedtime/misc.jl")
 include("stackedtime/solverdata.jl")
@@ -46,9 +56,6 @@ export FCMatchSSRate, fcslope, fcrate
 export FCConstRate, fcnatural
 export setfc
 
-export simulate, shockdecomp
-export array2data, array2workspace, data2array, data2workspace, workspace2array, workspace2data
 # the following are deprecated
 export seriesoverlay, dictoverlay
-export dict2array, array2dict, dict2data, data2dict
 

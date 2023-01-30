@@ -310,7 +310,7 @@ end
 function importplan(io::IO)
     # parse line 1. Example: "Plan{MIT{Quarterly}} with range 2000Q1:2100Q1"
     line = readline(io)
-    m = match(r"Plan\{MIT\{(\w+)\}\} with range ([\w:]+)", line)
+    m = match(r"Plan\{MIT\{(\w+|\w+\{\d+\})\}\} with range (\w+(?:\{\d+\})?:\w+(?:\{\d+\})?)", line)
     if m === nothing
         error("expected Plan{MIT{Frequency}} at the start of line 1, got ", line, ".")
     end
@@ -318,7 +318,7 @@ function importplan(io::IO)
     rng = parse_range(m.captures[2], false, 1)
     # parse line 2. Example: "Range: 2000Q1:2100Q1"  range must match line 1
     line = readline(io)
-    m = match(r"Range: ([\w:]+)", line)
+    m = match(r"Range: (\w+(?:\{\d+\})?:\w+(?:\{\d+\})?)", line)
     if m === nothing
         error("expected Range: at the start of line 2, got ", line, ".")
     end
@@ -354,7 +354,7 @@ function importplan(io::IO)
     exog_mark, endo_mark = m.captures
     # parse line 5. Example "  NAME,  2000Q1:2010Q1, 2010Q2, 2010Q2:2020Q4"
     line = readline(io) * " "
-    m = match(r"\s*NAME(.\S*)\s+([\w:]+(.\S*)\s*.*)", line)
+    m = match(r"\s*NAME(.\S*)\s+(\w+(?:\{\d+\})?(?::\w+(?:\{\d+\})?)?([^\w\{\}:]\S*)\s*.*)", line)
     if m === nothing
         error("unexpected line 5: ", line, ".")
     end
@@ -407,11 +407,11 @@ end
 
 function parse_frequency(str, line=nothing)
     e = Meta.parse(str)
-    ans = e isa Symbol ? eval(e) : nothing
+    ans = e isa Symbol || e isa Expr ? eval(e) : nothing
     if !(ans isa Type && ans <: Frequency)
         error("expected frequency, got ", str, line === nothing ? "." : " on line $line.")
     end
-    ans
+    return sanitize_frequency(ans)
 end
 
 function parse_namedtuple(str, line=nothing)
@@ -611,9 +611,9 @@ Display a comparison of two plans, or save it in a text file.
   variables will be listed in the same order as in the left plan.
 * `exog_mark="X"` - a short string (ideally 1 character) to mark exogenous
   values.
-* `endo_mark="-"` - a short string (ideally 1 character) to mark endogenous
+* `endo_mark="~"` - a short string (ideally 1 character) to mark endogenous
   values.
-* `missing_mark="M"` - a short string (ideally 1 character) to display when a
+* `missing_mark="."` - a short string (ideally 1 character) to display when a
   variable is missing from one of the plans.
 * `delim=" "` - delimiter. Use `","`` to make it a CSV file.
 * `pagelines=0` - Set to a positive integer to enable pagination. Number is
