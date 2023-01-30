@@ -8,7 +8,7 @@ on:
   push:
     branches: [ master ]
   pull_request:
-    branches: [ master ]
+    branches: [ "*" ]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -17,14 +17,14 @@ on:
 jobs:
   # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
 
     strategy: 
       matrix:
-        julia-version: ["1.6", "1.7"]
+        julia-version: ["1.7", "1.8"]
         julia-arch: [x64]
         os: [ubuntu-latest, windows-latest, macOS-latest]
 
+    # The type of runner that the job will run on
     runs-on: ${{ matrix.os }}
 
     # Steps represent a sequence of tasks that will be executed as part of the job
@@ -38,7 +38,7 @@ jobs:
         uses: julia-actions/setup-julia@v1
         with:
           # The Julia version to download (if necessary) and use. Example: 1.0.4
-          version: ${{ matrix.julia-version }}   # optional, default is 1
+          version: ${{ matrix.julia-version }}  # optional, default is 1
           # Architecture of the Julia binaries. Defaults to x64.
           arch: ${{ matrix.julia-arch }} # optional, default is x64
           # Display InteractiveUtils.versioninfo() after installing
@@ -47,7 +47,7 @@ jobs:
       - name: Run Julia package tests
         # You may pin to the exact commit or the version.
         # uses: julia-actions/julia-runtest@eda4346d69c0d1653e483c397a83c7f32f4ef2ac
-        uses: julia-actions/julia-runtest@v1.6.0
+        uses: julia-actions/julia-runtest@v1
         with:
           # Value determining whether to test with coverage or not. Options: true | false. Default value: true.
           coverage: true # optional, default is true
