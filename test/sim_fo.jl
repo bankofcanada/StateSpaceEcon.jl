@@ -6,6 +6,7 @@
 ##################################################################################
 
 using Random
+using LinearAlgebra
 
 function run_fo_unant_tests(model)
     clear_sstate!(model)
@@ -161,6 +162,8 @@ function test_initdecomp_firstorder(m, rng=2001Q1:2020Q4, step=max(2, length(rng
     linearize!(m)
     solve!(m, solver=:firstorder)
 
+    Random.seed!(0xFF)
+
     p = Plan(m, rng)
     exog = steadystatedata(m, p)
     exog[begin:first(rng)-1, m.variables] .= rand(m.maxlag, m.nvars)
@@ -219,6 +222,8 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
     sssolve!(m)
     linearize!(m)
     solve!(m; solver)
+
+    Random.seed!(0xFF)
 
     # test 1 - only initial conditions, no shocks
     p = Plan(m, rng)
