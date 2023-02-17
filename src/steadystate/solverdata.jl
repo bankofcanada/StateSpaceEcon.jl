@@ -102,7 +102,7 @@ function SolverData(model::Model; presolve::Bool=true,
 )
     # constructor where we're solving all equations for all variables
     local sstate = model.sstate
-    local alleqns = ModelBaseEcon.alleqns(sstate)
+    local alleqns = collect(values(ModelBaseEcon.alleqns(sstate)))
     local neqns = length(alleqns)
     local nvars = length(sstate.values)
     sd = SolverData(copy(model.sstate.values), Vector{Float64}(undef, neqns),   # point and resid

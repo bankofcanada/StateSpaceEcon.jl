@@ -366,8 +366,8 @@ function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{
     # Prep the Jacobian matrix
     neq = 0 # running counter of equations added to matrix
     # Model equations are the same for each sim period, just shifted according to t
-    Jblock = [ti + NT * (ModelBaseEcon._index_of_var(var, unknowns) - 1) for eqn in equations for (var, ti) in keys(eqn.tsrefs)]
-    Iblock = [i for (i, eqn) in enumerate(equations) for _ in eqn.tsrefs]
+    Jblock = [ti + NT * (ModelBaseEcon._index_of_var(var, unknowns) - 1) for eqn_pair in equations for (var, ti) in keys(eqn_pair[2].tsrefs)]
+    Iblock = [i for (i, eqn_pair) in enumerate(equations) for _ in eqn_pair[2].tsrefs]
     Tblock = -model.maxlag:model.maxlead
     for t in sim
         push!(TT, t .+ Tblock)

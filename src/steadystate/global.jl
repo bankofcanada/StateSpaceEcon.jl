@@ -59,7 +59,7 @@ end
 When a model is given, we compute the residual of the entire steady state
 system.
 """
-global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64}, model::Model) = global_SS_R!(resid, point, ModelBaseEcon.alleqns(model.sstate))
+global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64}, model::Model) = global_SS_R!(resid, point, values(ModelBaseEcon.alleqns(model.sstate)))
 @assert precompile(global_SS_R!, (Vector{Float64}, Vector{Float64}, Model))
 
 """
@@ -110,5 +110,5 @@ end
 When a model is given, we compute the residual of the entire steady state
 system.
 """
-global_SS_RJ(point::Vector{Float64}, model::Model) = global_SS_RJ(point, ModelBaseEcon.alleqns(model.sstate))
+global_SS_RJ(point::Vector{Float64}, model::Model) = global_SS_RJ(point, values(ModelBaseEcon.alleqns(model.sstate)))
 @assert precompile(global_SS_RJ, (Vector{Float64}, Model))

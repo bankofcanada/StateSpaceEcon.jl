@@ -5,6 +5,8 @@
 # All rights reserved.
 ##################################################################################
 
+using ModelBaseEcon.OrderedCollections
+
 """
     presolve_sstate!(model; <options>)
     presolve_sstate!(model, mask, values; <options>)
@@ -18,12 +20,12 @@ loop.
 ### Arguments
   * `model` - the Model instance
   * `mask` - a vector of Bool. Defaults to `model.sstate.mask`
-  * `values` - a vector of numbers. Defaults to `model.sstate.values` Caller
-    must specify either both `mask` and `values` or neither of them. `mask[i]`
+  * `vals` - a vector of numbers. Defaults to `model.sstate.values` Caller
+    must specify either both `mask` and `vals` or neither of them. `mask[i]`
     equals `true` if and only if the i-th steady state value has alredy been
     solved for.
 
-`mask` and `values` are both input and output data to the algorithm. Any values
+`mask` and `vals` are both input and output data to the algorithm. Any vals
 that are successfully presolved are updated in place, and their `mask` enties
 are set to `true`.
 
@@ -50,44 +52,45 @@ function solve1d(sseqn, vals, ind, ::Val{:newton}, tol = 1e-12, maxiter = 5)
     return newton1!(sseqn.eval_RJ, vals, ind; tol, maxiter)
 end
 
-function _presolve_equations!(eqns, mask, values, method, verbose, tol)
-    eqns_solved = falses(size(eqns))
-    eqns_resid = zeros(size(eqns))
+function _presolve_equations!(eqns, mask, vals, method, verbose, tol)
+    eqns_solved = OrderedDict{Symbol, Bool}(key => false for key in keys(eqns))
+    eqns_resid = OrderedDict{Symbol, Float64}(key => 0.0 for key in keys(eqns))
+    # eqns_resid = zeros(length(eqns))
     retval = false # return value: true if any mask changed, false otherwise
     updated = true  # keep track if any mask changed within the loop
-    while updated && !all(eqns_solved)
+    while updated && !all(values(eqns_solved))
         updated = false # keep track if anything changes this outer iteration
-        for (eqn_idx, sseqn) in enumerate(eqns)
-            eqns_solved[eqn_idx] && continue
+        for (eqn_key, sseqn) in eqns
+            eqns_solved[eqn_key] && continue
             # mask is true for variables that are already solved
             unsolved = .!mask[sseqn.vinds]
             nunsolved = sum(unsolved)
             if nunsolved == 0
                 # all variables are solved, yet equation is not marked solved. 
                 # check if equation is satisfied
-                eqns_resid[eqn_idx] = R = sseqn.eval_resid(values[sseqn.vinds])
+                eqns_resid[eqn_key] = R = sseqn.eval_resid(vals[sseqn.vinds])
                 # mark it solved either way, but issue a warning if residual is not zero
-                eqns_solved[eqn_idx] = true
+                eqns_solved[eqn_key] = true
                 if verbose && abs(R) > 100tol
-                    @warn "Equation $eqn_idx has residual $R:\n    $sseqn"
+                    @warn "Equation $eqn_key has residual $R:\n    $sseqn"
                 end
             elseif nunsolved == 1
                 # only one variable left unsolved. call the 1d solver
                 ind = findall(unsolved)[1]
-                vals = values[sseqn.vinds]
-                success = solve1d(sseqn, vals, ind, Val(method), 0.1tol)
+                _vals = vals[sseqn.vinds]
+                success = solve1d(sseqn, _vals, ind, Val(method), 0.1tol)
                 if success
-                    if abs(vals[ind]) < 1e-10
-                        vals[ind] = 0.0
+                    if abs(_vals[ind]) < 1e-10
+                        _vals[ind] = 0.0
                     end
-                    values[sseqn.vinds[ind]] = vals[ind]
+                    vals[sseqn.vinds[ind]] = _vals[ind]
                     retval = updated = mask[sseqn.vinds[ind]] = true
                     if verbose
-                        @info "Presolved equation $eqn_idx for $(sseqn.vsyms[ind]) = $(vals[ind])\n    $sseqn"
+                        @info "Presolved equation $eqn_key for $(sseqn.vsyms[ind]) = $(_vals[ind])\n    $sseqn"
                     end
                 else
                     if verbose
-                        @info "Failed to presolve $eqn_idx for $(sseqn.vsyms[ind])\n    $sseqn"
+                        @info "Failed to presolve $eqn_key for $(sseqn.vsyms[ind])\n    $sseqn"
                     end
                 end
             else
@@ -106,10 +109,10 @@ presolve_sstate!(model::Model; kwargs...) =
 presolve_sstate!(model::Model, mask::AbstractVector{Bool}, values::AbstractVector{Float64};
     verbose = model.verbose, tol = model.tol, _1dsolver = :bisect, method = _1dsolver) =
     _presolve_equations!(ModelBaseEcon.alleqns(model.sstate), mask, values, method, verbose, tol)
-presolve_sstate!(eqns::Vector{SteadyStateEquation}, mask::AbstractVector{Bool}, values::AbstractVector{Float64};
+presolve_sstate!(eqns::LittleDict{Symbol,SteadyStateEquation}, mask::AbstractVector{Bool}, values::AbstractVector{Float64};
     verbose = false, tol = 1e-12, _1dsolver = :bisect, method = _1dsolver) =
     _presolve_equations!(eqns, mask, values, method, verbose, tol)
 
 @assert precompile(presolve_sstate!, (Model, Vector{Bool}, Vector{Float64}))
-@assert precompile(presolve_sstate!, (Vector{SteadyStateEquation}, Vector{Bool}, Vector{Float64}))
+# @assert precompile(presolve_sstate!, (LittleDict{Symbol,SteadyStateEquation}, Vector{Bool}, Vector{Float64}))
 
