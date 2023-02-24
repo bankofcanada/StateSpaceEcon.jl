@@ -98,12 +98,12 @@ Base.IndexStyle(::Plan) = IndexLinear()
 Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
 Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
 
-function Base.copyto!(dest::Plan,rng::AbstractUnitRange,scr::Plan)
+function Base.copyto!(dest::Plan, rng::AbstractUnitRange, scr::Plan)
     dest.varshks == scr.varshks || throw(ArgumentError("Both plans must have the same variables and shocks in the same order."))
     idx2 = axes(dest.exogenous, 2)  # same for both dest and scr
     copyto!(dest.exogenous, _offset(dest, rng), idx2, scr.exogenous, _offset(scr, rng), idx2)
 end
-Base.copyto!(dest::Plan,rng::MIT,scr::Plan) = Base.copyto!(dest,rng:rng,scr)
+Base.copyto!(dest::Plan, rng::MIT, scr::Plan) = Base.copyto!(dest, rng:rng, scr)
 
 _offset(p::Plan{T}, idx::T) where {T<:MIT} = convert(Int, idx - first(p.range) + 1)
 _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where {T<:MIT} =
@@ -142,7 +142,7 @@ Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize
 # query the exo-end status of a variable
 
 @inline Base.getindex(p::Plan{T}, vars::Symbol...) where {T} = begin
-    var_inds = [p.varshks[v] for v in vars]
+    var_inds = Int[p.varshks[vars]...]
     Plan{T}(p.range, NamedTuple{(vars...,)}(eachindex(vars)), p.exogenous[:, var_inds])
 end
 
@@ -181,7 +181,7 @@ function Base.show(io::IO, p::Plan)
     limit = get(io, :limit, true)
     cp = collapsed_range(p)
     # find the longest string left of "=>" for padding
-    maxl = maximum(length("$k") for (k, v) in cp)
+    maxl = maximum(length ∘ string ∘ first, cp)
     if limit
         dcol = ncol - maxl - 6
     else
@@ -332,19 +332,12 @@ function importplan(io::IO)
     if m === nothing
         error("expected Variables: at the start of line 3, got ", line, ".")
     end
-    nt = let
-        nt = parse_namedtuple(m.captures[1], 3)
-        nms = collect(keys(nt))
-        inds = collect(nt)
-        if inds != 1:length(inds)
-            if Set(inds) != Set(1:length(inds))
-                error("indexes of variables on line 3 are not valid.")
-            end
-            tmp = Dict(i => n for (i, n) in zip(inds, nms))
-            nt = NamedTuple{((tmp[i] for i = 1:length(inds))...,)}(1:length(inds))
-        end
-        nt
+    nt = parse_namedtuple(m.captures[1], 3)
+    if Set(nt) != Set(1:length(nt))
+        error("Indexes of variables on line 3 are not valid.")
     end
+    # sort nt by its values (variable indexes)
+    nt = (; sort!(collect(pairs(nt)), by=last)...)
     # parse line 4.  Example "(X) = Exogenous, (-) = Endogenous
     line = readline(io)
     m = match(r"\((.+?)\) = Exogenous, \((.+?)\) = Endogenous:", line)
@@ -360,10 +353,13 @@ function importplan(io::IO)
     end
     _name_delim = m.captures[1]
     _range_delim = m.captures[3]
-    ranges = [parse_range(strip(str), true, 5) for str in split(m.captures[2], _range_delim; keepempty=false)]
-    # parse the rest of it
     p = Plan{MIT{freq}}(rng, nt, falses(length(rng), length(nt)))
-    ranges_inds = [[_offset(p, r)...] for r in ranges]
+    ranges_inds = Vector{Int}[]
+    for str in split(m.captures[2], _range_delim; keepempty=false)
+        r = parse_range(strip(str), true, 5)
+        push!(ranges_inds, [_offset(p, r);])
+    end
+    # parse the rest of it
     pat = Regex("\\s+(\\w+)\\s*$(_name_delim)\\s*(.*)")
     for i = 1:length(nt)
         line = readline(io)
@@ -416,7 +412,7 @@ end
 
 function parse_namedtuple(str, line=nothing)
     e = Meta.parse(str)
-    ans = Meta.isexpr(e, :tuple) && all(Meta.isexpr(ee, :(=)) for ee in e.args) ? eval(e) : nothing
+    ans = Meta.isexpr(e, :tuple) && all(Base.Fix2(Meta.isexpr, :(=)), e.args) ? eval(e) : nothing
     if !(ans isa NamedTuple{NAMES,NTuple{N,Int}} where {NAMES,N})
         error("expected NamedTuple, got ", str, line === nothing ? "." : " on line $line.")
     end
