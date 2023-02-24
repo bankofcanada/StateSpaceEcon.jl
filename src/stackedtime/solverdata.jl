@@ -49,7 +49,7 @@ struct StackedTimeSolverData # <: AbstractSolverData
     solve_mask::AbstractVector{Bool}
     "Cache the factorization of the active part of J"
     J_factorized::Ref{Any}
-    "Set to one of :qr or :lm"
+    "Set to one of :qr or :lu"
     factorization::Symbol
 end
 
