@@ -41,6 +41,7 @@ include("stackedtime/misc.jl")
 include("stackedtime/solverdata.jl")
 include("stackedtime/simulate.jl")
 include("stackedtime/shockdecomp.jl")
+include("stackedtime/stoch_simulate.jl")
 
 end # module
 

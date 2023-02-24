@@ -259,7 +259,7 @@ function simulate(m::Model,
                 end
             end
         else
-            # when expectation_horizon is not given,
+            # when expectation_horizon is given,
             # the first and last simulations use the true 
             # simulation range and final condition, while the intermediate 
             # simulations use expectation_horizon steps with fcnatural
