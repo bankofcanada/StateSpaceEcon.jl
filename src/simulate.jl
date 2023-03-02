@@ -208,7 +208,7 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
         throw(ArgumentError("Expected the shocks argument to be a collection of SimData, not $(typeof(shocks))."))
     end
     ##### dispatch
-    getsolvermodule(solver).stoch_simulate(m, p, baseline, shocks; kwargs...)
+    getsolvermodule(solver).stoch_simulate(m, p, baseline[p.range], shocks; kwargs...)
 end
 export stoch_simulate
 

@@ -24,19 +24,21 @@ export SimData
 # same constructors as should work for SimData
 SimData(args...) = MVTSeries(args...)
 
+const _getname = Base.Fix2(getfield, :name)
+
 const _MVCollection = Union{Vector{ModelVariable},NTuple{N,ModelVariable}} where {N}
 # we should allow indexing with model variables
-Base.getindex(sd::SimData, vars::_MVCollection) = getindex(sd, map(v -> v.name, vars))
+Base.getindex(sd::SimData, vars::_MVCollection) = getindex(sd, map(_getname, vars))
 Base.getindex(sd::SimData, vars::ModelVariable) = getindex(sd, vars.name)
-Base.setindex!(sd::SimData, val, vars::_MVCollection) = setindex!(sd, val, map(v -> v.name, vars))
+Base.setindex!(sd::SimData, val, vars::_MVCollection) = setindex!(sd, val, map(_getname, vars))
 Base.setindex!(sd::SimData, val, vars::ModelVariable) = setindex!(sd, val, vars.name)
 
-Base.getindex(sd::SimData, rows, vars::_MVCollection) = getindex(sd, rows, map(v->v.name, vars))
+Base.getindex(sd::SimData, rows, vars::_MVCollection) = getindex(sd, rows, map(_getname, vars))
 Base.getindex(sd::SimData, rows, vars::ModelVariable) = getindex(sd, rows, vars.name)
-Base.setindex!(sd::SimData, val, rows, vars::_MVCollection) = setindex!(sd, val, rows, map(v->v.name, vars))
+Base.setindex!(sd::SimData, val, rows, vars::_MVCollection) = setindex!(sd, val, rows, map(_getname, vars))
 Base.setindex!(sd::SimData, val, rows, vars::ModelVariable) = setindex!(sd, val, rows, vars.name)
 
-Base.view(sd::SimData, rows, vars::_MVCollection) = view(sd, rows, map(v->v.name, vars))
+Base.view(sd::SimData, rows, vars::_MVCollection) = view(sd, rows, map(_getname, vars))
 Base.view(sd::SimData, rows, vars::ModelVariable) = view(sd, rows, vars.name)
 
 #######################################################
@@ -116,7 +118,7 @@ function workspace2data(w::Workspace, vars, range::AbstractUnitRange; copy=false
     ret = SimData(range, vars, NaN)
     for v in vars
         wv = w[Symbol(v)]
-        copyto!(ret[v], intersect(range,rangeof(wv)), wv)
+        copyto!(ret[v], intersect(range, rangeof(wv)), wv)
     end
     return ret
 end
@@ -154,3 +156,21 @@ export dict2array, array2dict, dict2data, data2dict
 @deprecate dict2data(d::Workspace, args...; kwargs...) workspace2data(d, args...; kwargs...)
 @deprecate array2dict(args...; kwargs...) array2workspace(args...; kwargs...)
 @deprecate data2dict(args...; kwargs...) data2workspace(args...; kwargs...)
+
+
+struct SimFailed <: Exception
+    info
+end
+Base.showerror(io::IO, ex::SimFailed) =
+    isnothing(ex.info) ? print(io, "Simulation failed.") :
+    ex.info isa MIT ? print(io, "Simulation failed in period $(ex.info).") :
+    ex.info isa AbstractUnitRange{<:MIT} ? print(io, "Simulation over $(ex.info) failed.") :
+    print(io, "Simulation failed: $(ex.info)")
+isfailed(f::SimFailed)::Bool = !isnothing(f.info)
+isfailed(f::SimData)::Bool = false
+isfailed(f)::Bool = throw(ArgumentError("Unexpected $(typeof(f)) argument."))
+const MaybeSimData = Union{<:SimData,SimFailed}
+export SimFailed
+export isfailed
+export MaybeSimData
+

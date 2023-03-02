@@ -7,7 +7,6 @@
 
 # version of simulate for stochastic simulations 
 
-
 function _make_result_container(shocks::Workspace, basedata)
     w = Workspace()
     for key in keys(shocks)
@@ -17,7 +16,11 @@ function _make_result_container(shocks::Workspace, basedata)
 end
 
 function _make_result_container(shocks::Vector, basedata)
-    return map(copy, Iterators.repeated(basedata, length(shocks)))
+    vec = similar(shocks, MaybeSimData)
+    for i in eachindex(vec)
+        vec[i] = copy(basedata)
+    end
+    return vec
 end
 
 function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
@@ -65,13 +68,16 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
     # make sure the model evaluation data is up to date
     refresh_med!(m, variant)
 
+    # range for the result
+    resrng = first(shkrng)-m.maxlag:last(p.range)
+
     # prepare the baseline data
-    e₀ = ModelBaseEcon.update_auxvars(transform(baseline, m), m)
+    e₀ = ModelBaseEcon.update_auxvars(transform(baseline[resrng, m.varshks], m), m)
 
     if check
         ### Anticipated run
         # the plan
-        local p₀ = copy(p)
+        local p₀ = copy(p[resrng])
         # the solver data
         local d₀ = StackedTimeSolverData(m, p₀, fctype, variant)
 
@@ -86,11 +92,8 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
 
     ### Unanticipated stochastic shocks
 
-    # range for the result
-    resrng = first(shkrng)-m.maxlag:last(p.range)
-
     # allocate results 
-    results = _make_result_container(shocks, e₀[resrng, m.varshks])
+    results = _make_result_container(shocks, e₀)
 
     # last simulation period, excluding final conditions periods
     sim_end = lastdate(p) - m.maxlead
@@ -116,6 +119,9 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
         for ((skey, shock), (rkey, result)) in zip(pairs(shocks), pairs(results))
             @assert skey == rkey
 
+            # skip if this simulation has already failed
+            isfailed(result) && continue
+
             # skip if t is outside the range of shock
             same_range || firstdate(shock) ≤ t ≤ lastdate(shock) || continue
 
@@ -128,9 +134,15 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
             eₜ[t, axes(shock, 2)] .+= shock[t, :]   # 
 
             # solve 
-            converged = sim_nr!(eₜ, dₜ, maxiter, tol, verbose, sparse_solver, linesearch)
-            if warn_maxiter && !converged
-                @warn("Newton-Raphson reached maximum number of iterations for $skey at $(t:sim_end)")
+            try
+                converged = sim_nr!(eₜ, dₜ, maxiter, tol, verbose, sparse_solver, linesearch)
+                if warn_maxiter && !converged
+                    @warn("Newton-Raphson reached maximum number of iterations for $skey at $(t:sim_end)")
+                end
+            catch
+                # marked as failed 
+                results[rkey] = SimFailed(t)
+                continue
             end
 
         end # shocks loop 
@@ -139,13 +151,14 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
 
     # strip auxvar columns and inverse transform
     for (key, result) in pairs(results)
+        isfailed(result) && continue
         if m.nauxs > 0
             result = result[:, m.varshks]
         end
         results[key] = inverse_transform(result, m)
     end
 
-    return results
+    return [results...,]
 end
 
 

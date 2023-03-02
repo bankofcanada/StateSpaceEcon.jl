@@ -29,6 +29,10 @@ import ..steadystatearray
 import ..SimData
 import ..rawdata
 
+import ..SimFailed
+import ..isfailed
+import ..MaybeSimData
+
 import ModelBaseEcon.hasevaldata
 import ModelBaseEcon.getevaldata
 import ModelBaseEcon.setevaldata!
