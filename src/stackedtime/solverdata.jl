@@ -242,7 +242,8 @@ function update_plan!(sd::StackedTimeSolverData, model::Model, plan::Plan; chang
         II, JJ, VV = Int[], Int[], Float64[]
         last_sim_t = last(sim)
         for (vi, (v, fc)) in enumerate(zip(unknowns, sd.FC))
-            @assert vi == ModelBaseEcon._index_of_var(v, unknowns)
+            # This assert is expensive, consider reenable in some debug mode option
+            # @assert vi == ModelBaseEcon._index_of_var(v, unknowns)
             # var_CiSc returns a Dict with keys equal to the column offset relative to last_sim_t
             # and values containing the column values.
             for (offset, values) in var_CiSc(sd, v, fc)
