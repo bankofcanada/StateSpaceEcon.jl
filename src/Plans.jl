@@ -97,6 +97,7 @@ Base.length(p::Plan) = length(p.range)
 Base.IndexStyle(::Plan) = IndexLinear()
 Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
 Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
+TimeSeriesEcon.rangeof(p::Plan) = p.range
 
 function Base.copyto!(dest::Plan, rng::AbstractUnitRange, scr::Plan)
     dest.varshks == scr.varshks || throw(ArgumentError("Both plans must have the same variables and shocks in the same order."))
@@ -104,6 +105,7 @@ function Base.copyto!(dest::Plan, rng::AbstractUnitRange, scr::Plan)
     copyto!(dest.exogenous, _offset(dest, rng), idx2, scr.exogenous, _offset(scr, rng), idx2)
 end
 Base.copyto!(dest::Plan, rng::MIT, scr::Plan) = Base.copyto!(dest, rng:rng, scr)
+Base.copyto!(dest::Plan, src::Plan) = Base.copyto!(dest, intersect(rangeof(dest), rangeof(src)), src)
 
 _offset(p::Plan{T}, idx::T) where {T<:MIT} = convert(Int, idx - first(p.range) + 1)
 _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where {T<:MIT} =
@@ -145,6 +147,14 @@ Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize
     var_inds = Int[p.varshks[vars]...]
     Plan{T}(p.range, NamedTuple{(vars...,)}(eachindex(vars)), p.exogenous[:, var_inds])
 end
+
+@inline Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}, vars::Symbol...) where {T} = begin
+    rng.start < p.range.start && throw(BoundsError(p, rng.start))
+    rng.stop > p.range.stop && throw(BoundsError(p, rng.stop))
+    var_inds = Int[p.varshks[vars]...]
+    Plan{T}(rng, NamedTuple{(vars...,)}(eachindex(vars)), p.exogenous[_offset(p, rng), var_inds])
+end
+
 
 #######################################
 # Pretty printing

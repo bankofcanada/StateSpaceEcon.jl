@@ -168,6 +168,7 @@ Base.showerror(io::IO, ex::SimFailed) =
     print(io, "Simulation failed: $(ex.info)")
 isfailed(f::SimFailed)::Bool = !isnothing(f.info)
 isfailed(f::SimData)::Bool = false
+isfailed(f::Workspace)::Bool = false
 isfailed(f)::Bool = throw(ArgumentError("Unexpected $(typeof(f)) argument."))
 const MaybeSimData = Union{<:SimData,SimFailed}
 export SimFailed
