@@ -103,7 +103,9 @@ function Base.copyto!(dest::Plan, rng::AbstractUnitRange, scr::Plan)
     dest.varshks == scr.varshks || throw(ArgumentError("Both plans must have the same variables and shocks in the same order."))
     idx2 = axes(dest.exogenous, 2)  # same for both dest and scr
     copyto!(dest.exogenous, _offset(dest, rng), idx2, scr.exogenous, _offset(scr, rng), idx2)
+    return dest
 end
+
 Base.copyto!(dest::Plan, rng::MIT, scr::Plan) = Base.copyto!(dest, rng:rng, scr)
 Base.copyto!(dest::Plan, src::Plan) = Base.copyto!(dest, intersect(rangeof(dest), rangeof(src)), src)
 
@@ -134,8 +136,9 @@ end
 # A range with a model returns a plan trimmed over that range and extended for initial and final conditions.
 Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}, m::Model) = p[UnitRange{MIT{Unit}}(rng), m]
 @inline function Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}, m::Model) where {T<:MIT}
-    rng = (rng.start-m.maxlag):(rng.stop+m.maxlead)
-    return p[rng]
+    # rng = (rng.start-m.maxlag):(rng.stop+m.maxlead)
+    # return p[rng]
+    copyto!(Plan(m, rng), rng, p)
 end
 
 Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize` and `endogenize` to alter plan.")
