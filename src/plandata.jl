@@ -26,7 +26,7 @@ returns [`SimData`](@ref). See also [`zeroworkspace`](@ref)
 
 """
 function zeroarray end
-    
+
 """
     steadystatearray(model, plan; [ref=firstdate(plan) + m.maxlag])
 

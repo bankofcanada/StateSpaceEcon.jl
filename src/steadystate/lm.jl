@@ -38,8 +38,8 @@ Make an instance of the LMData for the given model. If solver data is not also
 given, then it is used, instead of creating a default SolverData for the model.
 """
 LMData(model::Model) = LMData(model, SolverData(model))
-LMData(model::Model, sd::SolverData) = LMData(sd, 
-                Array{Float64}(undef, sd.nvars, sd.nvars), 
+LMData(model::Model, sd::SolverData) = LMData(sd,
+                Array{Float64}(undef, sd.nvars, sd.nvars),
                 Array{Float64}(undef, sd.nvars),
                 Array{Float64}(undef, sd.nvars),
                 Array{Float64}(undef, sd.nvars),

@@ -14,7 +14,7 @@ empty!(E1.model.sstate.constraints)
         sssolve!(m)
         @test check_sstate(m) == 0
         @test m.sstate.mask == [false, false, true, true]
-        # 
+        #
         @steadystate m y = 1.2
         m.α = 0.5
         m.β = 1.0 - m.α
@@ -23,7 +23,7 @@ empty!(E1.model.sstate.constraints)
         @test check_sstate(m) == 0
         @test m.sstate.mask == [true, false, true, true]
         @test m.sstate.values[1] == 1.2
-        # 
+        #
         m.α = 0.4
         m.β = 1.0 - m.α
         clear_sstate!(m)
@@ -32,7 +32,7 @@ empty!(E1.model.sstate.constraints)
         @test check_sstate(m) == 0
         @test m.sstate.mask == trues(4)
         @test m.sstate.values == [1.2, 0.0, 0.0, 0.0]
-        # 
+        #
         empty!(m.sstate.constraints)
         m.α = 0.3
         m.β = 1.0 - m.α
@@ -42,7 +42,7 @@ empty!(E1.model.sstate.constraints)
         end
         @test check_sstate(m) == 0
         @test m.sstate.values[2] == 0.0
-        # 
+        #
         empty!(m.sstate.constraints)
         m.α = 0.3
         m.β = 1.0 - m.α
@@ -60,7 +60,7 @@ empty!(E1.model.sstate.constraints)
         sssolve!(m; method=:auto)
         @test check_sstate(m) == 0
         @test m.sstate.mask == [true, true, true, true]  # different from default
-        # 
+        #
         @steadystate m y = 1.2
         m.α = 0.5
         m.β = 1.0 - m.α
@@ -69,7 +69,7 @@ empty!(E1.model.sstate.constraints)
         @test check_sstate(m) == 0
         @test m.sstate.mask == [true, true, true, true] # different from default
         @test m.sstate.values[1] == 1.2
-        # 
+        #
         m.α = 0.4
         m.β = 1.0 - m.α
         clear_sstate!(m)
@@ -78,7 +78,7 @@ empty!(E1.model.sstate.constraints)
         @test check_sstate(m) == 0
         @test m.sstate.mask == trues(4)
         @test m.sstate.values == [1.2, 0.0, 0.0, 0.0]
-        # 
+        #
         empty!(m.sstate.constraints)
         m.α = 0.3
         m.β = 1.0 - m.α
@@ -100,7 +100,7 @@ empty!(E1.model.sstate.constraints)
         sssolve!(m; method=:lm)
         @test check_sstate(m) == 0
         @test m.sstate.mask == [true, true, true, true]  # different from default
-        # 
+        #
         @steadystate m y = 1.2
         m.α = 0.5
         m.β = 1.0 - m.α
@@ -109,7 +109,7 @@ empty!(E1.model.sstate.constraints)
         @test check_sstate(m) == 0
         @test m.sstate.mask == [true, true, true, true]  # different from default
         @test m.sstate.values[1] == 1.2
-        # 
+        #
         m.α = 0.4
         m.β = 1.0 - m.α
         clear_sstate!(m)
@@ -118,7 +118,7 @@ empty!(E1.model.sstate.constraints)
         @test check_sstate(m) == 0
         @test m.sstate.mask == trues(4)
         @test m.sstate.values == [1.2, 0.0, 0.0, 0.0]
-        # 
+        #
         empty!(m.sstate.constraints)
         m.α = 0.3
         m.β = 1.0 - m.α
@@ -285,7 +285,7 @@ end
             @test check_sstate(m; verbose=true) == 6
         end
         @test occursin("System may be inconsistent", out)
-       
+
     end
 end
 
@@ -301,7 +301,7 @@ end
             c[t] = a[t] + b[t]
         end
         @initialize m
-        
+
         # tests
         @test sum(issteady.(m.allvars)) == 2
         clear_sstate!(m)
@@ -327,7 +327,7 @@ end
         @test check_sstate(m) == 0
         @test m.sstate.mask == [false, false, true, true]
     end
-    
+
     empty!(E1.model.sstate.constraints)
     let m = deepcopy(E1.model)
         m.α = 0.5

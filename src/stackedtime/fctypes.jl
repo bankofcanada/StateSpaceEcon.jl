@@ -124,7 +124,7 @@ end
     setfc!(fc_vector, model, variable, new_fc)
 
 Update the final condition for the given `variable` in the given `fc_vector` to
-`new_fc`. The `fc_vector` is the output of [`setfc`](@ref).    
+`new_fc`. The `fc_vector` is the output of [`setfc`](@ref).
 """
 function setfc! end
 function setfc!(fc_vec::AbstractVector{FinalCondition}, m::Model, v::Union{ModelVariable,Symbol}, new_fc::FinalCondition)

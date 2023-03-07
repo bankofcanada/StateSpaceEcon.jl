@@ -98,7 +98,7 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
             deviation, anticipate, verbose, baseline, kwargs...)
     end
 
-    # transform exogenous data 
+    # transform exogenous data
     logvars = [islog(var) | isneglog(var) for var in model.varshks]
     need_trans = any(logvars)
     need_baseline = !deviation || (deviation && need_trans)
@@ -133,7 +133,7 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
     # Let’s start at the very beginning, a very good place to start.
     ##################
 
-    # tnow is the row-index in exog corresponding to the current period 
+    # tnow is the row-index in exog corresponding to the current period
     tnow = model.maxlag
 
     # prepare initial conditions (only bck_t are used)
@@ -175,7 +175,7 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
                 dispatch)
         end =#
 
-        # TODO: This mapping can be precomputed!  
+        # TODO: This mapping can be precomputed!
         # Populate the sim
         for (simind, var) in enumerate(model.varshks)
             vname = var.name
@@ -255,7 +255,7 @@ function fo_sim_step!(
         for (inds, def_xflag, offset) in ((vm.bck_inds, false, 0),
             (vm.fwd_inds, false, 0),
             (vm.ex_inds, true, S.oex))
-            # def_xflag : default xflag in empty plan, i.e. `false` for variables, `true` for shocks 
+            # def_xflag : default xflag in empty plan, i.e. `false` for variables, `true` for shocks
             # Note: bck_inds listed first for a good reason
             # it's possible for (var,0) to be both in bck and fwd (mixed variable)
             # if exogenous, we set only one of them, not both

@@ -32,7 +32,7 @@ struct QZData
 end
 
 # reuse the space allocated in bwork for iwork -- in Fortran INTEGER and LOGICAL are both 32-bit.
-# CAREFUL not to use both in the same call to lapack. 
+# CAREFUL not to use both in the same call to lapack.
 # bwork is used in call to dgges, iwork is used in call to dtgsen
 Base.getproperty(qz::QZData, name::Symbol) = getfield(qz, name === :iwork ? :bwork :
                                                           name === :liwork ? :lbwork :
@@ -65,8 +65,8 @@ function _dgges!(qz::QZData, selctg=C_NULL)
     end
     ccall((LAPACK.@blasfunc(dgges_), LAPACK.libblastrampoline), Cvoid, (
             Ref{UInt8}, Ref{UInt8}, Ref{UInt8}, Ptr{Cvoid},   # JOBVSL, JOBVSR, SORT, SELCTG
-            Ref{BlasInt}, Ptr{Float64}, Ref{BlasInt}, # N, in A out S, LDA, 
-            Ptr{Float64}, Ref{BlasInt}, # in B out T, LDB, 
+            Ref{BlasInt}, Ptr{Float64}, Ref{BlasInt}, # N, in A out S, LDA,
+            Ptr{Float64}, Ref{BlasInt}, # in B out T, LDB,
             Ptr{BlasInt}, # out SDIM
             Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, # ALPHAR, ALPHAI, BETA
             Ptr{Float64}, Ref{BlasInt}, # VSL, LDVSL
@@ -87,7 +87,7 @@ function _dgges!(qz::QZData, selctg=C_NULL)
 end
 
 function call_dgges!(qz)
-    # first call to ask how much work space it needs 
+    # first call to ask how much work space it needs
     qz.lwork[] = -1
     info = _dgges!(qz)
     if info != 0
@@ -110,8 +110,8 @@ function _dtgsen!(qz::QZData, select::Vector{BlasInt})
     ccall((LAPACK.@blasfunc(dtgsen_), LAPACK.libblastrampoline), Cvoid, (
             Ref{BlasInt}, Ref{BlasInt}, Ref{BlasInt}, # IJOB, WANTQ, WANTZ,
             Ptr{BlasInt}, # SELECT
-            Ref{BlasInt}, Ptr{Float64}, Ref{BlasInt}, # N, in/out A (a.k.a. S), LDA, 
-            Ptr{Float64}, Ref{BlasInt}, # in/out B (a.k.a. T), LDB, 
+            Ref{BlasInt}, Ptr{Float64}, Ref{BlasInt}, # N, in/out A (a.k.a. S), LDA,
+            Ptr{Float64}, Ref{BlasInt}, # in/out B (a.k.a. T), LDB,
             Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, # ALPHAR, ALPHAI, BETA
             Ptr{Float64}, Ref{BlasInt}, # VSL, LDVSL
             Ptr{Float64}, Ref{BlasInt}, # VSR, LDVSR
@@ -138,7 +138,7 @@ function _dtgsen!(qz::QZData, select::Vector{BlasInt})
 end
 
 function call_dtgsen!(qz, select)
-    # first call to figure out how much work space is needed 
+    # first call to figure out how much work space is needed
     qz.lwork[] = -1
     resize!(qz.work, max(length(qz.work), 1))
     qz.liwork[] = -1
@@ -147,7 +147,7 @@ function call_dtgsen!(qz, select)
     if info != 0
         error("Call to dtgsen failed with INFO = $(qz.info[]).")
     end
-    # resize work arrays, if necessary, and call again, this time for real 
+    # resize work arrays, if necessary, and call again, this time for real
     resize!(qz.work, max(length(qz.work), Int(qz.work[1])))
     qz.lwork[] = length(qz.work)
     resize!(qz.iwork, max(length(qz.iwork), Int(qz.iwork[1])))
@@ -176,7 +176,7 @@ _diffg(qz) = @.(qz.α_re^2 + qz.α_im^2 - qz.β^2)
     run_qz(A, B [, nstable])
 
 Compute the QZ factorization (a.k.a. Generalized Schur decomposition) of the
-matrix pencil (A,B). Return an instance of `QZData`, which contains the `Q,S,T,Z` 
+matrix pencil (A,B). Return an instance of `QZData`, which contains the `Q,S,T,Z`
 matrices of the factorization.
 
 The optional argument `nstable` is an integer that controls whether or not to
@@ -198,7 +198,7 @@ function _run_qz!(qz::QZData, want_stable::Int)
     # we need sorting
     #           _dgges!(qz, @_select_stable)
     # doesn't work due to round-off errors: there may be unit eigenvalues that are ±eps()
-    # 
+    #
     # instead, find a "cutoff value" in the vector of eigenvalues, such that we have
     # `want_stable` of them strictly above the cutoff and the rest below or at the cutoff.
     N = qz.N

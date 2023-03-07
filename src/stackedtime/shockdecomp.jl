@@ -19,7 +19,7 @@ dynamic model for the given plan range and final condition. We verify the
 residual and issue a warning, but do not enforce this. See
 [`steadystatedata`](@ref).
 
-As part of the algorithm we run a simulation with the given `plan`, 
+As part of the algorithm we run a simulation with the given `plan`,
 `exog_data` and `fctype`.  See [`simulate`](@ref) for other options.
 
 !!! note
@@ -129,7 +129,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
 
     # now do the decomposition
     begin
-        # we build a sparse matrix 
+        # we build a sparse matrix
         SDI = Int[]     # row indexes
         SDJ = Int[]     # column indexes
         SDV = Float64[] # values
@@ -212,7 +212,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
                 continue
             end
             v_inv_endo_inds = inv_endo_inds[v_inds[v_endo_mask]]
-            v_data = result.sd[v] 
+            v_data = result.sd[v]
             # assign contributions to endogenous points
             v_data[v_endo_mask, :] = SDMAT[v_inv_endo_inds, :]
             # contributions of initial conditions already assigned

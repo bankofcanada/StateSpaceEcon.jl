@@ -36,7 +36,7 @@ function sssolve!(model::Model;
     if method ∉ (:nr, :lm, :auto)
         error("Method should be one of :nr, :lm, or :auto, not :$method")
     end
-    
+
     ss = model.sstate
     ss_nvars = 2 * length(ss.vars)
     ss_neqns = ModelBaseEcon.neqns(ss)
@@ -52,7 +52,7 @@ function sssolve!(model::Model;
         # Nothing left to solve for
         return sd.point
     end
-    
+
     # nvars = length(model.sstate.mask)
     # vsyms = Symbol[ModelBaseEcon.ss_symbol(model.sstate, vi) for vi = 1:nvars]
     # presolved_var = vsyms[model.sstate.mask]

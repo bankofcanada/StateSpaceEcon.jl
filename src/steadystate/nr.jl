@@ -31,7 +31,7 @@ end
 
 NRData(model::Model; kwargs...) = NRData(model, SolverData(model); kwargs...)
 NRData(model::Model, sd::SolverData; linesearch::Bool = false) = NRData(sd, model.sstate,
-                    Array{Float64}(undef, sd.nvars), Array{Float64}(undef, sd.neqns), 
+                    Array{Float64}(undef, sd.nvars), Array{Float64}(undef, sd.neqns),
                     trues(sd.nvars), linesearch)
 
 """
@@ -48,7 +48,7 @@ function step_nr!(xx::AbstractArray{Float64,1}, dx::AbstractArray{Float64,1},
                     rr::AbstractArray{Float64,1}, jj::AbstractArray{Float64,2},
                     nr::NRData; verbose::Bool = false)
     ff = qr(jj, Val(true))  # deprecated as of Julia v1.7
-    # ff = qr(jj, ColumnNorm())  # does not work in Julia <= v1.6 
+    # ff = qr(jj, ColumnNorm())  # does not work in Julia <= v1.6
     rj = rank(ff.R)
     # nr.r_buffer .= ff.Q' * rr
     # dx[ff.p[1:rj]] = ff.R[1:rj,1:rj] \ nr.r_buffer[1:rj]

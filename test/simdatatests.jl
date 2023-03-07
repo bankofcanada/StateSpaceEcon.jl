@@ -47,11 +47,11 @@
         @test sd[:] == dta[:]
         @test sd[:a] isa TSeries && sd[:a].values == dta[:,1]
         @test sd["b"] isa TSeries && sd["b"].values == dta[:,2]
-        # 
+        #
         sd.a = dta[:,1]
         sd.b = dta[:,2]
         @test sd[:] == dta[:]
-        # 
+        #
         sd[:] = dta[:]
         sd.a = sd.b
         @test sd[:,1] == sd[:,2]
@@ -76,7 +76,7 @@
         @test_throws ArgumentError sd[2000Y]
         @test_throws BoundsError sd[1999Q4] = (a = 5.0, b = 1.1)
         @test_throws BoundsError sd[2010Q4] = rand(2)
-        # 
+        #
         @test sd[2001Q1:2002Q4] isa SimData
         @test sd[2001Q1:2002Q4] == sd[5:12,:]
         sd[2001Q1:2002Q4] = 1:16
@@ -90,9 +90,9 @@
         @test sd1[(:a,:c)] == sd1[:,[1,3]]
         # access with 2 args MIT and Symbol
         @test sd[2001Q2, (:a, :b)] isa NamedTuple
-        let foo = sd[2001Q2:2002Q1, (:a, :b)] 
+        let foo = sd[2001Q2:2002Q1, (:a, :b)]
             @test foo isa SimData
-            @test size(foo) == (4, 2) 
+            @test size(foo) == (4, 2)
             @test firstdate(foo) == 2001Q2
         end
         @test_throws BoundsError sd[1999Q1, (:a,)]
@@ -101,7 +101,7 @@
         @test similar(sd) isa typeof(sd)
         @test_throws BoundsError sd[1999Q1:2000Q4] = zeros(8, 2)
         @test_throws BoundsError sd[2004Q1:2013Q4, [:a, :b]]
-        # setindex with two 
+        # setindex with two
         sd[2001Q1, (:b,)] = 3.5
         @test sd[5,2] == 3.5
         sd[2000Q1:2001Q4, (:b,)] = 3.7

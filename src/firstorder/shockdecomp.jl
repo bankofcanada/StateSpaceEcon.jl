@@ -71,7 +71,7 @@ function shockdecomp(model::Model, plan::Plan, exog_data::SimData;
     SD_RHS = zeros(S.nbck + S.nfwd, nrhs)
     SD_EX = zeros(S.nex, S.nex)
 
-    # tnow is the Int index corresponding to the current period 
+    # tnow is the Int index corresponding to the current period
     tnow = model.maxlag
     # prepare initial conditions (only bck_t are used)
     for ind in S.ibck
@@ -117,7 +117,7 @@ function shockdecomp(model::Model, plan::Plan, exog_data::SimData;
         #    otherwise, the contribution is already in RHS, so magic_coef is set to 1.0 to take it into account.
 
 
-        # solve 
+        # solve
         # for shocked
         ldiv!(view(S.sol_t, S.ien), sd.MAT_n, S.RHS)
         # for contributions

@@ -106,7 +106,7 @@ using JLD2
     result3fo = shockdecomp(m, p, exog_data3; solver=:firstorder)
     @test compare(result3, result3fo; ignoremissing=true, atol=2^10 * eps(), quiet=true)
 
-    # additive for linearized model 
+    # additive for linearized model
     exog_data4 = copy(exog_data3)
     exog_data4[first(rng), m.shocks] .+= 0.1
     result4 = shockdecomp(m, p, exog_data4; control=result3.s, variant=:linearize, fctype=fcnatural)

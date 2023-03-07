@@ -15,8 +15,8 @@ end
 struct VarMaps
     # map of model variables to their indexes in the model
     vi::LittleDict{Symbol,Int}
-    nfwd::Int  # number of variables classified as forward looking 
-    nbck::Int  # number of variables classified as backward looking 
+    nfwd::Int  # number of variables classified as forward looking
+    nbck::Int  # number of variables classified as backward looking
     nex::Int   # number of variables classified as exogenous (includes shocks + @exog)
     oex::Int   # offset of exogenous class in the global indexing
     # maps of first-order variables by class : ind => (var.name, lag)
@@ -35,14 +35,14 @@ end
 
 function VarMaps(model::Model)
     #
-    # Precompute the index of each model variable 
+    # Precompute the index of each model variable
     # Not related to first-order solver, just so we don't have to call indexin() all the time
     #
     vi = LittleDict{Symbol,Int}(
         var.name => ind for (ind, var) in enumerate(model.allvars)
     )
     #
-    # define variables for lags and leads more than 1 
+    # define variables for lags and leads more than 1
     # also categorize variables as fwd, bck, and ex
     #
     fwd_vars = Tuple{Symbol,Int}[]
@@ -159,7 +159,7 @@ function fill_fosystem!(sys::FirstOrderSystem, JAC::SparseMatrixCSC, model::Mode
             fwd_i = get(vm.fwd_inds, (var, tt - 1), nothing)
             FWD[eqind, fwd_i] = val
         else # tt == 0
-            # could be either or both; 
+            # could be either or both;
             bck_i = get(vm.bck_inds, (var, 0), nothing)
             if bck_i !== nothing
                 # prefer to treat it as bck_var, if both
@@ -209,7 +209,7 @@ struct FirstOrderSD
     vm::VarMaps
     sys::FirstOrderSystem
     qz::QZData
-    # various matrices 
+    # various matrices
     RbyZbb::Matrix{Float64}
     MAT::Matrix{Float64}
     # precomputed for empty plan
@@ -276,11 +276,11 @@ function first_order_system(qz::QZData, EX::Matrix{Float64}, nbck::Int, nfwd::In
 
     ### fill the backward-looking rows
     MAT[1:nbck, 1:nbck] = Sbb / Zbb
-    # MAT[1:nbck, nbck .+(1:nfwd)] .= 0  # already zero 
+    # MAT[1:nbck, nbck .+(1:nfwd)] .= 0  # already zero
     MAT[1:nbck, oex.+(1:nex)] = QEX[1:nbck, :] - (Tbf - Tbb * (Zbb \ Zbf)) * TiXf
 
     ### fill the forward-looking rows
-    # MAT[nbck .+ (1:nfwd), 1:nbck] .= 0  # already zero 
+    # MAT[nbck .+ (1:nfwd), 1:nbck] .= 0  # already zero
     MAT[nbck.+(1:nfwd), nbck.+(1:nfwd)] = Zff'
     MAT[nbck.+(1:nfwd), oex.+(1:nex)] = TiXf
 

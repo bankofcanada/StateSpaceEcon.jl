@@ -63,7 +63,7 @@ function _presolve_equations!(eqns, mask, values, method, verbose, tol)
             unsolved = .!mask[sseqn.vinds]
             nunsolved = sum(unsolved)
             if nunsolved == 0
-                # all variables are solved, yet equation is not marked solved. 
+                # all variables are solved, yet equation is not marked solved.
                 # check if equation is satisfied
                 eqns_resid[eqn_idx] = R = sseqn.eval_resid(values[sseqn.vinds])
                 # mark it solved either way, but issue a warning if residual is not zero

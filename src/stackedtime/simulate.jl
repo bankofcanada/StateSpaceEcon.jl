@@ -22,8 +22,8 @@ Solve the simulation problem.
   * `verbose` - whether or not to print progress information.
   * `sparse_solver` (optional) - a function called to solve the linear system A
     x = b for x. Defaults to A\\b
-  * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a 
-    search along the descent direction for a sufficient decrease in f. It will 
+  * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a
+    search along the descent direction for a sufficient decrease in f. It will
     do this at each iteration. Default is `false`.
 
 """
@@ -260,8 +260,8 @@ function simulate(m::Model,
             end
         else
             # when expectation_horizon is not given,
-            # the first and last simulations use the true 
-            # simulation range and final condition, while the intermediate 
+            # the first and last simulations use the true
+            # simulation range and final condition, while the intermediate
             # simulations use expectation_horizon steps with fcnatural
             if expectation_horizon == 0
                 expectation_horizon = length(sim)
@@ -273,7 +273,7 @@ function simulate(m::Model,
             nterm = length(term)
             # first simulation
             let t = t0
-                # first run is with the full range, the true fctype, 
+                # first run is with the full range, the true fctype,
                 # and only the first period is imposed
                 exog_inds = p_unant[t, Val(:inds)]
                 psim = Plan(m, t:T)
@@ -299,8 +299,8 @@ function simulate(m::Model,
             for t in sim[2:end]
                 exog_inds = p_unant[t, Val(:inds)]
                 # we need to run a simulation if a variable is exogenous, or if a shock value is not zero
-                # these intermediate simulations are always with fcnatural, 
-                #       have length equal to expectation_horizon and 
+                # these intermediate simulations are always with fcnatural,
+                #       have length equal to expectation_horizon and
                 #       only the first period is imposed
                 if (maximum(abs, x[t, exog_inds] .- exog_unant[t, exog_inds]) < tol) #= && (exog_inds == shkinds) =#
                     continue
@@ -322,7 +322,7 @@ function simulate(m::Model,
 
                 setexog!(psim1, t0, exog_inds)
                 update_plan!(sdata, m, psim1)
-                # note that the range always goes from 0 to expectation_horizon-1, 
+                # note that the range always goes from 0 to expectation_horizon-1,
                 # so we need to add t in order to get the correct set of rows of x
                 sim_range = t .+ UnitRange{Int}(psim.range)
                 xx = view(x, sim_range, :)

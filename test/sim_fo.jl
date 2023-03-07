@@ -229,7 +229,7 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
     p = Plan(m, rng)
     exog = steadystatedata(m, p)
     exog[begin:first(rng)-1, vars] = rand(m.maxlag, m.nvars)
-    # zero shocks 
+    # zero shocks
     ref = shockdecomp(m, p, exog; solver, fctype)
     for v in vars, s in shks
         @test norm(ref.sd[v][:, s], Inf) < atol

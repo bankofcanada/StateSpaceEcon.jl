@@ -89,7 +89,7 @@ function Plan(model::Model, range::AbstractUnitRange)
 end
 
 #######################################
-# AbstractVector interface 
+# AbstractVector interface
 
 Base.size(p::Plan) = size(p.range)
 Base.axes(p::Plan) = (p.range,)
@@ -221,7 +221,7 @@ function Base.show(io::IO, p::Plan)
 end
 
 #######################################
-# export and import Plan instances 
+# export and import Plan instances
 
 export exportplan, importplan
 

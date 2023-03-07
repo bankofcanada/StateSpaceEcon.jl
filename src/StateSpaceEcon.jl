@@ -30,7 +30,7 @@ const _solvers = LittleDict{Symbol, Module}(
     :firstorder => FirstOrderSolver
 )
 
-function getsolvermodule(solvername::Symbol) 
+function getsolvermodule(solvername::Symbol)
     SolverModule = get(_solvers, solvername, nothing)
     if SolverModule === nothing
         error(ArgumentError("Unknown solver :$solvername."))

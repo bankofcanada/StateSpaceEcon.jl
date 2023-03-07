@@ -20,7 +20,7 @@ the form of listing all bad equations and their residuals.
 
 ### Options
 Standard options (default values from `model.options`)
-  * `verbose` 
+  * `verbose`
   * `tol` - an equation is considered satisfied if its residual, in absolute
     value, is smaller than this number.
 
@@ -64,7 +64,7 @@ export diagnose_sstate
 Run diagnostics on the steady state of the given model. If `point` is not given,
 then we check the steady state solution stored inside the given model.
 
-Return a tuple of "bad" equations and "bad" variables. 
+Return a tuple of "bad" equations and "bad" variables.
 
 The set of "bad" equations is one that is inconsistent, i.e. there is no
 solution. This might happen if the system is overdetermined.
@@ -80,7 +80,7 @@ steady state constraints until you get a unique solution. See
 """
 diagnose_sstate(model::Model) = diagnose_sstate(model.sstate.values, model)
 function diagnose_sstate(point::AbstractVector{Float64}, model::Model)
-    tol = model.options.tol 
+    tol = model.options.tol
     rr, jj = global_SS_RJ(point, model)
     neqns, nvars = size(jj)
     ff = qr([jj Matrix(I, neqns, neqns); zeros(neqns, nvars) Matrix(I, neqns, neqns)], Val(true))

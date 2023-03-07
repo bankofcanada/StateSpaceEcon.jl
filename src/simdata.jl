@@ -84,7 +84,7 @@ data2array(simdata::SimData, vars, range; copy=false) = copy ? Base.copy(rawdata
     data2workspace(data; copy=false)
     data2workspace(data, model, plan; copy=false)
     data2workspace(data, vars, range; copy=false)
-    
+
 Convert a [`SimData`](@ref) to a [`Workspace`](@ref TimeSeriesEcon.Workspace).
 """
 function data2workspace end
