@@ -274,9 +274,9 @@ function update_plan!(sd::StackedTimeSolverData, model::Model, plan::Plan; chang
                 append!(JJ, JJvar)
                 append!(VV, VVvar)
             end
-            # Construct the sparse matrix
-            sd.CiSc .= sparse(II, JJ, VV, NTFC * sd.NU, size(sd.J, 1))
         end
+        # Construct the sparse matrix
+        sd.CiSc .= sparse(II, JJ, VV, NTFC * sd.NU, size(sd.J, 1))
         # cached lu is no longer valid, since active columns have changed
         sd.J_factorized[] = nothing
     end
