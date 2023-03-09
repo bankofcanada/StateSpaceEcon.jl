@@ -5,6 +5,8 @@
 # All rights reserved.
 ##################################################################################
 
+USE_PARDISO_FOR_LU = true
+
 """
     StackedTimeSolverData
 
@@ -68,7 +70,7 @@ function var_CiSc end
 
 """
     assign_fc!(x::Vector, exog::Vector, vind::Int, sd::StackedTimeSolverData, fc::FinalCondition)
-    
+
 Applying the final condition `fc` for variable with index `vind`. Exogenous data
 is provided in `exog` and stacked time solver data in `sd`. This function
 updates the solution vector `x` in place and returns `x`.
@@ -84,7 +86,7 @@ function assign_fc! end
 #######
 
 @inline function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCNone)
-    # No Jacobian correction 
+    # No Jacobian correction
     return Dict{Int,Vector{Float64}}()
 end
 
@@ -96,7 +98,7 @@ end
 #######
 
 @inline function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCGiven)
-    # No Jacobian correction 
+    # No Jacobian correction
     return Dict{Int,Vector{Float64}}()
 end
 
@@ -111,7 +113,7 @@ end
 #######
 
 @inline function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCMatchSSLevel)
-    # No Jacobian correction 
+    # No Jacobian correction
     return Dict{Int,Vector{Float64}}()
 end
 
@@ -392,7 +394,7 @@ function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{
     # We also need the times of the final conditions
     push!(TT, term)
 
-    # 
+    #
     exog_mask = falses(nunknowns * NT)
     # Initial conditions are set as exogenous values
     exog_mask[vec(LI[init, :])] .= true
@@ -418,7 +420,7 @@ end
 """
     assign_exog_data!(x::Matrix, exog::Matrix, sd::StackedTimeSolverData)
 
-Assign the exogenous points into `x` according to the plan with which `sd` was created using 
+Assign the exogenous points into `x` according to the plan with which `sd` was created using
 exogenous data from `exog`.  Also call [`assign_final_condition!`](@ref).
 
 !!! warning
@@ -434,7 +436,7 @@ end
 """
     assign_final_condition!(x::Matrix, exog::Matrix, sd::StackedTimeSolver)
 
-Assign the final conditions into `x`. The final condition types for the different variables of the model 
+Assign the final conditions into `x`. The final condition types for the different variables of the model
 are stored in the the solver data `sd`. `exog` is used for [`fcgiven`](@ref).
 
 !!! warning
@@ -464,7 +466,7 @@ function stackedtime_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Floa
     return res
 end
 
-#= disable 
+#= disable
 
 # this is not necessary with log-transformed variables
 # we keep it because it might be necessary for other transformations in the future.
@@ -571,7 +573,7 @@ function update_CiSc!(x, sd, ::Val{fcnatural})
         end
     end
     return nothing
-end 
+end
 =#
 
 
@@ -615,9 +617,9 @@ function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{
         end
         try
             # compute lu decomposition of the active part of J and cache it.
-            sd.J_factorized[] = sd.factorization == :qr ? qr(JJ) : lu(JJ)
+            sd.J_factorized[] = sd.factorization == :qr ? qr(JJ) : _factorize(JJ)
         catch e
-            if e isa SingularException
+            if e isa SingularException || e isa Pardiso.PardisoException || e isa Pardiso.PardisoPosDefException
                 @error("The system is underdetermined with the given set of equations and final conditions.")
             end
             debugging && return RES, deepcopy(JJ)
@@ -627,6 +629,49 @@ function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{
     return RES, sd.J_factorized[]
 end
 
+using Pardiso
+
+mutable struct PardisoFactorization
+    ps::MKLPardisoSolver
+    J::SparseMatrixCSC
+end
+
+# See https://github.com/JuliaSparse/Pardiso.jl/blob/master/examples/exampleunsym.jl
+function pardiso_factorize(JJ)
+    ps = MKLPardisoSolver()
+    set_matrixtype!(ps, Pardiso.REAL_NONSYM)
+    pardisoinit(ps)
+    fix_iparm!(ps, :N)
+    # See https://www.intel.com/content/www/us/en/develop/documentation/onemkl-developer-reference-c/top/sparse-solver-routines/onemkl-pardiso-parallel-direct-sparse-solver-iface/pardiso-iparm-parameter.html
+    set_iparm!(ps, 2, 2) # The parallel (OpenMP) version of the nested dissection algorithm.
+    JJ_pardiso = get_matrix(ps, JJ, :N)
+    set_phase!(ps, Pardiso.ANALYSIS)
+    pardiso(ps, JJ_pardiso, Float64[])
+    set_phase!(ps, Pardiso.NUM_FACT)
+    pardiso(ps, JJ, Float64[])
+    pf = PardisoFactorization(ps, JJ_pardiso)
+    finalizer(pf) do x
+        set_phase!(x.ps, Pardiso.RELEASE_ALL)
+        pardiso(x.ps)
+    end
+end
+
+function pardiso_solve!(ps::PardisoFactorization, x::AbstractArray)
+    ps, J = ps.ps, ps.J
+    set_phase!(ps, Pardiso.SOLVE_ITERATIVE_REFINE)
+    X = similar(x) # Solution is stored in X
+    pardiso(ps, X, J, x)
+    copy!(x, X)
+end
+
+
+function _factorize(JJ)
+    if USE_PARDISO_FOR_LU
+        return pardiso_factorize(JJ)
+    else
+        return lu(JJ)
+    end
+end
 """
     assign_update_step!(x::Array, lambda, dx, sd::StackedTimeSolverData)
 

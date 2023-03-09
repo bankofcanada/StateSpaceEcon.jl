@@ -37,7 +37,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     verbose::Bool=getoption(m, :verbose, false),
     maxiter::Int=getoption(m, :maxiter, 20),
     tol::Float64=getoption(m, :tol, 1e-12),
-    sparse_solver::Function=(A, b) -> A \ b,
+    sparse_solver::Function=(A, b) -> sparse_solve(A, b),
     linesearch::Bool=getoption(m, :linesearch, false),
     fctype::FinalCondition=getoption(m, :fctype, fcgiven),
     _debug=false
@@ -196,7 +196,12 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
         end
 
         SDMAT = Matrix(gdata.J * sparse(SDI, SDJ, -SDV, size(gdata.J, 2), length(exog_inds)))
-        ldiv!(gdata.J_factorized[], SDMAT)
+        factor = gdata.J_factorized[]
+        if factor isa PardisoFactorization
+            pardiso_solve!(factor, SDMAT)
+        else
+            ldiv!(factor, SDMAT)
+        end
 
     end
 
