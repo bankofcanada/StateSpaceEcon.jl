@@ -616,8 +616,16 @@ function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{
             JJ = JAC[:, sd.solve_mask]
         end
         try
+            # Check if sparsity pattern has changed, if not, we can reuse the symbolic factorization
+            # if Pardiso is used
+            psf = nothing
+            if sd.J_factorized[] isa PardisoFactorization
+                J = sd.J_factorized[].J
+                same_sparsity_pattern = (J.colptr == JJ.colptr && J.rowval == JJ.rowval)
+                same_sparsity_pattern && (psf = sd.J_factorized[])
+            end
             # compute lu decomposition of the active part of J and cache it.
-            sd.J_factorized[] = sd.factorization == :qr ? qr(JJ) : _factorize(JJ)
+            sd.J_factorized[] = sd.factorization == :qr ? qr(JJ) : _factorize(JJ; psf)
         catch e
             if e isa SingularException || e isa Pardiso.PardisoException || e isa Pardiso.PardisoPosDefException
                 @error("The system is underdetermined with the given set of equations and final conditions.")
@@ -634,26 +642,44 @@ using Pardiso
 mutable struct PardisoFactorization
     ps::MKLPardisoSolver
     J::SparseMatrixCSC
+    PardisoFactorization(ps::MKLPardisoSolver) = new(ps)
 end
 
-# See https://github.com/JuliaSparse/Pardiso.jl/blob/master/examples/exampleunsym.jl
-function pardiso_factorize(JJ)
+function pardiso_init()
     ps = MKLPardisoSolver()
     set_matrixtype!(ps, Pardiso.REAL_NONSYM)
     pardisoinit(ps)
     fix_iparm!(ps, :N)
     # See https://www.intel.com/content/www/us/en/develop/documentation/onemkl-developer-reference-c/top/sparse-solver-routines/onemkl-pardiso-parallel-direct-sparse-solver-iface/pardiso-iparm-parameter.html
     set_iparm!(ps, 2, 2) # The parallel (OpenMP) version of the nested dissection algorithm.
-    JJ_pardiso = get_matrix(ps, JJ, :N)
-    set_phase!(ps, Pardiso.ANALYSIS)
-    pardiso(ps, JJ_pardiso, Float64[])
-    set_phase!(ps, Pardiso.NUM_FACT)
-    pardiso(ps, JJ, Float64[])
-    pf = PardisoFactorization(ps, JJ_pardiso)
-    finalizer(pf) do x
+    psf = PardisoFactorization(ps)
+    finalizer(psf) do x
         set_phase!(x.ps, Pardiso.RELEASE_ALL)
         pardiso(x.ps)
     end
+    return psf
+end
+
+
+# See https://github.com/JuliaSparse/Pardiso.jl/blob/master/examples/exampleunsym.jl
+function pardiso_factorize(JJ; psf::Union{Nothing, PardisoFactorization})
+    reuse_ps = psf !== nothing
+    if psf === nothing
+        psf = pardiso_init()
+    end
+
+    ps = psf.ps
+    psf.J = get_matrix(ps, JJ, :N)
+
+    # No need to run the analysis phase if the sparsity pattern is unchanged
+    # and we reuse the same solver object
+    if !reuse_ps
+        set_phase!(ps, Pardiso.ANALYSIS)
+        pardiso(ps, psf.J, Float64[])
+    end
+    set_phase!(ps, Pardiso.NUM_FACT)
+    pardiso(ps, psf.J, Float64[])
+    return psf
 end
 
 function pardiso_solve!(ps::PardisoFactorization, x::AbstractArray)
@@ -665,9 +691,9 @@ function pardiso_solve!(ps::PardisoFactorization, x::AbstractArray)
 end
 
 
-function _factorize(JJ)
+function _factorize(JJ; psf)
     if USE_PARDISO_FOR_LU
-        return pardiso_factorize(JJ)
+        return pardiso_factorize(JJ; psf)
     else
         return lu(JJ)
     end
