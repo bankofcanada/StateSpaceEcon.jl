@@ -39,10 +39,15 @@
 
     # baseline that is not the steady state
     db_1 = copy(db_ss)
-    db_1 .= db_1 .+ MVTSeries(srng, m.shocks, rand)
+    shk_1 = MVTSeries(srng, m.shocks, rand)
+    db_1 .= db_1 .+ shk_1
+    
+    @test simulate(m, plan, db_1; anticipate=false) ≈  stoch_simulate(m, plan, db_ss, shk_1)[1]
+    @test simulate(m, plan, db_1; anticipate=false) ≈  stoch_simulate(m, plan, rawdata(db_ss), shk_1)[1]
+    @test simulate(m, plan, db_1; anticipate=false) ≈  stoch_simulate(m, plan, Workspace(; pairs(db_ss)...), shk_1)[1]
+    
     db_1 = simulate(m, plan, db_1; anticipate=true)
-
-    res = stoch_simulate(m, plan, db_1, shk_sample)
+    res = stoch_simulate(m, plan, db_1, shk_sample; check=true)
     for (r, s) in zip(res, shk_sample)
         tmp = copy(db_1)
         tmp .= tmp .+ s
@@ -53,5 +58,12 @@
         # it's mixed
         @test (r ≈ simulate(m, plan, db_1, plan, tmp))
     end
+
+    # try with Workspace
+    # shk_w = Workspace(Symbol(:s, i) => shk_sample[i] for i in eachindex(shk_sample))
+    # res_w = stoch_simulate(m, plan, db_1, shk_w)
+    # for i in eachindex(shk_sample)
+    #     @test res_w[Symbol(:s, i)] ≈ res[i]
+    # end
 
 end
