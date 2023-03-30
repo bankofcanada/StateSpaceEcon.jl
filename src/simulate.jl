@@ -202,10 +202,11 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
         shocks = [shocks]
     end
     # are shocks of the appropriate type
-    if (shocks isa AbstractVector || shocks isa Workspace || shocks isa AbstractDict) && (eltype(shocks) <: SimData)
-        nothing # we're okay
+    if ((shocks isa AbstractVector) && (eltype(shocks) <: SimData)) ||
+       ((shocks isa Workspace) && (Base.promote_typeof(values(shocks)...) <: SimData))
+        nothing
     else
-        throw(ArgumentError("Expected the shocks argument to be a collection of SimData, not $(typeof(shocks))."))
+        throw(ArgumentError("Expected the shocks argument to be Vector or Workspace of SimData, not $(typeof(shocks))."))
     end
     ##### dispatch
     getsolvermodule(solver).stoch_simulate(m, p, baseline[p.range], shocks; kwargs...)

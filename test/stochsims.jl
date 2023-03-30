@@ -60,10 +60,10 @@
     end
 
     # try with Workspace
-    # shk_w = Workspace(Symbol(:s, i) => shk_sample[i] for i in eachindex(shk_sample))
-    # res_w = stoch_simulate(m, plan, db_1, shk_w)
-    # for i in eachindex(shk_sample)
-    #     @test res_w[Symbol(:s, i)] ≈ res[i]
-    # end
+    shk_w = Workspace(Symbol.(:s, eachindex(shk_sample)) .=> shk_sample)
+    res_w = stoch_simulate(m, plan, db_1, shk_w)
+    for i in eachindex(shk_sample)
+        @test res_w[Symbol(:s, i)] ≈ res[i]
+    end
 
 end

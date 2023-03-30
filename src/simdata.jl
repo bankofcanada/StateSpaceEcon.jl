@@ -171,6 +171,7 @@ isfailed(f::SimData)::Bool = false
 isfailed(f::Workspace)::Bool = false
 isfailed(f)::Bool = throw(ArgumentError("Unexpected $(typeof(f)) argument."))
 const MaybeSimData = Union{<:SimData,SimFailed}
+Base.promote_rule(T::Type{<:SimData}, S::Type{<:SimFailed}) = Union{T, S}::Type
 export SimFailed
 export isfailed
 export MaybeSimData

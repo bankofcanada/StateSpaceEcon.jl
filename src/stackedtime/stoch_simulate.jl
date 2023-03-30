@@ -7,21 +7,8 @@
 
 # version of simulate for stochastic simulations 
 
-function _make_result_container(shocks::Workspace, basedata)
-    w = Workspace()
-    for key in keys(shocks)
-        push!(w, key => copy(basedata))
-    end
-    return w
-end
-
-function _make_result_container(shocks::Vector, basedata)
-    vec = similar(shocks, MaybeSimData)
-    for i in eachindex(vec)
-        vec[i] = copy(basedata)
-    end
-    return vec
-end
+#  NOTE: This requires TimeSeriesEcon v0.5.1 where map(func, ::Workspace) returns a Workspace.
+_make_result_container(shocks, basedata) = map(_ -> copy(basedata), shocks)
 
 function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
     check::Bool=false,
@@ -41,7 +28,7 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
     shkrng = mapreduce(rangeof, union, values(shocks))
 
     # are all shocks in the same range
-    same_range = all(==(shkrng) ∘ rangeof, shocks)
+    same_range = all(==(shkrng) ∘ rangeof, values(shocks))
 
     # make sure the plan range contains shkrng 
     if firstdate(p) + m.maxlag > first(shkrng)
@@ -123,7 +110,7 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
             isfailed(result) && continue
 
             # skip if t is outside the range of shock
-            same_range || firstdate(shock) ≤ t ≤ lastdate(shock) || continue
+            same_range || (firstdate(shock) ≤ t ≤ lastdate(shock)) || continue
 
             verbose && @info "Simulating $skey over $(t:sim_end)."
 
@@ -158,7 +145,7 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
         results[key] = inverse_transform(result, m)
     end
 
-    return [results...,]
+    return results
 end
 
 

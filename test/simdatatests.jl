@@ -147,3 +147,28 @@ end
         end
     end
 end
+
+@testset "simdata mv" begin
+    data = SimData(2020Q1:2030Q1-1, (:a, :b, :c), randn)
+    a = ModelVariable(:a)
+    b = ModelVariable(:b)
+    c = ModelVariable(:c)
+
+    @test data[:a] === data[a]
+    @test data[(:a, :b)] == data[(a, b)]
+    @test (data[c] = fill(1, size(data.c)); all(data.c .== 1))
+    @test (data[[a,b]] = fill(2, (size(data,1),2)); all(data.a .== 2) && all(data.b .== 2))
+    @test @view(data[:, a]) == @view(data[:, :a])
+end
+
+@testset "SimFailed" begin
+    foo = SimData(2020Q1, (:a, :b, :c), randn(10,3))
+    bar = SimFailed(21)
+    @test isfailed(foo) == false
+    @test isfailed(bar) == true
+    @test isfailed(Workspace()) == false
+    @test eltype([foo, bar]) <: MaybeSimData
+    @test_throws SimFailed throw(bar)
+    @test isfailed.([foo, bar, foo]) == [false, true, false]
+end
+
