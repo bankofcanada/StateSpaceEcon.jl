@@ -141,7 +141,7 @@ end
 
 end
 
-# include("simdatatests.jl")
+include("simdatatests.jl")
 include("sstests.jl")
 
 @testset "misc" begin
