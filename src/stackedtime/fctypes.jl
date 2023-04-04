@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -128,7 +128,7 @@ Update the final condition for the given `variable` in the given `fc_vector` to
 """
 function setfc! end
 function setfc!(fc_vec::AbstractVector{FinalCondition}, m::Model, v::Union{ModelVariable,Symbol}, new_fc::FinalCondition)
-    vi = ModelBaseEcon._index_of_var(v, m.allvars)
+    vi = get(ModelBaseEcon.get_var_to_idx(m), v, nothing)
     if vi === nothing
         throw(ArgumentError("Unknown variable $(Symbol(v))."))
     end
