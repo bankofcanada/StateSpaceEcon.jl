@@ -9,6 +9,13 @@
     return model
 end
 
+function sparse_solve(A, b)
+    if A isa PardisoFactorization
+        pardiso_solve!(A, copy(b))
+    else
+        A \ b
+    end
+end
 """
     sim_nr!(x, sd, maxiter, tol, verbose [, sparse_solver [, linesearch]])
 
@@ -29,7 +36,7 @@ Solve the simulation problem.
 """
 function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     maxiter::Int64, tol::Float64, verbose::Bool,
-    sparse_solver::Function=(A, b) -> A \ b, linesearch::Bool=false)
+    sparse_solver::Function=(A, b) -> sparse_solve(A, b), linesearch::Bool=false)
     for it = 1:maxiter
         Fx, Jx = stackedtime_RJ(x, x, sd)
         nFx = norm(Fx, Inf)
@@ -106,7 +113,7 @@ function simulate(m::Model,
     fctype=getoption(m, :fctype, fcgiven),
     expectation_horizon::Union{Nothing,Int64}=nothing,
     #= Newton-Raphson options =#
-    sparse_solver::Function=(A, b) -> A \ b,
+    sparse_solver::Function=(A, b) -> sparse_solve(A, b),
     linesearch::Bool=getoption(m, :linesearch, false),
     warn_maxiter::Bool=getoption(getoption(m, :warn, Options()), :maxiter, false)
 )
