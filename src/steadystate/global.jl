@@ -14,11 +14,11 @@ function inadmissible_error(eqind, eqn, point, val)
     varsargs = (; (v => a for (v, a) in zip(vars, args))...)
     params = (; _getparams(eqn)...)
     if typeof(val) <: AbstractArray
-        @error "Singular gradient in steady state equation $eqind: $eqn" params varsargs val
-        error("Singular gradient in steady state equation $eqind: $eqn")
+        @error "Singular gradient in steady state equation $(eqn.name) => $eqn" params varsargs val
+        error("Singular gradient in steady state equation $(eqn.name) => $eqn")
     else
-        @error "Inadmissible point in steady state equation $eqind: $eqn" params varsargs val
-        error("Inadmissible point in steady state equation $eqind: $eqn")
+        @error "Inadmissible point in steady state equation $(eqn.name)) => $eqn" params varsargs val
+        error("Inadmissible point in steady state equation $(eqn.name) => $eqn")
     end
 end
 
