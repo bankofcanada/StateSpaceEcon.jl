@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -259,7 +259,7 @@ function simulate(m::Model,
                 end
             end
         else
-            # when expectation_horizon is not given,
+            # when expectation_horizon is given,
             # the first and last simulations use the true 
             # simulation range and final condition, while the intermediate 
             # simulations use expectation_horizon steps with fcnatural

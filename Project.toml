@@ -1,7 +1,7 @@
 name = "StateSpaceEcon"
 uuid = "e4c825b0-b65c-11ea-0b5a-6176b64e7b7f"
 authors = ["Atai Akunov <aakunov@bankofcanada.ca>", "Boyan Bejanov <bbejanov@bankofcanada.ca>", "Nicholas Labelle St-Pierre <labs@bankofcanada.ca>"]
-version = "0.4"
+version = "0.4.1"
 
 [deps]
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
@@ -20,9 +20,9 @@ TimeSeriesEcon = "8b6756d2-c55c-11ea-2998-5f67ea17da60"
 DiffResults = "1.0"
 ForwardDiff = "0.10"
 JLD2 = "0.4"
-ModelBaseEcon = "0.5"
+ModelBaseEcon = "0.5.2"
 Suppressor = "0.2"
-TimeSeriesEcon = "0.5"
+TimeSeriesEcon = "0.5.1"
 julia = "1.7"
 
 [extras]

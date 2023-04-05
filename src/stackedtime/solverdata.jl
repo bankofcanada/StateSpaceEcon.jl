@@ -49,7 +49,7 @@ struct StackedTimeSolverData # <: AbstractSolverData
     solve_mask::AbstractVector{Bool}
     "Cache the factorization of the active part of J"
     J_factorized::Ref{Any}
-    "Set to one of :qr or :lm"
+    "Set to one of :qr or :lu"
     factorization::Symbol
 end
 
@@ -241,8 +241,9 @@ function update_plan!(sd::StackedTimeSolverData, model::Model, plan::Plan; chang
         # Update the Jacobian correction matrix, if exogenous plan changed
         II, JJ, VV = Int[], Int[], Float64[]
         last_sim_t = last(sim)
+        var_to_idx = ModelBaseEcon.get_var_to_idx(model)
         for (vi, (v, fc)) in enumerate(zip(unknowns, sd.FC))
-            @assert vi == ModelBaseEcon._index_of_var(v, unknowns)
+            @assert vi == var_to_idx[v]
             # var_CiSc returns a Dict with keys equal to the column offset relative to last_sim_t
             # and values containing the column values.
             for (offset, values) in var_CiSc(sd, v, fc)
@@ -274,9 +275,9 @@ function update_plan!(sd::StackedTimeSolverData, model::Model, plan::Plan; chang
                 append!(JJ, JJvar)
                 append!(VV, VVvar)
             end
-            # Construct the sparse matrix
-            sd.CiSc .= sparse(II, JJ, VV, NTFC * sd.NU, size(sd.J, 1))
         end
+        # Construct the sparse matrix
+        sd.CiSc .= sparse(II, JJ, VV, NTFC * sd.NU, size(sd.J, 1))
         # cached lu is no longer valid, since active columns have changed
         sd.J_factorized[] = nothing
     end
@@ -321,6 +322,7 @@ StackedTimeSolverData(model::Model, plan::Plan, fctype::FinalCondition, variant:
 function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{FinalCondition}, variant::Symbol=model.options.variant)
 
     evaldata = getevaldata(model, variant)
+    var_to_idx = ModelBaseEcon.get_var_to_idx(model)
 
     NT = length(plan.range)
     init = 1:model.maxlag
@@ -366,7 +368,7 @@ function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{
     # Prep the Jacobian matrix
     neq = 0 # running counter of equations added to matrix
     # Model equations are the same for each sim period, just shifted according to t
-    Jblock = [ti + NT * (ModelBaseEcon._index_of_var(var, unknowns) - 1) for eqn in equations for (var, ti) in keys(eqn.tsrefs)]
+    Jblock = [ti + NT * (var_to_idx[var] - 1) for eqn in equations for (var, ti) in keys(eqn.tsrefs)]
     Iblock = [i for (i, eqn) in enumerate(equations) for _ in eqn.tsrefs]
     Tblock = -model.maxlag:model.maxlead
     for t in sim
