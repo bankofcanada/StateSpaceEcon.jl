@@ -29,6 +29,10 @@ import ..steadystatearray
 import ..SimData
 import ..rawdata
 
+import ..SimFailed
+import ..isfailed
+import ..MaybeSimData
+
 import ModelBaseEcon.hasevaldata
 import ModelBaseEcon.getevaldata
 import ModelBaseEcon.setevaldata!
@@ -41,6 +45,7 @@ include("stackedtime/misc.jl")
 include("stackedtime/solverdata.jl")
 include("stackedtime/simulate.jl")
 include("stackedtime/shockdecomp.jl")
+include("stackedtime/stoch_simulate.jl")
 
 end # module
 

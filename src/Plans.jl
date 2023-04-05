@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -97,13 +97,17 @@ Base.length(p::Plan) = length(p.range)
 Base.IndexStyle(::Plan) = IndexLinear()
 Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
 Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
+TimeSeriesEcon.rangeof(p::Plan) = p.range
 
-function Base.copyto!(dest::Plan,rng::AbstractUnitRange,scr::Plan)
+function Base.copyto!(dest::Plan, rng::AbstractUnitRange, scr::Plan)
     dest.varshks == scr.varshks || throw(ArgumentError("Both plans must have the same variables and shocks in the same order."))
     idx2 = axes(dest.exogenous, 2)  # same for both dest and scr
     copyto!(dest.exogenous, _offset(dest, rng), idx2, scr.exogenous, _offset(scr, rng), idx2)
+    return dest
 end
-Base.copyto!(dest::Plan,rng::MIT,scr::Plan) = Base.copyto!(dest,rng:rng,scr)
+
+Base.copyto!(dest::Plan, rng::MIT, scr::Plan) = Base.copyto!(dest, rng:rng, scr)
+Base.copyto!(dest::Plan, src::Plan) = Base.copyto!(dest, intersect(rangeof(dest), rangeof(src)), src)
 
 _offset(p::Plan{T}, idx::T) where {T<:MIT} = convert(Int, idx - first(p.range) + 1)
 _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where {T<:MIT} =
@@ -132,8 +136,9 @@ end
 # A range with a model returns a plan trimmed over that range and extended for initial and final conditions.
 Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}, m::Model) = p[UnitRange{MIT{Unit}}(rng), m]
 @inline function Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}, m::Model) where {T<:MIT}
-    rng = (rng.start-m.maxlag):(rng.stop+m.maxlead)
-    return p[rng]
+    # rng = (rng.start-m.maxlag):(rng.stop+m.maxlead)
+    # return p[rng]
+    copyto!(Plan(m, rng), rng, p)
 end
 
 Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize` and `endogenize` to alter plan.")
@@ -142,9 +147,17 @@ Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize
 # query the exo-end status of a variable
 
 @inline Base.getindex(p::Plan{T}, vars::Symbol...) where {T} = begin
-    var_inds = [p.varshks[v] for v in vars]
+    var_inds = Int[p.varshks[vars]...]
     Plan{T}(p.range, NamedTuple{(vars...,)}(eachindex(vars)), p.exogenous[:, var_inds])
 end
+
+@inline Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}, vars::Symbol...) where {T} = begin
+    rng.start < p.range.start && throw(BoundsError(p, rng.start))
+    rng.stop > p.range.stop && throw(BoundsError(p, rng.stop))
+    var_inds = Int[p.varshks[vars]...]
+    Plan{T}(rng, NamedTuple{(vars...,)}(eachindex(vars)), p.exogenous[_offset(p, rng), var_inds])
+end
+
 
 #######################################
 # Pretty printing
@@ -181,7 +194,7 @@ function Base.show(io::IO, p::Plan)
     limit = get(io, :limit, true)
     cp = collapsed_range(p)
     # find the longest string left of "=>" for padding
-    maxl = maximum(length("$k") for (k, v) in cp)
+    maxl = maximum(length ∘ string ∘ first, cp)
     if limit
         dcol = ncol - maxl - 6
     else
@@ -332,19 +345,12 @@ function importplan(io::IO)
     if m === nothing
         error("expected Variables: at the start of line 3, got ", line, ".")
     end
-    nt = let
-        nt = parse_namedtuple(m.captures[1], 3)
-        nms = collect(keys(nt))
-        inds = collect(nt)
-        if inds != 1:length(inds)
-            if Set(inds) != Set(1:length(inds))
-                error("indexes of variables on line 3 are not valid.")
-            end
-            tmp = Dict(i => n for (i, n) in zip(inds, nms))
-            nt = NamedTuple{((tmp[i] for i = 1:length(inds))...,)}(1:length(inds))
-        end
-        nt
+    nt = parse_namedtuple(m.captures[1], 3)
+    if Set(nt) != Set(1:length(nt))
+        error("Indexes of variables on line 3 are not valid.")
     end
+    # sort nt by its values (variable indexes)
+    nt = (; sort!(collect(pairs(nt)), by=last)...)
     # parse line 4.  Example "(X) = Exogenous, (-) = Endogenous
     line = readline(io)
     m = match(r"\((.+?)\) = Exogenous, \((.+?)\) = Endogenous:", line)
@@ -360,10 +366,13 @@ function importplan(io::IO)
     end
     _name_delim = m.captures[1]
     _range_delim = m.captures[3]
-    ranges = [parse_range(strip(str), true, 5) for str in split(m.captures[2], _range_delim; keepempty=false)]
-    # parse the rest of it
     p = Plan{MIT{freq}}(rng, nt, falses(length(rng), length(nt)))
-    ranges_inds = [[_offset(p, r)...] for r in ranges]
+    ranges_inds = Vector{Int}[]
+    for str in split(m.captures[2], _range_delim; keepempty=false)
+        r = parse_range(strip(str), true, 5)
+        push!(ranges_inds, [_offset(p, r);])
+    end
+    # parse the rest of it
     pat = Regex("\\s+(\\w+)\\s*$(_name_delim)\\s*(.*)")
     for i = 1:length(nt)
         line = readline(io)
@@ -416,7 +425,7 @@ end
 
 function parse_namedtuple(str, line=nothing)
     e = Meta.parse(str)
-    ans = Meta.isexpr(e, :tuple) && all(Meta.isexpr(ee, :(=)) for ee in e.args) ? eval(e) : nothing
+    ans = Meta.isexpr(e, :tuple) && all(Base.Fix2(Meta.isexpr, :(=)), e.args) ? eval(e) : nothing
     if !(ans isa NamedTuple{NAMES,NTuple{N,Int}} where {NAMES,N})
         error("expected NamedTuple, got ", str, line === nothing ? "." : " on line $line.")
     end
