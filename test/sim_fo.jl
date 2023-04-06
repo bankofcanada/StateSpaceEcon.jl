@@ -58,7 +58,7 @@ end
 end
 
 @testset "M.fo.unant" begin
-    run_fo_unant_tests(M.model)
+    run_fo_unant_tests(deepcopy(M.model))
 end
 
 module R
@@ -79,23 +79,23 @@ end
 @initialize model
 end
 @testset "R.fo.unant" begin
-    run_fo_unant_tests(R.model)
+    run_fo_unant_tests(deepcopy(R.model))
 end
 
 
 @using_example E2
 @testset "E2.fo.unant" begin
-    run_fo_unant_tests(E2.model)
+    run_fo_unant_tests(deepcopy(E2.model))
 end
 
 @using_example E3
 @testset "E3.fo.unant" begin
-    run_fo_unant_tests(E3.model)
+    run_fo_unant_tests(deepcopy(E3.model))
 end
 
 @using_example E6
 @testset "E6.fo.unant" begin
-    let m = E6.model
+    let m = deepcopy(E6.model)
         # set slopes to 0, otherwise we're not allowed to linearize
         m.p_dly = 0
         m.p_dlp = 0
@@ -130,7 +130,7 @@ function test_shockdecomp_firstorder(m, rng=1U:20U, fctype=fcslope)
 end
 
 @testset "shkdcmp.fo" begin
-    for m in (M.model, R.model)
+    for m in (deepcopy(M.model), deepcopy(R.model))
         m.rho = 0.6
         empty!(m.sstate.constraints)
         test_shockdecomp_firstorder(m)
@@ -138,11 +138,11 @@ end
         @steadystate m x = 6
         test_shockdecomp_firstorder(m, 1U:20U, fclevel)
     end
-    for m in (E2.model, E3.model)
+    for m in (deepcopy(E2.model), deepcopy(E3.model))
         empty!(m.sstate.constraints)
         test_shockdecomp_firstorder(m, 1U:500U)
     end
-    let m = E6.model
+    let m = deepcopy(E6.model)
         # set slopes to 0, otherwise we're not allowed to linearize
         m.p_dly = 0
         m.p_dlp = 0
@@ -188,7 +188,7 @@ end
 
 
 @testset "inidcmp.fo" begin
-    for m in (M.model, R.model)
+    for m in (deepcopy(M.model), deepcopy(R.model))
         m.rho = 0.6
         empty!(m.sstate.constraints)
         test_initdecomp_firstorder(m)
@@ -196,11 +196,11 @@ end
         @steadystate m x = 6
         test_initdecomp_firstorder(m)
     end
-    for m in (E2.model, E3.model)
+    for m in (deepcopy(E2.model), deepcopy(E3.model))
         empty!(m.sstate.constraints)
         test_initdecomp_firstorder(m)
     end
-    let m = E6.model
+    let m = deepcopy(E6.model)
         # set slopes to 0, otherwise we're not allowed to linearize
         m.p_dly = 0
         m.p_dlp = 0
@@ -313,7 +313,7 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
 end
 
 @testset "inidcmp.st" begin
-    for m in (M.model, R.model)
+    for m in (deepcopy(M.model), deepcopy(R.model))
         m.rho = 0.6
         empty!(m.sstate.constraints)
         test_initdecomp_stackedtime(m)
@@ -321,11 +321,11 @@ end
         @steadystate m x = 6
         test_initdecomp_stackedtime(m, fctype=fclevel)
     end
-    for m in (E2.model, E3.model)
+    for m in (deepcopy(E2.model), deepcopy(E3.model))
         empty!(m.sstate.constraints)
         test_initdecomp_stackedtime(m)
     end
-    let m = E6.model
+    let m = deepcopy(E6.model)
         # set slopes to 0, otherwise we're not allowed to linearize
         m.p_dly = 0
         m.p_dlp = 0

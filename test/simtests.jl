@@ -409,7 +409,7 @@ end
 end
 
 @testset "new.unant" begin
-    m = E1.model
+    m = deepcopy(E1.model)
     m.α = m.β = 0.5
 
     test_rng = 20Q1:22Q1

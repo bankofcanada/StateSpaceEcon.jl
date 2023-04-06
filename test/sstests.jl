@@ -5,9 +5,10 @@
 # All rights reserved.
 ##################################################################################
 
-empty!(E1.model.sstate.constraints)
+
 @testset "E1.sstate" begin
     let m = deepcopy(E1.model)
+        empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
         clear_sstate!(m)
@@ -51,9 +52,9 @@ empty!(E1.model.sstate.constraints)
     end
 end
 
-empty!(E1.model.sstate.constraints)
 @testset "E1.sstate, auto" begin
     let m = deepcopy(E1.model)
+        empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
         clear_sstate!(m)
@@ -91,9 +92,9 @@ empty!(E1.model.sstate.constraints)
     end
 end
 
-empty!(E1.model.sstate.constraints)
 @testset "E1.sstate, lm" begin
     let m = deepcopy(E1.model)
+        empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
         clear_sstate!(m)
@@ -131,9 +132,9 @@ empty!(E1.model.sstate.constraints)
     end
 end
 
-empty!(E2.model.sstate.constraints)
 @testset "E2.sstate" begin
     let m = deepcopy(E2.model)
+        empty!(m.sstate.constraints)
         clear_sstate!(m)
         sssolve!(m)
         @test check_sstate(m) == 0
@@ -241,7 +242,7 @@ end
 end
 
 @testset "SSTEST" begin
-    let m = SSTEST.model
+    let m = deepcopy(SSTEST.model)
         @test sum(issteady.(m.allvars)) == 2
         clear_sstate!(m)
         @test issssolved(m)
@@ -318,8 +319,8 @@ end
 end
 
 @testset "presolve, ssZeroSlope" begin
-    empty!(E1.model.sstate.constraints)
     let m = deepcopy(E1.model)
+        empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
         clear_sstate!(m)
@@ -328,8 +329,8 @@ end
         @test m.sstate.mask == [false, false, true, true]
     end
     
-    empty!(E1.model.sstate.constraints)
     let m = deepcopy(E1.model)
+        empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
         m.flags.ssZeroSlope = true

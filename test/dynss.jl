@@ -95,7 +95,7 @@ end
 
 @testset "dynss+" begin
     # tests to make sure that changes in parameter values are applied to steady state constraints correctly
-    local m = PC.model
+    local m = deepcopy(PC.model)
     m.sstate.values .= 0.0
     @test begin
         sssolve!(m, presolve=false)
