@@ -109,7 +109,7 @@ presolve_sstate!(model::Model; kwargs...) =
 presolve_sstate!(model::Model, mask::AbstractVector{Bool}, values::AbstractVector{Float64};
     verbose = model.verbose, tol = model.tol, _1dsolver = :bisect, method = _1dsolver) =
     _presolve_equations!(ModelBaseEcon.alleqns(model.sstate), mask, values, method, verbose, tol)
-presolve_sstate!(eqns::LittleDict{Symbol,SteadyStateEquation}, mask::AbstractVector{Bool}, values::AbstractVector{Float64};
+presolve_sstate!(eqns::OrderedDict{Symbol,SteadyStateEquation}, mask::AbstractVector{Bool}, values::AbstractVector{Float64};
     verbose = false, tol = 1e-12, _1dsolver = :bisect, method = _1dsolver) =
     _presolve_equations!(eqns, mask, values, method, verbose, tol)
 
