@@ -5,7 +5,7 @@
 # All rights reserved.
 ##################################################################################
 
-USE_PARDISO_FOR_LU = true
+USE_PARDISO_FOR_LU = false
 
 """
     StackedTimeSolverData
@@ -321,7 +321,7 @@ function make_BI(JMAT::SparseMatrixCSC{Float64,Int}, II::AbstractVector{<:Abstra
 end
 
 StackedTimeSolverData(model::Model, plan::Plan, fctype::FinalCondition, variant::Symbol=model.options.variant) = StackedTimeSolverData(model, plan, setfc(model, fctype), variant)
-function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{FinalCondition}, variant::Symbol=model.options.variant)
+@timeit_debug timer  function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{FinalCondition}, variant::Symbol=model.options.variant)
 
     evaldata = getevaldata(model, variant)
     var_to_idx = ModelBaseEcon.get_var_to_idx(model)
@@ -457,13 +457,13 @@ end
 Compute the residual of the stacked time system at the given `point`. R is
 updated in place and returned.
 """
-function stackedtime_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
+@timeit_debug timer  function stackedtime_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
     @assert size(point) == size(exog_data) == (sd.NT, sd.NU)
     # point = reshape(point, sd.NT, sd.NU)
     # exog_data = reshape(exog_data, sd.NT, sd.NU)
     @assert(length(res) == size(sd.J, 1), "Length of residual vector doesn't match.")
     for (ii, tt) in zip(sd.II, sd.TT)
-        eval_R!(view(res, ii), point[tt, :], sd.evaldata)
+        @timeit_debug timer "eval_R!" eval_R!(view(res, ii), point[tt, :], sd.evaldata)
     end
     return res
 end
@@ -585,7 +585,7 @@ end
 Compute the residual and Jacobian of the stacked time system at the given
 `point`.
 """
-function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData;
+@timeit_debug timer  function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData;
     debugging=false)
     nunknowns = sd.NU
     @assert size(point) == size(exog_data) == (sd.NT, nunknowns)
@@ -599,12 +599,12 @@ function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{
     if haveJ
         # update only RES
         for i = 1:length(sd.BI)
-            eval_R!(view(RES, sd.II[i]), point[sd.TT[i], :], sd.evaldata)
+            @timeit_debug timer "eval_R!" eval_R!(view(RES, sd.II[i]), point[sd.TT[i], :], sd.evaldata)
         end
     else
         # update both RES and JAC
         for i = 1:length(sd.BI)
-            R, J = eval_RJ(point[sd.TT[i], :], sd.evaldata)
+            @timeit_debug timer "eval_RJ" R, J = eval_RJ(point[sd.TT[i], :], sd.evaldata)
             RES[sd.II[i]] .= R
             JAC.nzval[sd.BI[i]] .= J.nzval
         end
@@ -647,7 +647,7 @@ mutable struct PardisoFactorization
     PardisoFactorization(ps::MKLPardisoSolver) = new(ps)
 end
 
-function pardiso_init()
+@timeit_debug timer  function pardiso_init()
     ps = MKLPardisoSolver()
     set_matrixtype!(ps, Pardiso.REAL_NONSYM)
     pardisoinit(ps)
@@ -664,7 +664,7 @@ end
 
 
 # See https://github.com/JuliaSparse/Pardiso.jl/blob/master/examples/exampleunsym.jl
-function pardiso_factorize(JJ; psf::Union{Nothing, PardisoFactorization})
+@timeit_debug timer  function pardiso_factorize(JJ; psf::Union{Nothing,PardisoFactorization})
     reuse_ps = psf !== nothing
     if psf === nothing
         psf = pardiso_init()
@@ -684,7 +684,7 @@ function pardiso_factorize(JJ; psf::Union{Nothing, PardisoFactorization})
     return psf
 end
 
-function pardiso_solve!(ps::PardisoFactorization, x::AbstractArray)
+@timeit_debug timer  function pardiso_solve!(ps::PardisoFactorization, x::AbstractArray)
     ps, J = ps.ps, ps.J
     set_phase!(ps, Pardiso.SOLVE_ITERATIVE_REFINE)
     X = similar(x) # Solution is stored in X
@@ -693,8 +693,8 @@ function pardiso_solve!(ps::PardisoFactorization, x::AbstractArray)
 end
 
 
-function _factorize(JJ; psf)
-    if USE_PARDISO_FOR_LU
+@timeit_debug timer  function _factorize(JJ; psf)
+     if USE_PARDISO_FOR_LU
         return pardiso_factorize(JJ; psf)
     else
         return lu(JJ)

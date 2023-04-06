@@ -67,7 +67,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     end
 
     # prepare the stacked-time
-    gdata = StackedTimeSolverData(m, p, fctype, variant)
+    gdata = @timeit_debug timer  "StackedTimeSolverData" StackedTimeSolverData(m, p, fctype, variant)
 
     # check the residual.           why are we doing this? we know it's 0!
     shocked = copy(exog_data)

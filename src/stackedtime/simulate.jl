@@ -9,7 +9,7 @@
     return model
 end
 
-function sparse_solve(A, b)
+@timeit_debug timer function sparse_solve(A, b)
     if A isa PardisoFactorization
         pardiso_solve!(A, copy(b))
     else
@@ -34,7 +34,7 @@ Solve the simulation problem.
     do this at each iteration. Default is `false`.
 
 """
-function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
+@timeit_debug timer function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     maxiter::Int64, tol::Float64, verbose::Bool,
     sparse_solver::Function=(A, b) -> sparse_solve(A, b), linesearch::Bool=false)
     for it = 1:maxiter
@@ -201,14 +201,14 @@ function simulate(m::Model,
             if p_unant.range != p_ant.range
                 error("Anticipated and unanticipated ranges don't match.")
             end
-            if size(exog_unant) != size(exog_ant)
-                error("Anticipated and unanticipated data  don't match.")
-            end
             if deviation_unant
                 exog_unant[:, logvars] .*= baseline[:, logvars]
                 exog_unant[:, .!logvars] .+= baseline[:, .!logvars]
             end
             exog_unant = ModelBaseEcon.update_auxvars(transform(exog_unant, m), m)
+            if size(exog_unant) != size(exog_ant)
+                error("Anticipated and unanticipated data  don't match.")
+            end
         else
             #=== prepare unanticipated data and plan (backward compatibility) ===#
             p_unant = p_ant

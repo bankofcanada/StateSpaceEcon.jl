@@ -23,6 +23,9 @@ using Printf
 using ModelBaseEcon
 using TimeSeriesEcon
 
+using TimerOutputs
+const timer = TimerOutput()
+
 using ..Plans
 
 import ..steadystatearray
@@ -39,6 +42,8 @@ import ModelBaseEcon.setevaldata!
 import ModelBaseEcon.hassolverdata
 import ModelBaseEcon.getsolverdata
 import ModelBaseEcon.setsolverdata!
+
+include("stackedtime/sparse.jl")
 
 include("stackedtime/fctypes.jl")
 include("stackedtime/misc.jl")
