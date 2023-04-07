@@ -5,8 +5,6 @@
 # All rights reserved.
 ##################################################################################
 
-USE_PARDISO_FOR_LU = false
-
 """
     StackedTimeSolverData
 
@@ -321,7 +319,7 @@ function make_BI(JMAT::SparseMatrixCSC{Float64,Int}, II::AbstractVector{<:Abstra
 end
 
 StackedTimeSolverData(model::Model, plan::Plan, fctype::FinalCondition, variant::Symbol=model.options.variant) = StackedTimeSolverData(model, plan, setfc(model, fctype), variant)
-@timeit_debug timer  function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{FinalCondition}, variant::Symbol=model.options.variant)
+@timeit_debug timer function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{FinalCondition}, variant::Symbol=model.options.variant)
 
     evaldata = getevaldata(model, variant)
     var_to_idx = ModelBaseEcon.get_var_to_idx(model)
@@ -414,7 +412,7 @@ StackedTimeSolverData(model::Model, plan::Plan, fctype::FinalCondition, variant:
         need_SS ? transform(steadystatearray(model, plan), model) : zeros(0, 0),
         islog.(model.allvars) .| isneglog.(model.allvars), islin.(model.allvars),
         evaldata, exog_mask, fc_mask, solve_mask,
-        Ref{Any}(nothing), getoption(model, :factorization, :lu))
+        Ref{Any}(nothing), getoption(model, :factorization, :default))
 
     return update_plan!(sd, model, plan; changed=true)
 end
@@ -457,7 +455,7 @@ end
 Compute the residual of the stacked time system at the given `point`. R is
 updated in place and returned.
 """
-@timeit_debug timer  function stackedtime_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
+@timeit_debug timer function stackedtime_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
     @assert size(point) == size(exog_data) == (sd.NT, sd.NU)
     # point = reshape(point, sd.NT, sd.NU)
     # exog_data = reshape(exog_data, sd.NT, sd.NU)
@@ -585,7 +583,7 @@ end
 Compute the residual and Jacobian of the stacked time system at the given
 `point`.
 """
-@timeit_debug timer  function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData;
+@timeit_debug timer function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData;
     debugging=false)
     nunknowns = sd.NU
     @assert size(point) == size(exog_data) == (sd.NT, nunknowns)
@@ -618,16 +616,8 @@ Compute the residual and Jacobian of the stacked time system at the given
             JJ = JAC[:, sd.solve_mask]
         end
         try
-            # Check if sparsity pattern has changed, if not, we can reuse the symbolic factorization
-            # if Pardiso is used
-            psf = nothing
-            if sd.J_factorized[] isa PardisoFactorization
-                J = sd.J_factorized[].J
-                same_sparsity_pattern = (J.colptr == JJ.colptr && J.rowval == JJ.rowval)
-                same_sparsity_pattern && (psf = sd.J_factorized[])
-            end
-            # compute lu decomposition of the active part of J and cache it.
-            sd.J_factorized[] = sd.factorization == :qr ? qr(JJ) : _factorize(JJ; psf)
+            # compute factorization of the active part of J and cache it.
+            sf_factorize!(Val(sd.factorization), sd.J_factorized, JJ)
         catch e
             if e isa SingularException || e isa Pardiso.PardisoException || e isa Pardiso.PardisoPosDefException
                 @error("The system is underdetermined with the given set of equations and final conditions.")
@@ -638,6 +628,17 @@ Compute the residual and Jacobian of the stacked time system at the given
     end
     return RES, sd.J_factorized[]
 end
+
+function sf_factorize!(v::Val, Rf::Ref{Any}, A::SparseMatrixCSC)
+    if isnothing(Rf[])
+        Rf[] = sf_prepare(v, A)
+    else
+        Rf[] = sf_factor!(Rf[], A)
+    end
+end
+
+
+#= KristofferC' implemetation (delete eventually, but keep it for now, just in case)
 
 using Pardiso
 
@@ -700,6 +701,9 @@ end
         return lu(JJ)
     end
 end
+
+=#
+
 """
     assign_update_step!(x::Array, lambda, dx, sd::StackedTimeSolverData)
 

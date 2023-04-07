@@ -9,6 +9,7 @@
     return model
 end
 
+#=
 @timeit_debug timer function sparse_solve(A, b)
     if A isa PardisoFactorization
         pardiso_solve!(A, copy(b))
@@ -16,8 +17,10 @@ end
         A \ b
     end
 end
+=#
+
 """
-    sim_nr!(x, sd, maxiter, tol, verbose [, sparse_solver [, linesearch]])
+    sim_nr!(x, sd, maxiter, tol, verbose [, linesearch])
 
 Solve the simulation problem.
   * `x` - the array of data for the simulation. All initial, final and exogenous
@@ -27,18 +30,15 @@ Solve the simulation problem.
   * `maxiter` - maximum number of iterations.
   * `tol` - desired accuracy.
   * `verbose` - whether or not to print progress information.
-  * `sparse_solver` (optional) - a function called to solve the linear system A
-    x = b for x. Defaults to A\\b
   * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a 
     search along the descent direction for a sufficient decrease in f. It will 
     do this at each iteration. Default is `false`.
 
 """
 @timeit_debug timer function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
-    maxiter::Int64, tol::Float64, verbose::Bool,
-    sparse_solver::Function=(A, b) -> sparse_solve(A, b), linesearch::Bool=false)
+    maxiter::Int64, tol::Float64, verbose::Bool, linesearch::Bool=false)
     for it = 1:maxiter
-        Fx, Jx = stackedtime_RJ(x, x, sd)
+        Fx = stackedtime_R!(Vector{Float64}(undef, size(sd.J, 1)), x, x, sd)
         nFx = norm(Fx, Inf)
         if nFx < tol
             if verbose
@@ -46,7 +46,9 @@ Solve the simulation problem.
             end
             return true
         end
-        Δx = sparse_solver(Jx, Fx)
+        Δx, Jx = stackedtime_RJ(x, x, sd)
+        Δx = sf_solve!(Jx, Δx)
+
         λ = 1.0
         if linesearch
             nf = norm(Fx)
@@ -113,7 +115,6 @@ function simulate(m::Model,
     fctype=getoption(m, :fctype, fcgiven),
     expectation_horizon::Union{Nothing,Int64}=nothing,
     #= Newton-Raphson options =#
-    sparse_solver::Function=(A, b) -> sparse_solve(A, b),
     linesearch::Bool=getoption(m, :linesearch, false),
     warn_maxiter::Bool=getoption(getoption(m, :warn, Options()), :maxiter, false)
 )
@@ -168,7 +169,7 @@ function simulate(m::Model,
         if verbose
             @info "Simulating $(p_ant.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
         end
-        converged = sim_nr!(x, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
+        converged = sim_nr!(x, gdata, maxiter, tol, verbose, linesearch)
         if warn_maxiter && !converged
             @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
         end
@@ -247,7 +248,7 @@ function simulate(m::Model,
                 if verbose
                     @info "Simulating $(p_ant.range[t:T]) with $((itol, imaxiter))" # anticipate expectation_horizon gdata.FC
                 end
-                converged = sim_nr!(xx, gdata, imaxiter, itol, verbose, sparse_solver, linesearch)
+                converged = sim_nr!(xx, gdata, imaxiter, itol, verbose, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations (`imaxiter`).")
                 end
@@ -260,7 +261,7 @@ function simulate(m::Model,
                 if verbose
                     @info "Simulating $(p_ant.range[t:T]) with $((tol, maxiter))" # anticipate expectation_horizon gdata.FC
                 end
-                converged = sim_nr!(xx, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
+                converged = sim_nr!(xx, gdata, maxiter, tol, verbose, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
                 end
@@ -294,7 +295,7 @@ function simulate(m::Model,
                 if verbose
                     @info "Simulating $(p_ant.range[t:T])" # anticipate expectation_horizon sdata.FC
                 end
-                converged = sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
+                converged = sim_nr!(xx, sdata, maxiter, tol, verbose, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
                 end
@@ -342,7 +343,7 @@ function simulate(m::Model,
                 if verbose
                     @info("Simulating $(p_ant.range[t] .+ (0:expectation_horizon - 1))") # anticipate expectation_horizon sdata.FC
                 end
-                converged = sim_nr!(xx, sdata, 5, sqrt(tol), verbose, sparse_solver, linesearch)
+                converged = sim_nr!(xx, sdata, 5, sqrt(tol), verbose, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
                 end
@@ -366,7 +367,7 @@ function simulate(m::Model,
                     if verbose
                         @info "Simulating $(p_ant.range[last_t + 1:T])" # anticipate expectation_horizon sdata.FC
                     end
-                    converged = sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
+                    converged = sim_nr!(xx, sdata, maxiter, tol, verbose, linesearch)
                     if warn_maxiter && !converged
                         @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
                     end

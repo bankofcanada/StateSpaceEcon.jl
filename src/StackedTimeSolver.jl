@@ -43,6 +43,12 @@ import ModelBaseEcon.hassolverdata
 import ModelBaseEcon.getsolverdata
 import ModelBaseEcon.setsolverdata!
 
+using Pardiso
+
+
+using SuiteSparse
+using SuiteSparse.UMFPACK
+
 include("stackedtime/sparse.jl")
 
 include("stackedtime/fctypes.jl")
