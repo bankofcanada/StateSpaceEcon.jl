@@ -461,7 +461,7 @@ updated in place and returned.
     # exog_data = reshape(exog_data, sd.NT, sd.NU)
     @assert(length(res) == size(sd.J, 1), "Length of residual vector doesn't match.")
     for (ii, tt) in zip(sd.II, sd.TT)
-        @timeit_debug timer "eval_R!" eval_R!(view(res, ii), point[tt, :], sd.evaldata)
+        eval_R!(view(res, ii), point[tt, :], sd.evaldata)
     end
     return res
 end
@@ -597,12 +597,12 @@ Compute the residual and Jacobian of the stacked time system at the given
     if haveJ
         # update only RES
         for i = 1:length(sd.BI)
-            @timeit_debug timer "eval_R!" eval_R!(view(RES, sd.II[i]), point[sd.TT[i], :], sd.evaldata)
+            eval_R!(view(RES, sd.II[i]), point[sd.TT[i], :], sd.evaldata)
         end
     else
         # update both RES and JAC
         for i = 1:length(sd.BI)
-            @timeit_debug timer "eval_RJ" R, J = eval_RJ(point[sd.TT[i], :], sd.evaldata)
+            R, J = eval_RJ(point[sd.TT[i], :], sd.evaldata)
             RES[sd.II[i]] .= R
             JAC.nzval[sd.BI[i]] .= J.nzval
         end

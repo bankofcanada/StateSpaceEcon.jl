@@ -6,27 +6,19 @@
 ##################################################################################
 
 
-# using LinearAlgebra
-# using SparseArrays
-# using SuiteSparse
-# using SuiteSparse.UMFPACK
-# using Pardiso
-
-
 ### API
 
 # selected sparse linear algebra library is a Symbol
 const sf_libs = (
     :default,   # use Julia's standard library (UMFPACK)
-    :lu,  # same as :default
-    # :qr,  # use qr-decomposition, rather than lu (still UMFPACK)
+    :umfpack,   # same as :default
     :pardiso,   # use Pardiso - the one included with MKL
 )
 
-global sf_default = :lu
+global sf_default = :umfpack
 
 # a function to initialize a Factorization instance
-#  this is also a good place to do the symbolic analysis
+# this is also a good place to do the symbolic analysis
 sf_prepare(A::SparseMatrixCSC, sparse_lib::Symbol=:default) = sf_prepare(Val(sparse_lib), A)
 sf_prepare(::Val{S}, args...) where {S} = throw(ArgumentError("Unknown sparse library $S. Try one of $(sf_libs)."))
 
@@ -37,20 +29,51 @@ sf_factor!(f::Factorization, A::SparseMatrixCSC) = throw(ArgumentError("Unknown 
 sf_solve!(f::Factorization, x::AbstractArray) = throw(ArgumentError("Unknown factorization type $(typeof(f))."))
 
 
+###########################################################################
 ###  Default (UMFPACK)
 sf_prepare(::Val{:default}, A::SparseMatrixCSC) = sf_prepare(Val(sf_default), A)
 
-@timeit_debug timer "sf_prepare_lu" sf_prepare(::Val{:lu}, A::SparseMatrixCSC) = lu(A)
-@timeit_debug timer "sf_factor!_lu" sf_factor!(f::SuiteSparse.UMFPACK.UmfpackLU, A::SparseMatrixCSC) = (lu!(f, A); f)
-@timeit_debug timer "sf_solve!_lu" sf_solve!(f::SuiteSparse.UMFPACK.UmfpackLU, x::AbstractArray) = (ldiv!(f, x); x)
+function _sf_same_sparse_pattern(A::SparseMatrixCSC, B::SparseMatrixCSC)
+    return (A.m == B.m) && (A.n == B.n) && (A.colptr == B.colptr) && (A.rowval == B.rowval)
+end
 
-# @timeit_debug timer "sf_prepare_qr" sf_prepare(::Val{:qr}, A::SparseMatrixCSC) = qr(A)
-# @timeit_debug timer "sf_factor!_qr" sf_factor!(f::SuiteSparse.SPQR.QRSparse, A::SparseMatrixCSC) = (qr!(f, A); f)
-# @timeit_debug timer "sf_solve!_qr" sf_solve!(f::SuiteSparse.SPQR.QRSparse, x::AbstractArray) = (ldiv!(f, x); x)
+mutable struct LUFactorization{Tv<:Real} <: Factorization{Tv}
+    F::SuiteSparse.UMFPACK.UmfpackLU{Tv,Int}
+    A::SparseMatrixCSC{Tv,Int}
+end
 
+@timeit_debug timer "sf_prepare_lu" function sf_prepare(::Val{:umfpack}, A::SparseMatrixCSC)
+    Tv = eltype(A)
+    @timeit_debug timer "_lu_full" F = lu(A)
+    return LUFactorization{Tv}(F, A)
+end
+
+@timeit_debug timer "sf_factor!_lu" function sf_factor!(f::LUFactorization, A::SparseMatrixCSC)
+    _A = f.A
+    if _sf_same_sparse_pattern(A, _A)
+        if A.nzval ≈ _A.nzval
+            # matrix hasn't changed significantly
+            nothing
+        else
+            # sparse pattern is the same, different numbers
+            f.A = A
+            @timeit_debug timer "_lu_num" lu!(f.F, A)
+        end
+    else
+        # totally new matrix, start over
+        f.A = A
+        @timeit_debug timer "_lu_full" f.F = lu(A)
+    end
+    return f
+end
+
+@timeit_debug timer "sf_solve!_lu" sf_solve!(f::LUFactorization, x::AbstractArray) = (ldiv!(f.F, x); x)
+
+###########################################################################
 ###  Pardiso (thanks to @KristofferC)
 
 # See https://github.com/JuliaSparse/Pardiso.jl/blob/master/examples/exampleunsym.jl
+# See https://www.intel.com/content/www/us/en/develop/documentation/onemkl-developer-reference-c/top/sparse-solver-routines/onemkl-pardiso-parallel-direct-sparse-solver-iface/pardiso-iparm-parameter.html
 
 mutable struct PardisoFactorization{Tv<:Real} <: Factorization{Tv}
     ps::MKLPardisoSolver
@@ -62,9 +85,9 @@ end
     ps = MKLPardisoSolver()
     set_matrixtype!(ps, Pardiso.REAL_NONSYM)
     pardisoinit(ps)
-    # See https://www.intel.com/content/www/us/en/develop/documentation/onemkl-developer-reference-c/top/sparse-solver-routines/onemkl-pardiso-parallel-direct-sparse-solver-iface/pardiso-iparm-parameter.html
     fix_iparm!(ps, :N)
-    set_iparm!(ps, 2, 2) # The parallel (OpenMP) version of the nested dissection algorithm.
+    # set_iparm!(ps, 1, 1) # Override defaults
+    # set_iparm!(ps, 2, 2) # Select algorithm
     pf = PardisoFactorization{Tv}(ps, get_matrix(ps, A, :N))
     finalizer(pf) do x
         set_phase!(x.ps, Pardiso.RELEASE_ALL)
@@ -92,16 +115,18 @@ end
 
 @timeit_debug timer "sf_factor!_par" function sf_factor!(pf::PardisoFactorization, A::SparseMatrixCSC)
     A = get_matrix(pf.ps, A, :N)::typeof(A)
-    # can we reuse the 
     _A = pf.A
-    if A.m == _A.m && A.n == _A.n && A.colptr == _A.colptr && A.rowval == _A.rowval
+    if _sf_same_sparse_pattern(A, _A)
         if A.nzval ≈ _A.nzval
+            # same matrix, factorization hasn't changed
             nothing
         else
+            # same sparsity pattern, but different numbers
             pf.A = A
             _pardiso_numeric!(pf)
         end
     else
+        # totally new matrix, start over
         pf.A = A
         _pardiso_full!(pf)
     end
