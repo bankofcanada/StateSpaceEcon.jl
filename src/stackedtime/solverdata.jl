@@ -615,16 +615,8 @@ Compute the residual and Jacobian of the stacked time system at the given
         else
             JJ = JAC[:, sd.solve_mask]
         end
-        try
-            # compute factorization of the active part of J and cache it.
-            sf_factorize!(Val(sd.factorization), sd.J_factorized, JJ)
-        catch e
-            if e isa SingularException || e isa Pardiso.PardisoException || e isa Pardiso.PardisoPosDefException
-                @error("The system is underdetermined with the given set of equations and final conditions.")
-            end
-            debugging && return RES, deepcopy(JJ)
-            rethrow()
-        end
+        # compute factorization of the active part of J and cache it.
+        sf_factorize!(Val(sd.factorization), sd.J_factorized, JJ)
     end
     return RES, sd.J_factorized[]
 end

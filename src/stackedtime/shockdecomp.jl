@@ -19,7 +19,7 @@ dynamic model for the given plan range and final condition. We verify the
 residual and issue a warning, but do not enforce this. See
 [`steadystatedata`](@ref).
 
-As part of the algorithm we run a simulation with the given `plan`, 
+As part of the algorithm we run a simulation with the given `plan`,
 `exog_data` and `fctype`.  See [`simulate`](@ref) for other options.
 
 !!! note
@@ -66,7 +66,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     end
 
     # prepare the stacked-time
-    gdata = @timeit_debug timer  "StackedTimeSolverData" StackedTimeSolverData(m, p, fctype, variant)
+    gdata = StackedTimeSolverData(m, p, fctype, variant)
 
     # check the residual.           why are we doing this? we know it's 0!
     shocked = copy(exog_data)
@@ -78,7 +78,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     end
 
     # We need the Jacobian matrix evaluated at the control solution.
-    res_control, _ = stackedtime_RJ(control, control, gdata)
+    res_control, Jac_control = stackedtime_RJ(control, control, gdata)
     if norm(res_control, Inf) > tol
         # What to do if it's not a solution? We just give a warning for now, but maybe we should error()?!
         @warn "Control is not a solution:" norm(res_control, Inf)
@@ -128,7 +128,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
 
     # now do the decomposition
     begin
-        # we build a sparse matrix 
+        # we build a sparse matrix
         SDI = Int[]     # row indexes
         SDJ = Int[]     # column indexes
         SDV = Float64[] # values
@@ -160,7 +160,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
                 if haskey(id, v.name)
                     # have initial decomposition
                     idv = id[v.name]
-                    if norm(delta[pinit, v.name]-sum(idv[pinit, :],dims=2),Inf)>tol
+                    if norm(delta[pinit, v.name] - sum(idv[pinit, :], dims=2), Inf) > tol
                         error("The given `initdecomp` does not add up for $(v.name).")
                     end
                     rsdv[pinit] .= idv
@@ -195,13 +195,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
         end
 
         SDMAT = Matrix(gdata.J * sparse(SDI, SDJ, -SDV, size(gdata.J, 2), length(exog_inds)))
-        factor = gdata.J_factorized[]
-        if factor isa PardisoFactorization
-            pardiso_solve!(factor, SDMAT)
-        else
-            ldiv!(factor, SDMAT)
-        end
-
+        sf_solve!(Jac_control, SDMAT)
     end
 
     # now split and decorate the shock-decomposition matrix
@@ -216,7 +210,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
                 continue
             end
             v_inv_endo_inds = inv_endo_inds[v_inds[v_endo_mask]]
-            v_data = result.sd[v] 
+            v_data = result.sd[v]
             # assign contributions to endogenous points
             v_data[v_endo_mask, :] = SDMAT[v_inv_endo_inds, :]
             # contributions of initial conditions already assigned

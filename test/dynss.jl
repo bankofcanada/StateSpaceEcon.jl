@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -95,7 +95,7 @@ end
 
 @testset "dynss+" begin
     # tests to make sure that changes in parameter values are applied to steady state constraints correctly
-    local m = PC.model
+    local m = deepcopy(PC.model)
     m.sstate.values .= 0.0
     @test begin
         sssolve!(m, presolve=false)

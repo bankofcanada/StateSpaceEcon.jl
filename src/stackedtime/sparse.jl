@@ -44,7 +44,14 @@ end
 
 @timeit_debug timer "sf_prepare_lu" function sf_prepare(::Val{:umfpack}, A::SparseMatrixCSC)
     Tv = eltype(A)
-    @timeit_debug timer "_lu_full" F = lu(A)
+    F = try
+        @timeit_debug timer "_lu_full" lu(A)
+    catch error
+        if error isa SingularException
+            @error("The system is underdetermined with the given set of equations and final conditions.")
+        end
+        rethrow()
+    end
     return LUFactorization{Tv}(F, A)
 end
 
@@ -57,12 +64,26 @@ end
         else
             # sparse pattern is the same, different numbers
             f.A = A
-            @timeit_debug timer "_lu_num" lu!(f.F, A)
+            try
+                @timeit_debug timer "_lu_num" lu!(f.F, A)
+            catch error
+                if error isa SingularException
+                    @error("The system is underdetermined with the given set of equations and final conditions.")
+                end
+                rethrow()
+            end
         end
     else
         # totally new matrix, start over
         f.A = A
-        @timeit_debug timer "_lu_full" f.F = lu(A)
+        f.F = try
+            @timeit_debug timer "_lu_full" lu(A)
+        catch error
+            if error isa SingularException
+                @error("The system is underdetermined with the given set of equations and final conditions.")
+            end
+            rethrow()
+        end
     end
     return f
 end
@@ -87,6 +108,8 @@ end
     pardisoinit(ps)
     fix_iparm!(ps, :N)
     # set_iparm!(ps, 1, 1) # Override defaults
+    # set_iparm!(ps, 11, 1) # disable automatic scaling for non-symmetric matrices
+    # set_iparm!(ps, 13, 1) # disable automatic scaling for non-symmetric matrices
     # set_iparm!(ps, 2, 2) # Select algorithm
     pf = PardisoFactorization{Tv}(ps, get_matrix(ps, A, :N))
     finalizer(pf) do x
@@ -100,16 +123,30 @@ end
 @timeit_debug timer "_pardso_full" function _pardiso_full!(pf::PardisoFactorization)
     # run the analysis phase
     ps = pf.ps
-    set_phase!(ps, Pardiso.ANALYSIS_NUM_FACT)
-    pardiso(ps, pf.A, Float64[])
+    try
+        set_phase!(ps, Pardiso.ANALYSIS_NUM_FACT)
+        pardiso(ps, pf.A, Float64[])
+    catch error
+        if error isa Pardiso.PardisoException || error isa Pardiso.PardisoPosDefException
+            @error("The system is underdetermined with the given set of equations and final conditions.")
+        end
+        rethrow()
+    end
     return pf
 end
 
 @timeit_debug timer "_pardso_num" function _pardiso_numeric!(pf::PardisoFactorization)
     # run the analysis phase
     ps = pf.ps
-    set_phase!(ps, Pardiso.NUM_FACT)
-    pardiso(ps, pf.A, Float64[])
+    try
+        set_phase!(ps, Pardiso.NUM_FACT)
+        pardiso(ps, pf.A, Float64[])
+    catch error
+        if error isa Pardiso.PardisoException || error isa Pardiso.PardisoPosDefException
+            @error("The system is underdetermined with the given set of equations and final conditions.")
+        end
+        rethrow()
+    end
     return pf
 end
 
@@ -135,8 +172,15 @@ end
 
 @timeit_debug timer "sf_solve!_par" function sf_solve!(pf::PardisoFactorization, x::AbstractArray)
     ps = pf.ps
-    set_phase!(ps, Pardiso.SOLVE_ITERATIVE_REFINE)
-    pardiso(ps, x, pf.A, copy(x))
+    try
+        set_phase!(ps, Pardiso.SOLVE_ITERATIVE_REFINE)
+        pardiso(ps, x, pf.A, copy(x))
+    catch error
+        if error isa Pardiso.PardisoException || error isa Pardiso.PardisoPosDefException
+            @error("The system is underdetermined with the given set of equations and final conditions.")
+        end
+        rethrow()
+    end
     return x
 end
 

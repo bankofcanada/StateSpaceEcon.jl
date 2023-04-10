@@ -23,6 +23,7 @@ using ModelBaseEcon
 using Test
 using Random
 using Suppressor
+import Pardiso
 
 @testset "1dsolvers" begin
     # f(x) = (x-2)*(x-3) = a x^2 + b x + c with vals = [a, x, b, c]
@@ -215,11 +216,22 @@ end
     @test t1 == TSeries(1U, [1, 1, 3, 5, 5, 5, 5, 5])
 end
 
-include("simtests.jl")
-include("logsimtests.jl")
-include("sim_fo.jl")
-include("shockdecomp.jl")
-include("dynss.jl")
 include("misc.jl")
 
-include("stochsims.jl")
+for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
+
+    sfdef.value == :default && continue
+
+    @info "Using $(sfdef)"
+
+    Core.eval(StateSpaceEcon.StackedTimeSolver, :(sf_default = $(sfdef)))
+
+    include("simtests.jl")
+    include("logsimtests.jl")
+    include("sim_fo.jl")
+    include("shockdecomp.jl")
+    include("dynss.jl")
+
+    include("stochsims.jl")
+
+end
