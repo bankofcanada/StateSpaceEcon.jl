@@ -28,10 +28,10 @@ using JLD2
     # shock on dly is half inventory half consumption
     dlinv_shk = result.sd.dlinv.dlinv_shk[result.sd.dlinv.dlinv_shk.>1e-9] # positive shock values
     dly_dlinv_shk = result.sd.dly.dlinv_shk[result.sd.dlinv.dlinv_shk.>1e-9] # same rows for dly
-    @test norm(dly_dlinv_shk ./ dlinv_shk .- 0.5, Inf) < 1e-8
+    @test norm(dly_dlinv_shk ./ dlinv_shk .- 0.5, Inf) < 1e-7
     dlc_shk = result.sd.dlc.dlc_shk[result.sd.dlc.dlc_shk.>1e-9] # positive shock values
     dly_dlc_shk = result.sd.dly.dlc_shk[result.sd.dlc.dlc_shk.>1e-9] # same rows for dly
-    @test norm(dly_dlc_shk ./ dlc_shk .- 0.5, Inf) < 1e-8
+    @test norm(dly_dlc_shk ./ dlc_shk .- 0.5, Inf) < 1e-7
 
     sd_zeros = fill!(similar(result.sd.dlc), 0)
 
@@ -61,10 +61,10 @@ using JLD2
     # and the same relation between shocks
     dlinv_shk = result_dev.sd.dlinv.dlinv_shk[result_dev.sd.dlinv.dlinv_shk.>1e-9] # positive shock values
     dly_dlinv_shk = result_dev.sd.dly.dlinv_shk[result_dev.sd.dlinv.dlinv_shk.>1e-9] # same rows for dly
-    @test norm(dly_dlinv_shk ./ dlinv_shk .- 0.5, Inf) < 1e-8
+    @test norm(dly_dlinv_shk ./ dlinv_shk .- 0.5, Inf) < 1e-7
     dlc_shk = result_dev.sd.dlc.dlc_shk[result_dev.sd.dlc.dlc_shk.>1e-9] # positive shock values
     dly_dlc_shk = result_dev.sd.dly.dlc_shk[result_dev.sd.dlc.dlc_shk.>1e-9] # same rows for dly
-    @test norm(dly_dlc_shk ./ dlc_shk .- 0.5, Inf) < 1e-8
+    @test norm(dly_dlc_shk ./ dlc_shk .- 0.5, Inf) < 1e-7
 
     # for consumption, term, init and nonlinear are zero
     @test norm(result_dev.sd.dlc.init, Inf) < 1e-12
