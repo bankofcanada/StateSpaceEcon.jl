@@ -125,7 +125,7 @@ function simulate(m::Model,
     NT = length(p_ant.range)
     nauxs = length(m.auxvars)
     nvarshks = length(m.varshks)
-    logvars = [islog(var) | isneglog(var) for var in m.varshks]
+    logvars = islog.(m.varshks) .| isneglog.(m.varshks)
 
     if size(exog_ant) != (NT, nvarshks)
         error("Incorrect dimensions of exog_data. Expected $((NT, nvarshks)), got $(size(exog_ant)).")
@@ -142,8 +142,8 @@ function simulate(m::Model,
         if size(baseline) != (NT, nvarshks)
             error("Incorrect dimensions of baseline. Expected $((NT, nvarshks)), got $(size(baseline)).")
         end
-        exog_ant[:, logvars] .*= baseline[:, logvars]
-        exog_ant[:, .!logvars] .+= baseline[:, .!logvars]
+        @views exog_ant[:, logvars] .*= baseline[:, logvars]
+        @views exog_ant[:, .!logvars] .+= baseline[:, .!logvars]
     end
     exog_ant = ModelBaseEcon.update_auxvars(transform(exog_ant, m), m)
 
@@ -193,8 +193,8 @@ function simulate(m::Model,
                 error("Anticipated and unanticipated ranges don't match.")
             end
             if deviation_unant
-                exog_unant[:, logvars] .*= baseline[:, logvars]
-                exog_unant[:, .!logvars] .+= baseline[:, .!logvars]
+                @views exog_unant[:, logvars] .*= baseline[:, logvars]
+                @views exog_unant[:, .!logvars] .+= baseline[:, .!logvars]
             end
             exog_unant = ModelBaseEcon.update_auxvars(transform(exog_unant, m), m)
             if size(exog_unant) != size(exog_ant)
@@ -209,7 +209,7 @@ function simulate(m::Model,
             x[sim, shkinds] .= 0
         end
 
-        x[init, allvarinds] .= exog_ant[init, allvarinds]
+        x[init, allvarinds] = exog_ant[init, allvarinds]
         t0 = first(sim)
         T = last(sim)
         if expectation_horizon === nothing
@@ -222,7 +222,7 @@ function simulate(m::Model,
                 if t == t0
                     imaxiter = maxiter
                     itol = tol
-                elseif (maximum(abs, x[t, exog_inds] .- exog_unant[t, exog_inds]) < tol) #= && (psim[t0, Val(:inds)] == exog_inds) =#
+                elseif (maximum(abs, x[t, exog_inds] - exog_unant[t, exog_inds]) < tol) #= && (psim[t0, Val(:inds)] == exog_inds) =#
                     continue
                 else
                     imaxiter = 5
@@ -300,14 +300,14 @@ function simulate(m::Model,
                 # these intermediate simulations are always with fcnatural, 
                 #       have length equal to expectation_horizon and 
                 #       only the first period is imposed
-                if (maximum(abs, x[t, exog_inds] .- exog_unant[t, exog_inds]) < tol) #= && (exog_inds == shkinds) =#
+                if (maximum(abs, x[t, exog_inds] - exog_unant[t, exog_inds]) < tol) #= && (exog_inds == shkinds) =#
                     continue
                 end
                 psim1 = copy(psim)
                 # the range of psim1 might extend beyond the range of p_ant.
                 # we copy from p_ant as far as we have and copy the last line beyond that
                 tmp_rng = t:min(t + expectation_horizon - 1, T)
-                psim1.exogenous[t0.+(0:length(tmp_rng)-1), :] .= p_ant.exogenous[tmp_rng, :]
+                psim1.exogenous[t0.+(0:length(tmp_rng)-1), :] = p_ant.exogenous[tmp_rng, :]
 
                 # ===> must leave the psim1 plan empty beyond the end of p_ant
                 # becasue we don't have data in exog_and for any exogenized
@@ -370,8 +370,8 @@ function simulate(m::Model,
     x = x[axes(exog_ant)...]
     x .= inverse_transform(x, m)
     if deviation
-        x[:, logvars] ./= baseline[:, logvars]
-        x[:, .!logvars] .-= baseline[:, .!logvars]
+        @views x[:, logvars] ./= baseline[:, logvars]
+        @views x[:, .!logvars] .-= baseline[:, .!logvars]
     end
 
     return x
