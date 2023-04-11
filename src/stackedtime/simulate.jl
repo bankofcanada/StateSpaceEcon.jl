@@ -9,16 +9,6 @@
     return model
 end
 
-#=
-@timeit_debug timer function sparse_solve(A, b)
-    if A isa PardisoFactorization
-        pardiso_solve!(A, copy(b))
-    else
-        A \ b
-    end
-end
-=#
-
 """
     sim_nr!(x, sd, maxiter, tol, verbose [, linesearch])
 

@@ -10,8 +10,8 @@
 
 # selected sparse linear algebra library is a Symbol
 const sf_libs = (
-    :default,   # use Julia's standard library (UMFPACK)
-    :umfpack,   # same as :default
+    :default,   #
+    :umfpack,   # use Julia's standard library (UMFPACK)
     :pardiso,   # use Pardiso - the one included with MKL
 )
 
@@ -19,14 +19,14 @@ global sf_default = :umfpack
 
 # a function to initialize a Factorization instance
 # this is also a good place to do the symbolic analysis
-sf_prepare(A::SparseMatrixCSC, sparse_lib::Symbol=:default) = sf_prepare(Val(sparse_lib), A)
-sf_prepare(::Val{S}, args...) where {S} = throw(ArgumentError("Unknown sparse library $S. Try one of $(sf_libs)."))
+# sf_prepare(A::SparseMatrixCSC, sparse_lib::Symbol=:default) = sf_prepare(Val(sparse_lib), A)
+# sf_prepare(::Val{S}, args...) where {S} = throw(ArgumentError("Unknown sparse library $S. Try one of $(sf_libs)."))
 
 # a function to calculate the numerical factors
-sf_factor!(f::Factorization, A::SparseMatrixCSC) = throw(ArgumentError("Unknown factorization type $(typeof(f))."))
+# sf_factor!(f::Factorization, A::SparseMatrixCSC) = throw(ArgumentError("Unknown factorization type $(typeof(f))."))
 
 # a function to solve the linear system
-sf_solve!(f::Factorization, x::AbstractArray) = throw(ArgumentError("Unknown factorization type $(typeof(f))."))
+# sf_solve!(f::Factorization, x::AbstractArray) = throw(ArgumentError("Unknown factorization type $(typeof(f))."))
 
 
 ###########################################################################
@@ -37,6 +37,20 @@ function _sf_same_sparse_pattern(A::SparseMatrixCSC, B::SparseMatrixCSC)
     return (A.m == B.m) && (A.n == B.n) && (A.colptr == B.colptr) && (A.rowval == B.rowval)
 end
 
+macro _sf_check_factorize(exception, expression)
+    error = gensym("error")
+    return esc(quote
+        try
+            $expression
+        catch $error
+            if $error isa $exception
+                @error("The system is underdetermined with the given set of equations and final conditions.")
+            end
+            rethrow()
+        end
+    end)
+end
+
 mutable struct LUFactorization{Tv<:Real} <: Factorization{Tv}
     F::SuiteSparse.UMFPACK.UmfpackLU{Tv,Int}
     A::SparseMatrixCSC{Tv,Int}
@@ -44,14 +58,7 @@ end
 
 @timeit_debug timer "sf_prepare_lu" function sf_prepare(::Val{:umfpack}, A::SparseMatrixCSC)
     Tv = eltype(A)
-    F = try
-        @timeit_debug timer "_lu_full" lu(A)
-    catch error
-        if error isa SingularException
-            @error("The system is underdetermined with the given set of equations and final conditions.")
-        end
-        rethrow()
-    end
+    F = @_sf_check_factorize(SingularException, @timeit_debug timer "_lu_full" lu(A))
     return LUFactorization{Tv}(F, A)
 end
 
@@ -64,26 +71,12 @@ end
         else
             # sparse pattern is the same, different numbers
             f.A = A
-            try
-                @timeit_debug timer "_lu_num" lu!(f.F, A)
-            catch error
-                if error isa SingularException
-                    @error("The system is underdetermined with the given set of equations and final conditions.")
-                end
-                rethrow()
-            end
+            @_sf_check_factorize(SingularException, @timeit_debug timer "_lu_num" lu!(f.F, A))
         end
     else
         # totally new matrix, start over
         f.A = A
-        f.F = try
-            @timeit_debug timer "_lu_full" lu(A)
-        catch error
-            if error isa SingularException
-                @error("The system is underdetermined with the given set of equations and final conditions.")
-            end
-            rethrow()
-        end
+        f.F = @_sf_check_factorize(SingularException, @timeit_debug timer "_lu_full" lu(A))
     end
     return f
 end
@@ -107,9 +100,6 @@ end
     set_matrixtype!(ps, Pardiso.REAL_NONSYM)
     pardisoinit(ps)
     fix_iparm!(ps, :N)
-    # set_iparm!(ps, 1, 1) # Override defaults
-    # set_iparm!(ps, 11, 1) # disable automatic scaling for non-symmetric matrices
-    # set_iparm!(ps, 13, 1) # disable automatic scaling for non-symmetric matrices
     # set_iparm!(ps, 2, 2) # Select algorithm
     pf = PardisoFactorization{Tv}(ps, get_matrix(ps, A, :N))
     finalizer(pf) do x
@@ -123,14 +113,9 @@ end
 @timeit_debug timer "_pardso_full" function _pardiso_full!(pf::PardisoFactorization)
     # run the analysis phase
     ps = pf.ps
-    try
+    @_sf_check_factorize Union{Pardiso.PardisoException,Pardiso.PardisoPosDefException} begin
         set_phase!(ps, Pardiso.ANALYSIS_NUM_FACT)
         pardiso(ps, pf.A, Float64[])
-    catch error
-        if error isa Pardiso.PardisoException || error isa Pardiso.PardisoPosDefException
-            @error("The system is underdetermined with the given set of equations and final conditions.")
-        end
-        rethrow()
     end
     return pf
 end
@@ -138,14 +123,9 @@ end
 @timeit_debug timer "_pardso_num" function _pardiso_numeric!(pf::PardisoFactorization)
     # run the analysis phase
     ps = pf.ps
-    try
+    @_sf_check_factorize Union{Pardiso.PardisoException,Pardiso.PardisoPosDefException} begin
         set_phase!(ps, Pardiso.NUM_FACT)
         pardiso(ps, pf.A, Float64[])
-    catch error
-        if error isa Pardiso.PardisoException || error isa Pardiso.PardisoPosDefException
-            @error("The system is underdetermined with the given set of equations and final conditions.")
-        end
-        rethrow()
     end
     return pf
 end
@@ -172,14 +152,9 @@ end
 
 @timeit_debug timer "sf_solve!_par" function sf_solve!(pf::PardisoFactorization, x::AbstractArray)
     ps = pf.ps
-    try
+    @_sf_check_factorize Union{Pardiso.PardisoException,Pardiso.PardisoPosDefException} begin
         set_phase!(ps, Pardiso.SOLVE_ITERATIVE_REFINE)
         pardiso(ps, x, pf.A, copy(x))
-    catch error
-        if error isa Pardiso.PardisoException || error isa Pardiso.PardisoPosDefException
-            @error("The system is underdetermined with the given set of equations and final conditions.")
-        end
-        rethrow()
     end
     return x
 end
