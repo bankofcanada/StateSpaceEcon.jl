@@ -6,8 +6,6 @@
 ##################################################################################
 
 
-### API
-
 # selected sparse linear algebra library is a Symbol
 const sf_libs = (
     :default,   #
@@ -16,6 +14,46 @@ const sf_libs = (
 )
 
 global sf_default = :umfpack
+
+"""
+    use_umfpack()
+
+Set the default sparse factorization library to UMFPACK (the one used in Julia's
+standard library). See also [`use_pardiso`](@ref).
+
+"""
+@inline use_umfpack() = (global sf_default = :umfpack; nothing)
+# @inline use_umfpack(m::Model) = use_umfpack!(m)
+
+"""
+    use_umfpack!(model)
+
+Instruct the stacked-time solver to use Pardiso with this model. See also
+[`use_pardiso!`](@ref).
+"""
+@inline use_umfpack!(m::Model) = (m.options.factorization = :umfpack; m)
+# @inline use_umfpack!() = use_umfpack()
+export use_umfpack, use_umfpack!
+
+"""
+    use_pardiso()
+
+Set the default sparse factorization library to Pardiso. See also
+[`use_umfpack`](@ref).
+"""
+@inline use_pardiso() = (global sf_default = :pardiso; nothing)
+# @inline use_pardiso(m::Model) = use_pardiso!(m)
+
+"""
+    use_pardiso!(model)
+
+Instruct the stacked-time solver to use Pardiso with this model. 
+"""
+@inline use_pardiso!(m::Model) = (m.options.factorization = :pardiso; m)
+# @inline use_pardiso!() = use_pardiso()
+export use_pardiso, use_pardiso!
+
+### API
 
 # a function to initialize a Factorization instance
 # this is also a good place to do the symbolic analysis

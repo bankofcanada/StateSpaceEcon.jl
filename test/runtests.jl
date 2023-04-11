@@ -218,6 +218,15 @@ end
 
 include("misc.jl")
 
+@testset "sparse" begin
+    @test (use_pardiso(); StateSpaceEcon.StackedTimeSolver.sf_default == :pardiso)
+    @test (use_umfpack(); StateSpaceEcon.StackedTimeSolver.sf_default == :umfpack)
+    let m = Model()
+        @test (use_pardiso!(m); m.factorization == :pardiso)
+        @test (use_umfpack!(m); m.factorization == :umfpack)
+    end
+end
+
 # make sure Pardiso runs deterministic (single thread) for the tests
 Pardiso.set_nprocs_mkl!(1)
 
