@@ -218,6 +218,9 @@ end
 
 include("misc.jl")
 
+# make sure Pardiso runs deterministic (single thread) for the tests
+Pardiso.set_nprocs_mkl!(1)
+
 for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
 
     sfdef.value == :default && continue
