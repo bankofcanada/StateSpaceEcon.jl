@@ -235,7 +235,7 @@ for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
     sfdef.value == :default && continue
 
     # Pardiso in macos is giving "Not enough memory".  Disable for now
-    sfdef.value == :pardiso && Sys.isapple() && continue
+    # sfdef.value == :pardiso && Sys.isapple() && continue
 
     @info "Using $(sfdef)"
 

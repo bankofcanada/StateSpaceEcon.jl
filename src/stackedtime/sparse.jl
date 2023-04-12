@@ -23,7 +23,6 @@ standard library). See also [`use_pardiso`](@ref).
 
 """
 @inline use_umfpack() = (global sf_default = :umfpack; nothing)
-# @inline use_umfpack(m::Model) = use_umfpack!(m)
 
 """
     use_umfpack!(model)
@@ -31,8 +30,7 @@ standard library). See also [`use_pardiso`](@ref).
 Instruct the stacked-time solver to use Pardiso with this model. See also
 [`use_pardiso!`](@ref).
 """
-@inline use_umfpack!(m::Model) = (m.options.factorization = :umfpack; m)
-# @inline use_umfpack!() = use_umfpack()
+@inline use_umfpack!(m::Model) = (m.options.factorization = :umfpack; m.options)
 export use_umfpack, use_umfpack!
 
 """
@@ -42,15 +40,13 @@ Set the default sparse factorization library to Pardiso. See also
 [`use_umfpack`](@ref).
 """
 @inline use_pardiso() = (global sf_default = :pardiso; nothing)
-# @inline use_pardiso(m::Model) = use_pardiso!(m)
 
 """
     use_pardiso!(model)
 
 Instruct the stacked-time solver to use Pardiso with this model. 
 """
-@inline use_pardiso!(m::Model) = (m.options.factorization = :pardiso; m)
-# @inline use_pardiso!() = use_pardiso()
+@inline use_pardiso!(m::Model) = (m.options.factorization = :pardiso; m.options)
 export use_pardiso, use_pardiso!
 
 ### API
