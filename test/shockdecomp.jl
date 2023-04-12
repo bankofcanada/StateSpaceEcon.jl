@@ -1,10 +1,15 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020-2023, Bank of Canada
+# All rights reserved.
+##################################################################################
 
 using LinearAlgebra
 using JLD2
 @testset "shkdcmp" begin
     m = deepcopy(E7A.model)
     expected = Workspace(load("data/shkdcmp_E7A.jld2"))
-    TimeSeriesEcon.clean_old_frequencies!(expected)
 
     empty!(m.sstate.constraints)
     @steadystate m lc = 1
@@ -23,10 +28,10 @@ using JLD2
     # shock on dly is half inventory half consumption
     dlinv_shk = result.sd.dlinv.dlinv_shk[result.sd.dlinv.dlinv_shk.>1e-9] # positive shock values
     dly_dlinv_shk = result.sd.dly.dlinv_shk[result.sd.dlinv.dlinv_shk.>1e-9] # same rows for dly
-    @test all(dly_dlinv_shk ./ dlinv_shk .≈ 0.5)
+    @test norm(dly_dlinv_shk ./ dlinv_shk .- 0.5, Inf) < 1e-7
     dlc_shk = result.sd.dlc.dlc_shk[result.sd.dlc.dlc_shk.>1e-9] # positive shock values
     dly_dlc_shk = result.sd.dly.dlc_shk[result.sd.dlc.dlc_shk.>1e-9] # same rows for dly
-    @test all(dly_dlc_shk ./ dlc_shk .≈ 0.5)
+    @test norm(dly_dlc_shk ./ dlc_shk .- 0.5, Inf) < 1e-7
 
     sd_zeros = fill!(similar(result.sd.dlc), 0)
 
@@ -56,10 +61,10 @@ using JLD2
     # and the same relation between shocks
     dlinv_shk = result_dev.sd.dlinv.dlinv_shk[result_dev.sd.dlinv.dlinv_shk.>1e-9] # positive shock values
     dly_dlinv_shk = result_dev.sd.dly.dlinv_shk[result_dev.sd.dlinv.dlinv_shk.>1e-9] # same rows for dly
-    @test all(dly_dlinv_shk ./ dlinv_shk .≈ 0.5)
+    @test norm(dly_dlinv_shk ./ dlinv_shk .- 0.5, Inf) < 1e-7
     dlc_shk = result_dev.sd.dlc.dlc_shk[result_dev.sd.dlc.dlc_shk.>1e-9] # positive shock values
     dly_dlc_shk = result_dev.sd.dly.dlc_shk[result_dev.sd.dlc.dlc_shk.>1e-9] # same rows for dly
-    @test all(dly_dlc_shk ./ dlc_shk .≈ 0.5)
+    @test norm(dly_dlc_shk ./ dlc_shk .- 0.5, Inf) < 1e-7
 
     # for consumption, term, init and nonlinear are zero
     @test norm(result_dev.sd.dlc.init, Inf) < 1e-12
@@ -106,7 +111,7 @@ using JLD2
     result3fo = shockdecomp(m, p, exog_data3; solver=:firstorder)
     @test compare(result3, result3fo; ignoremissing=true, atol=2^10 * eps(), quiet=true)
 
-    # additive for linearized model 
+    # additive for linearized model
     exog_data4 = copy(exog_data3)
     exog_data4[first(rng), m.shocks] .+= 0.1
     result4 = shockdecomp(m, p, exog_data4; control=result3.s, variant=:linearize, fctype=fcnatural)

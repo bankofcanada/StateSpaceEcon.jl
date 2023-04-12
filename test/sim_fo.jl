@@ -130,7 +130,8 @@ function test_shockdecomp_firstorder(m, rng=1U:20U, fctype=fcslope)
 end
 
 @testset "shkdcmp.fo" begin
-    for m in (deepcopy(M.model), deepcopy(R.model))
+    for m in (M.model, R.model)
+        m = deepcopy(m)
         m.rho = 0.6
         empty!(m.sstate.constraints)
         test_shockdecomp_firstorder(m)
@@ -138,7 +139,8 @@ end
         @steadystate m x = 6
         test_shockdecomp_firstorder(m, 1U:20U, fclevel)
     end
-    for m in (deepcopy(E2.model), deepcopy(E3.model))
+    for m in (E2.model, E3.model)
+        m = deepcopy(m)
         empty!(m.sstate.constraints)
         test_shockdecomp_firstorder(m, 1U:500U)
     end
@@ -188,7 +190,8 @@ end
 
 
 @testset "inidcmp.fo" begin
-    for m in (deepcopy(M.model), deepcopy(R.model))
+    for m in (M.model, R.model)
+        m = deepcopy(m)
         m.rho = 0.6
         empty!(m.sstate.constraints)
         test_initdecomp_firstorder(m)
@@ -196,7 +199,8 @@ end
         @steadystate m x = 6
         test_initdecomp_firstorder(m)
     end
-    for m in (deepcopy(E2.model), deepcopy(E3.model))
+    for m in (E2.model, E3.model)
+        m = deepcopy(m)
         empty!(m.sstate.constraints)
         test_initdecomp_firstorder(m)
     end
@@ -229,7 +233,7 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
     p = Plan(m, rng)
     exog = steadystatedata(m, p)
     exog[begin:first(rng)-1, vars] = rand(m.maxlag, m.nvars)
-    # zero shocks 
+    # zero shocks
     ref = shockdecomp(m, p, exog; solver, fctype)
     for v in vars, s in shks
         @test norm(ref.sd[v][:, s], Inf) < atol
@@ -241,7 +245,7 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
     exog1[begin:first(rng1)-1, vars] = ref.s
     exog1[rng1, shks] = ref.s[rng1, shks]
     if fctype === fclevel
-        exog1[last(rng1)+1:end,vars] = ref.s
+        exog1[last(rng1)+1:end, vars] = ref.s
     end
     res1 = shockdecomp(m, p1, exog1; solver, fctype, initdecomp=ref)
     res1a = shockdecomp(m, p1, exog1; solver, fctype)
@@ -273,7 +277,7 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
         exog1[begin:first(rng1)-1, shks] .= NaN
         exog1[rng1, shks] = ref.s[rng1, shks]
         if fctype === fclevel
-            exog1[last(rng1)+1:end,vars] = ref.s
+            exog1[last(rng1)+1:end, vars] = ref.s
         end
         res1 = shockdecomp(m, p1, exog1; solver, fctype, initdecomp=ref)
         res1a = shockdecomp(m, p1, exog1; solver, fctype)
@@ -304,7 +308,7 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
     exog1[begin:first(rng1)-1, shks] .= NaN   # mask shocks in initial conditions
     exog1[rng1, shks] = ref.s[rng1, shks]
     if fctype === fclevel
-        exog1[last(rng1)+1:end,vars] = ref.s
+        exog1[last(rng1)+1:end, vars] = ref.s
     end
     res1 = shockdecomp(m, p1, exog1; solver, fctype, initdecomp=ref)
     @test rangeof(ref) == rangeof(res1)
@@ -313,7 +317,8 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
 end
 
 @testset "inidcmp.st" begin
-    for m in (deepcopy(M.model), deepcopy(R.model))
+    for m in (M.model, R.model)
+        m = deepcopy(m)
         m.rho = 0.6
         empty!(m.sstate.constraints)
         test_initdecomp_stackedtime(m)
@@ -321,7 +326,8 @@ end
         @steadystate m x = 6
         test_initdecomp_stackedtime(m, fctype=fclevel)
     end
-    for m in (deepcopy(E2.model), deepcopy(E3.model))
+    for m in (E2.model, E3.model)
+        m = deepcopy(m)
         empty!(m.sstate.constraints)
         test_initdecomp_stackedtime(m)
     end
