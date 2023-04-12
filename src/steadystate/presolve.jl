@@ -114,5 +114,5 @@ presolve_sstate!(eqns::OrderedDict{Symbol,SteadyStateEquation}, mask::AbstractVe
     _presolve_equations!(eqns, mask, values, method, verbose, tol)
 
 @assert precompile(presolve_sstate!, (Model, Vector{Bool}, Vector{Float64}))
-# @assert precompile(presolve_sstate!, (LittleDict{Symbol,SteadyStateEquation}, Vector{Bool}, Vector{Float64}))
+@assert precompile(presolve_sstate!, (OrderedDict{Symbol,SteadyStateEquation}, Vector{Bool}, Vector{Float64}))
 
