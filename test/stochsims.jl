@@ -41,11 +41,11 @@
     db_1 = copy(db_ss)
     shk_1 = MVTSeries(srng, m.shocks, rand)
     db_1 .= db_1 .+ shk_1
-    
-    @test simulate(m, plan, db_1; anticipate=false) ≈  stoch_simulate(m, plan, db_ss, shk_1)[1]
-    @test simulate(m, plan, db_1; anticipate=false) ≈  stoch_simulate(m, plan, rawdata(db_ss), shk_1)[1]
-    @test simulate(m, plan, db_1; anticipate=false) ≈  stoch_simulate(m, plan, Workspace(; pairs(db_ss)...), shk_1)[1]
-    
+
+    @test simulate(m, plan, db_1; anticipate=false) ≈ stoch_simulate(m, plan, db_ss, shk_1)[1]
+    @test simulate(m, plan, db_1; anticipate=false) ≈ stoch_simulate(m, plan, rawdata(db_ss), shk_1)[1]
+    @test simulate(m, plan, db_1; anticipate=false) ≈ stoch_simulate(m, plan, Workspace(; pairs(db_ss)...), shk_1)[1]
+
     db_1 = simulate(m, plan, db_1; anticipate=true)
     res = stoch_simulate(m, plan, db_1, shk_sample; check=true)
     for (r, s) in zip(res, shk_sample)

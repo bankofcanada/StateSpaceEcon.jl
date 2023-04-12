@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -14,7 +14,7 @@ end
 
 @testset "fcset" begin
     m = deepcopy(E7A.model)
-   
+
     empty!(m.sstate.constraints)
     @steadystate m lc = 1
     @steadystate m linv = 1

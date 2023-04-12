@@ -19,7 +19,7 @@ dynamic model for the given plan range and final condition. We verify the
 residual and issue a warning, but do not enforce this. See
 [`steadystatedata`](@ref).
 
-As part of the algorithm we run a simulation with the given `plan`, 
+As part of the algorithm we run a simulation with the given `plan`,
 `exog_data` and `fctype`.  See [`simulate`](@ref) for other options.
 
 !!! note
@@ -37,7 +37,6 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     verbose::Bool=getoption(m, :verbose, false),
     maxiter::Int=getoption(m, :maxiter, 20),
     tol::Float64=getoption(m, :tol, 1e-12),
-    sparse_solver::Function=(A, b) -> A \ b,
     linesearch::Bool=getoption(m, :linesearch, false),
     fctype::FinalCondition=getoption(m, :fctype, fcgiven),
     _debug=false
@@ -75,11 +74,11 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     stackedtime_R!(res_shocked, shocked, shocked, gdata)    # Run the "shocked" simulation with the given exogenous data.
     if norm(res_shocked, Inf) > tol
         assign_exog_data!(shocked, exog_data, gdata)
-        sim_nr!(shocked, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
+        sim_nr!(shocked, gdata, maxiter, tol, verbose, linesearch)
     end
 
     # We need the Jacobian matrix evaluated at the control solution.
-    res_control, _ = stackedtime_RJ(control, control, gdata)
+    res_control, Jac_control = stackedtime_RJ(control, control, gdata)
     if norm(res_control, Inf) > tol
         # What to do if it's not a solution? We just give a warning for now, but maybe we should error()?!
         @warn "Control is not a solution:" norm(res_control, Inf)
@@ -109,7 +108,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
         end
 
         # indices for the exogenous variable-points split into groups
-        exog_inds = Workspace(;
+        exog_inds = @views @inbounds Workspace(;
             # contributions of initial conditions
             init=vec(LI[init, :]),
             # contributions of final conditions
@@ -129,7 +128,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
 
     # now do the decomposition
     begin
-        # we build a sparse matrix 
+        # we build a sparse matrix
         SDI = Int[]     # row indexes
         SDJ = Int[]     # column indexes
         SDV = Float64[] # values
@@ -149,7 +148,7 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
                     continue
                 end
                 rsdv = result.sd[v.name] = MVTSeries(p.range, keys(exog_inds), zeros)
-                rsdv[pinit, :init] = delta[pinit, v.name]
+                rsdv.init[pinit] = view(delta[v.name], pinit)
             end
         else
             shex = filter(v -> isshock(v) || isexog(v), m.allvars)
@@ -161,13 +160,13 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
                 if haskey(id, v.name)
                     # have initial decomposition
                     idv = id[v.name]
-                    if norm(delta[pinit, v.name]-sum(idv[pinit, :],dims=2),Inf)>tol
+                    if norm(view(delta[v.name], pinit) - sum(view(idv, pinit, :), dims=2), Inf) > tol
                         error("The given `initdecomp` does not add up for $(v.name).")
                     end
                     rsdv[pinit] .= idv
                     for (colind, colname) in enumerate(keys(exog_inds))
                         if haskey(idv, colname) || colname ∈ shex
-                            inds = LI[init, vind]
+                            inds = @view LI[init, vind]
                             append!(SDI, inds)
                             append!(SDJ, fill(colind, size(inds)))
                             append!(SDV, idv[pinit, colname].values)
@@ -175,9 +174,9 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
                     end
                 else
                     # no initial decomposition - it all goes in init
-                    rsdv[pinit, :init] = delta[pinit, v.name]
+                    rsdv.init[pinit] = view(delta[v.name], pinit)
                     colind = 1
-                    inds = LI[init, vind]
+                    inds = @view LI[init, vind]
                     append!(SDI, inds)
                     append!(SDJ, fill(colind, size(inds)))
                     append!(SDV, delta[inds])
@@ -196,29 +195,27 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
         end
 
         SDMAT = Matrix(gdata.J * sparse(SDI, SDJ, -SDV, size(gdata.J, 2), length(exog_inds)))
-        ldiv!(gdata.J_factorized[], SDMAT)
-
+        sf_solve!(Jac_control, SDMAT)
     end
 
     # now split and decorate the shock-decomposition matrix
     begin
         # in order to split the rows of SDMAT by variable, we need the inverse indexing map
         inv_endo_inds = zeros(Int, size(gdata.solve_mask))
-        inv_endo_inds[gdata.solve_mask] .= 1:sum(gdata.solve_mask)
+        inv_endo_inds[gdata.solve_mask] = 1:sum(gdata.solve_mask)
         for (index, v) in enumerate(m.allvars)
-            v_inds = vec(LI[:, index])
-            v_endo_mask = gdata.solve_mask[v_inds]
+            v_endo_mask = gdata.solve_mask[@view LI[:, index]]
             if !any(v_endo_mask)
                 continue
             end
-            v_inv_endo_inds = inv_endo_inds[v_inds[v_endo_mask]]
-            v_data = result.sd[v] 
+            v_inv_endo_inds = inv_endo_inds[@view LI[v_endo_mask, index]]
+            v_data = result.sd[v]
             # assign contributions to endogenous points
             v_data[v_endo_mask, :] = SDMAT[v_inv_endo_inds, :]
             # contributions of initial conditions already assigned
             # assign contributions to final conditions
             if fctype === fcgiven || fctype === fclevel
-                v_data[(begin-1).+term, :term] .= delta[v.name][term]
+                v_data.term[(begin-1).+term] = view(delta[v.name], term)
             elseif fctype === fcrate
                 for tt in term
                     v_data[begin-1+tt, :] = v_data[begin-2+tt, :]
@@ -240,8 +237,8 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
 
     if deviation
         logvars = islog.(m.varshks) .| isneglog.(m.varshks)
-        result.s[:, logvars] ./= result.c[:, logvars]
-        result.s[:, .!logvars] .-= result.c[:, .!logvars]
+        @views result.s[:, logvars] ./= result.c[:, logvars]
+        @views result.s[:, .!logvars] .-= result.c[:, .!logvars]
     end
 
     if _debug

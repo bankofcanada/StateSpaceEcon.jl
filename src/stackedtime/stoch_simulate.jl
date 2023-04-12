@@ -19,7 +19,6 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
     maxiter::Int=m.options.maxiter,
     fctype=getoption(m, :fctype, fcgiven),
     #= Newton-Raphson options =#
-    sparse_solver::Function=\,
     linesearch::Bool=getoption(m, :linesearch, false),
     warn_maxiter::Bool=getoption(getoption(m, :warn, Options()), :maxiter, false)
 )
@@ -122,7 +121,7 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
 
             # solve 
             try
-                converged = sim_nr!(eₜ, dₜ, maxiter, tol, verbose, sparse_solver, linesearch)
+                converged = sim_nr!(eₜ, dₜ, maxiter, tol, verbose, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations for $skey at $(t:sim_end)")
                 end
@@ -137,9 +136,10 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
     end # time loop
 
     # strip auxvar columns and inverse transform
+    have_auxs = (m.nauxs > 0)
     for (key, result) in pairs(results)
         isfailed(result) && continue
-        if m.nauxs > 0
+        if have_auxs
             result = result[:, m.varshks]
         end
         results[key] = inverse_transform(result, m)

@@ -10,7 +10,7 @@
 end
 
 """
-    sim_nr!(x, sd, maxiter, tol, verbose [, sparse_solver [, linesearch]])
+    sim_nr!(x, sd, maxiter, tol, verbose [, linesearch])
 
 Solve the simulation problem.
   * `x` - the array of data for the simulation. All initial, final and exogenous
@@ -20,18 +20,15 @@ Solve the simulation problem.
   * `maxiter` - maximum number of iterations.
   * `tol` - desired accuracy.
   * `verbose` - whether or not to print progress information.
-  * `sparse_solver` (optional) - a function called to solve the linear system A
-    x = b for x. Defaults to A\\b
   * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a 
     search along the descent direction for a sufficient decrease in f. It will 
     do this at each iteration. Default is `false`.
 
 """
-function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
-    maxiter::Int64, tol::Float64, verbose::Bool,
-    sparse_solver::Function=(A, b) -> A \ b, linesearch::Bool=false)
+@timeit_debug timer function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
+    maxiter::Int64, tol::Float64, verbose::Bool, linesearch::Bool=false)
     for it = 1:maxiter
-        Fx, Jx = stackedtime_RJ(x, x, sd)
+        Fx = stackedtime_R!(Vector{Float64}(undef, size(sd.J, 1)), x, x, sd)
         nFx = norm(Fx, Inf)
         if nFx < tol
             if verbose
@@ -39,7 +36,9 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
             end
             return true
         end
-        Δx = sparse_solver(Jx, Fx)
+        Δx, Jx = stackedtime_RJ(x, x, sd)
+        Δx = sf_solve!(Jx, Δx)
+
         λ = 1.0
         if linesearch
             nf = norm(Fx)
@@ -106,7 +105,6 @@ function simulate(m::Model,
     fctype=getoption(m, :fctype, fcgiven),
     expectation_horizon::Union{Nothing,Int64}=nothing,
     #= Newton-Raphson options =#
-    sparse_solver::Function=(A, b) -> A \ b,
     linesearch::Bool=getoption(m, :linesearch, false),
     warn_maxiter::Bool=getoption(getoption(m, :warn, Options()), :maxiter, false)
 )
@@ -127,7 +125,7 @@ function simulate(m::Model,
     NT = length(p_ant.range)
     nauxs = length(m.auxvars)
     nvarshks = length(m.varshks)
-    logvars = [islog(var) | isneglog(var) for var in m.varshks]
+    logvars = islog.(m.varshks) .| isneglog.(m.varshks)
 
     if size(exog_ant) != (NT, nvarshks)
         error("Incorrect dimensions of exog_data. Expected $((NT, nvarshks)), got $(size(exog_ant)).")
@@ -144,8 +142,8 @@ function simulate(m::Model,
         if size(baseline) != (NT, nvarshks)
             error("Incorrect dimensions of baseline. Expected $((NT, nvarshks)), got $(size(baseline)).")
         end
-        exog_ant[:, logvars] .*= baseline[:, logvars]
-        exog_ant[:, .!logvars] .+= baseline[:, .!logvars]
+        @views exog_ant[:, logvars] .*= baseline[:, logvars]
+        @views exog_ant[:, .!logvars] .+= baseline[:, .!logvars]
     end
     exog_ant = ModelBaseEcon.update_auxvars(transform(exog_ant, m), m)
 
@@ -161,7 +159,7 @@ function simulate(m::Model,
         if verbose
             @info "Simulating $(p_ant.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
         end
-        converged = sim_nr!(x, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
+        converged = sim_nr!(x, gdata, maxiter, tol, verbose, linesearch)
         if warn_maxiter && !converged
             @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
         end
@@ -194,14 +192,14 @@ function simulate(m::Model,
             if p_unant.range != p_ant.range
                 error("Anticipated and unanticipated ranges don't match.")
             end
+            if deviation_unant
+                @views exog_unant[:, logvars] .*= baseline[:, logvars]
+                @views exog_unant[:, .!logvars] .+= baseline[:, .!logvars]
+            end
+            exog_unant = ModelBaseEcon.update_auxvars(transform(exog_unant, m), m)
             if size(exog_unant) != size(exog_ant)
                 error("Anticipated and unanticipated data  don't match.")
             end
-            if deviation_unant
-                exog_unant[:, logvars] .*= baseline[:, logvars]
-                exog_unant[:, .!logvars] .+= baseline[:, .!logvars]
-            end
-            exog_unant = ModelBaseEcon.update_auxvars(transform(exog_unant, m), m)
         else
             #=== prepare unanticipated data and plan (backward compatibility) ===#
             p_unant = p_ant
@@ -211,7 +209,7 @@ function simulate(m::Model,
             x[sim, shkinds] .= 0
         end
 
-        x[init, allvarinds] .= exog_ant[init, allvarinds]
+        x[init, allvarinds] = exog_ant[init, allvarinds]
         t0 = first(sim)
         T = last(sim)
         if expectation_horizon === nothing
@@ -224,7 +222,7 @@ function simulate(m::Model,
                 if t == t0
                     imaxiter = maxiter
                     itol = tol
-                elseif (maximum(abs, x[t, exog_inds] .- exog_unant[t, exog_inds]) < tol) #= && (psim[t0, Val(:inds)] == exog_inds) =#
+                elseif (maximum(abs, x[t, exog_inds] - exog_unant[t, exog_inds]) < tol) #= && (psim[t0, Val(:inds)] == exog_inds) =#
                     continue
                 else
                     imaxiter = 5
@@ -240,7 +238,7 @@ function simulate(m::Model,
                 if verbose
                     @info "Simulating $(p_ant.range[t:T]) with $((itol, imaxiter))" # anticipate expectation_horizon gdata.FC
                 end
-                converged = sim_nr!(xx, gdata, imaxiter, itol, verbose, sparse_solver, linesearch)
+                converged = sim_nr!(xx, gdata, imaxiter, itol, verbose, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations (`imaxiter`).")
                 end
@@ -253,7 +251,7 @@ function simulate(m::Model,
                 if verbose
                     @info "Simulating $(p_ant.range[t:T]) with $((tol, maxiter))" # anticipate expectation_horizon gdata.FC
                 end
-                converged = sim_nr!(xx, gdata, maxiter, tol, verbose, sparse_solver, linesearch)
+                converged = sim_nr!(xx, gdata, maxiter, tol, verbose, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
                 end
@@ -287,7 +285,7 @@ function simulate(m::Model,
                 if verbose
                     @info "Simulating $(p_ant.range[t:T])" # anticipate expectation_horizon sdata.FC
                 end
-                converged = sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
+                converged = sim_nr!(xx, sdata, maxiter, tol, verbose, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
                 end
@@ -302,14 +300,14 @@ function simulate(m::Model,
                 # these intermediate simulations are always with fcnatural, 
                 #       have length equal to expectation_horizon and 
                 #       only the first period is imposed
-                if (maximum(abs, x[t, exog_inds] .- exog_unant[t, exog_inds]) < tol) #= && (exog_inds == shkinds) =#
+                if (maximum(abs, x[t, exog_inds] - exog_unant[t, exog_inds]) < tol) #= && (exog_inds == shkinds) =#
                     continue
                 end
                 psim1 = copy(psim)
                 # the range of psim1 might extend beyond the range of p_ant.
                 # we copy from p_ant as far as we have and copy the last line beyond that
                 tmp_rng = t:min(t + expectation_horizon - 1, T)
-                psim1.exogenous[t0.+(0:length(tmp_rng)-1), :] .= p_ant.exogenous[tmp_rng, :]
+                psim1.exogenous[t0.+(0:length(tmp_rng)-1), :] = p_ant.exogenous[tmp_rng, :]
 
                 # ===> must leave the psim1 plan empty beyond the end of p_ant
                 # becasue we don't have data in exog_and for any exogenized
@@ -335,7 +333,7 @@ function simulate(m::Model,
                 if verbose
                     @info("Simulating $(p_ant.range[t] .+ (0:expectation_horizon - 1))") # anticipate expectation_horizon sdata.FC
                 end
-                converged = sim_nr!(xx, sdata, 5, sqrt(tol), verbose, sparse_solver, linesearch)
+                converged = sim_nr!(xx, sdata, 5, sqrt(tol), verbose, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
                 end
@@ -359,7 +357,7 @@ function simulate(m::Model,
                     if verbose
                         @info "Simulating $(p_ant.range[last_t + 1:T])" # anticipate expectation_horizon sdata.FC
                     end
-                    converged = sim_nr!(xx, sdata, maxiter, tol, verbose, sparse_solver, linesearch)
+                    converged = sim_nr!(xx, sdata, maxiter, tol, verbose, linesearch)
                     if warn_maxiter && !converged
                         @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
                     end
@@ -372,8 +370,8 @@ function simulate(m::Model,
     x = x[axes(exog_ant)...]
     x .= inverse_transform(x, m)
     if deviation
-        x[:, logvars] ./= baseline[:, logvars]
-        x[:, .!logvars] .-= baseline[:, .!logvars]
+        @views x[:, logvars] ./= baseline[:, logvars]
+        @views x[:, .!logvars] .-= baseline[:, .!logvars]
     end
 
     return x

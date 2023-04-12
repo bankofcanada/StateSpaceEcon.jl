@@ -23,6 +23,9 @@ using Printf
 using ModelBaseEcon
 using TimeSeriesEcon
 
+using TimerOutputs
+const timer = TimerOutput()
+
 using ..Plans
 
 import ..steadystatearray
@@ -39,6 +42,14 @@ import ModelBaseEcon.setevaldata!
 import ModelBaseEcon.hassolverdata
 import ModelBaseEcon.getsolverdata
 import ModelBaseEcon.setsolverdata!
+
+using Pardiso
+
+
+using SuiteSparse
+using SuiteSparse.UMFPACK
+
+include("stackedtime/sparse.jl")
 
 include("stackedtime/fctypes.jl")
 include("stackedtime/misc.jl")
@@ -60,6 +71,9 @@ export FCMatchSSLevel, fclevel
 export FCMatchSSRate, fcslope, fcrate
 export FCConstRate, fcnatural
 export setfc
+
+export use_pardiso, use_pardiso!
+export use_umfpack, use_umfpack!
 
 # the following are deprecated
 export seriesoverlay, dictoverlay
