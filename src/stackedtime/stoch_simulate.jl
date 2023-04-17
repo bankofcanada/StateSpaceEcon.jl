@@ -8,7 +8,8 @@
 # version of simulate for stochastic simulations 
 
 #  NOTE: This requires TimeSeriesEcon v0.5.1 where map(func, ::Workspace) returns a Workspace.
-_make_result_container(shocks, basedata) = map(_ -> copy(basedata), shocks)
+_make_result_container(shocks::Workspace, basedata)::Workspace = map(_ -> copy(basedata), shocks)
+_make_result_container(shocks::Vector, basedata)::Vector{MaybeSimData} = convert(Vector{MaybeSimData}, map(_ -> copy(basedata), shocks))
 
 function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
     check::Bool=false,
