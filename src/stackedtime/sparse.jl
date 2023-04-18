@@ -134,7 +134,7 @@ end
     set_matrixtype!(ps, Pardiso.REAL_NONSYM)
     pardisoinit(ps)
     fix_iparm!(ps, :N)
-    # set_iparm!(ps, 2, 2) # Select algorithm
+    set_iparm!(ps, 2, 3) # Select algorithm
     pf = PardisoFactorization{Tv}(ps, get_matrix(ps, A, :N))
     finalizer(pf) do x
         set_phase!(x.ps, Pardiso.RELEASE_ALL)
