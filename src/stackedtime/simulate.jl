@@ -327,7 +327,7 @@ function simulate(m::Model,
                 if verbose
                     @info("Simulating $(p_ant.range[t] .+ (0:expectation_horizon - 1))") # anticipate expectation_horizon sdata.FC
                 end
-                converged = sim_nr!(xx, sdata, 5, sqrt(tol), verbose, linesearch)
+                converged = sim_nr!(xx, sdata, maxiter, tol, verbose, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
                 end
