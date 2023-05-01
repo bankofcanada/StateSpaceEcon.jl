@@ -51,7 +51,7 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
             tinds = Plans._offset(p, rangeof(val))
             vind = p.varshks[shk]
             if !all(p.exogenous[tinds, vind])
-                throw(ArgumentError("$shk in shocks realization $key is endogenous in the given plan."))
+                @warn "$shk in shocks[$key] is endogenous in the given plan."
             end
         end
     end
