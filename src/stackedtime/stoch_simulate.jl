@@ -24,6 +24,10 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
     warn_maxiter::Bool=getoption(getoption(m, :warn, Options()), :maxiter, false)
 )
 
+    if isempty(shocks)
+        return _make_result_container(shocks, baseline);
+    end
+
     # get the range of all shocks realizations (this will be the full simulation range)
     shkrng = mapreduce(rangeof, union, values(shocks))
 
