@@ -572,3 +572,94 @@ end
 
     end
 end
+
+#############################################################
+# Tests of equation changes
+@testset "E1 to E2.sim" begin
+    m = E1.newmodel()
+    @parameters m begin
+        cp = [0.5, 0.02]
+        cr = [0.75, 1.5, 0.5]
+        cy = [0.5, -0.02]
+    end
+    @variables m begin
+        @delete y
+        pinf
+        rate
+        ygap
+    end
+    @shocks m begin
+        @delete y_shk
+        pinf_shk
+        rate_shk
+        ygap_shk
+    end
+    @autoexogenize m begin
+        @delete y => y_shk
+        pinf = pinf_shk
+        rate = rate_shk
+        ygap = ygap_shk
+    end
+    @equations m begin
+        @delete _EQ1;
+        pinf[t]=cp[1]*pinf[t-1]+(.98-cp[1])*pinf[t+1]+cp[2]*ygap[t]+pinf_shk[t]
+        rate[t]=cr[1]*rate[t-1]+(1-cr[1])*(cr[2]*pinf[t]+cr[3]*ygap[t])+rate_shk[t]
+        ygap[t]=cy[1]*ygap[t-1]+(.98-cy[1])*ygap[t+1]+cy[2]*(rate[t]-pinf[t+1])+ygap_shk[t]
+    end
+
+    @reinitialize m
+
+    test_simulation(m, "data/M2_TestData.csv")
+end
+
+@testset "E2 to E3.sim" begin
+    m = E2.newmodel()
+    @equations m begin
+        :_EQ1 => pinf[t]=cp[1]*pinf[t-1]+0.3*pinf[t+1]+0.05*pinf[t+2]+0.05*pinf[t+3]+cp[2]*ygap[t]+pinf_shk[t]
+        :_EQ2 => rate[t]=cr[1]*rate[t-1]+(1-cr[1])*(cr[2]*pinf[t]+cr[3]*ygap[t])+rate_shk[t]
+        :_EQ3 => ygap[t]=cy[1]/2*ygap[t-2]+cy[1]/2*ygap[t-1]+(.98-cy[1])*ygap[t+1]+cy[2]*(rate[t]-pinf[t+1])+ygap_shk[t]
+    end
+
+    @reinitialize m
+
+    test_simulation(m, "data/M3_TestData.csv")
+end
+
+@testset "E3 to E6.sim" begin
+    m = E3.newmodel()
+    @parameters m begin
+        p_dlp = 0.0050000000000000 
+        p_dly = 0.0045000000000000 
+    end
+    @variables m begin
+        @delete pinf rate ygap
+        dlp; dly; dlyn; lp; ly; lyn
+    end
+    @shocks m begin
+        @delete pinf_shk rate_shk ygap_shk
+        dlp_shk; dly_shk
+    end
+    @autoexogenize m begin
+        @delete pinf => pinf_shk
+        @delete rate => rate_shk
+        @delete ygap => ygap_shk
+        ly = dly_shk
+        lp = dlp_shk
+    end
+    
+    @equations m begin
+        @delete _EQ1;
+        @delete _EQ2;
+        @delete _EQ3;
+        dly[t]=(1-0.2-0.2)*p_dly+0.2*dly[t-1]+0.2*dly[t+1]+dly_shk[t]
+        dlp[t]=(1-0.5)*p_dlp+0.1*dlp[t-2]+0.1*dlp[t-1]+0.1*dlp[t+1]+0.1*dlp[t+2]+0.1*dlp[t+3]+dlp_shk[t]
+        dlyn[t]=dly[t]+dlp[t]
+        ly[t]=ly[t-1]+dly[t]
+        lp[t]=lp[t-1]+dlp[t]
+        lyn[t]=lyn[t-1]+dlyn[t]
+     end
+
+     @reinitialize m
+
+    test_simulation(m, "data/M6_TestData.csv")
+end
