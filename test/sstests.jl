@@ -7,7 +7,7 @@
 
 
 @testset "E1.sstate" begin
-    let m = deepcopy(E1.model)
+    let m = getE1()
         empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
@@ -53,7 +53,7 @@
 end
 
 @testset "E1.sstate, auto" begin
-    let m = deepcopy(E1.model)
+    let m = getE1()
         empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
@@ -93,7 +93,7 @@ end
 end
 
 @testset "E1.sstate, lm" begin
-    let m = deepcopy(E1.model)
+    let m = getE1()
         empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
@@ -133,7 +133,7 @@ end
 end
 
 @testset "E2.sstate" begin
-    let m = deepcopy(E2.model)
+    let m = getE2()
         empty!(m.sstate.constraints)
         clear_sstate!(m)
         sssolve!(m)
@@ -159,7 +159,7 @@ end
 end
 
 @testset "E6.sstate" begin
-    let m = deepcopy(E6.model)
+    let m = getE6()
         m.options.maxiter = 50
 
         clear_sstate!(m)
@@ -181,7 +181,7 @@ end
 end
 
 @testset "E7.sstate" begin
-    let m = deepcopy(E7.model)
+    let m = getE7()
         m.options.maxiter = 100
         m.options.tol = 1e-9
 
@@ -319,7 +319,7 @@ end
 end
 
 @testset "presolve, ssZeroSlope" begin
-    let m = deepcopy(E1.model)
+    let m = getE1()
         empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
@@ -329,7 +329,7 @@ end
         @test m.sstate.mask == [false, false, true, true]
     end
     
-    let m = deepcopy(E1.model)
+    let m = getE1()
         empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α

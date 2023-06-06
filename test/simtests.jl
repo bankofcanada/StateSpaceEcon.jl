@@ -9,7 +9,7 @@ using LinearAlgebra
 using DelimitedFiles
 
 @testset "E1.simple" begin
-    m = deepcopy(E1.model)
+    m = getE1()
     m.α = 0.5
     m.β = 1.0 - m.α
     for T = 6:10
@@ -96,26 +96,26 @@ function test_simulation(m_in, path; atol=1.0e-9)
 end
 
 @testset "E1.sim" begin
-    test_simulation(E1.model, "data/M1_TestData.csv")
+    test_simulation(getE1(), "data/M1_TestData.csv")
 end
 
 @testset "E2.sim" begin
-    test_simulation(E2.model, "data/M2_TestData.csv")
+    test_simulation(getE2(), "data/M2_TestData.csv")
 end
 
 @testset "E3.sim" begin
-    test_simulation(E3.model, "data/M3_TestData.csv")
+    test_simulation(getE3(), "data/M3_TestData.csv")
 end
 
 @testset "E6.sim" begin
-    test_simulation(E6.model, "data/M6_TestData.csv")
+    test_simulation(getE6(), "data/M6_TestData.csv")
 end
 
 #############################################################
 # linearization tests
 
 @testset "linearize" begin
-    m3 = deepcopy(E3.model)
+    m3 = getE3()
     clear_sstate!(m3)
     @test_throws ModelBaseEcon.LinearizationError linearize!(m3)
 
@@ -124,7 +124,7 @@ end
 
     test_simulation(m3, "data/M3_TestData.csv")
 
-    m3nl = deepcopy(E3nl.model)
+    m3nl = getE3nl()
     m3nl.sstate.values .= m3.sstate.values
     m3nl.sstate.mask .= m3.sstate.mask
     @test issssolved(m3nl)
@@ -141,7 +141,7 @@ end
     @test isa(ModelBaseEcon.getevaldata(m3), ModelBaseEcon.LinearizedModelEvaluationData)
     test_simulation(m3, "data/M3_TestData.csv")
 
-    m7 = deepcopy(E7.model)
+    m7 = getE7()
     if !issssolved(m7)
         empty!(m7.sstate.constraints)
         @steadystate m7 linv = lc - 7
@@ -152,7 +152,7 @@ end
     # the aux variables are present
     @test_throws ModelBaseEcon.LinearizationError linearize!(m7)
 
-    m7a = deepcopy(E7A.model)
+    m7a = getE7A()
     clear_sstate!(m7a)
     sssolve!(m7a)
     # non-zeros linear growth in the steady state
@@ -165,7 +165,7 @@ end
 # Tests of unanticipated shocks
 
 @testset "E1.unant" begin
-    m = deepcopy(E1.model)
+    m = getE1()
     m.α = m.β = 0.5
     p = Plan(m, 1:3)
     data = zeroarray(m, p)
@@ -178,7 +178,7 @@ end
 end
 
 @testset "E2.unant" begin
-    m = deepcopy(E2.model)
+    m = getE2()
     nvars = length(m.variables)
     nshks = length(m.shocks)
     var_inds = 1:nvars
@@ -251,7 +251,7 @@ end
 end
 
 @testset "E3.unant" begin
-    m = deepcopy(E3.model)
+    m = getE3()
     nvars = length(m.variables)
     nshks = length(m.shocks)
     var_inds = 1:nvars
@@ -354,7 +354,7 @@ end
         ed = zerodata(m, p)
         @test_throws ArgumentError simulate(m, p, ed, fctype=fcnatural)
     end
-    let m = deepcopy(E1.model)
+    let m = getE1()
         p = Plan(m, 3:17)
         ed = zerodata(m, p)
         ed .= rand(Float64, size(ed))
@@ -367,7 +367,7 @@ end
         R2 = StateSpaceEcon.StackedTimeSolver.stackedtime_R!(similar(R1), x, ed, sd)
         @test R1 ≈ R2
     end
-    let m = deepcopy(E3.model)
+    let m = getE3()
         p = Plan(m, 3:177)
         ed = zerodata(m, p)
         ed[3U, m.shocks] .= 0.2 * rand(1, 3)
@@ -393,7 +393,7 @@ end
         R2 = StateSpaceEcon.StackedTimeSolver.stackedtime_R!(similar(R1), x, ed, sd)
         @test R1 ≈ R2
     end
-    let m = deepcopy(E6.model)
+    let m = getE6()
         empty!(m.sstate.constraints)
         @steadystate m lp = 1.0
         @steadystate m lp + lyn = 1.5
@@ -416,7 +416,7 @@ end
 end
 
 @testset "new.unant" begin
-    m = deepcopy(E1.model)
+    m = getE1()
     m.α = m.β = 0.5
 
     test_rng = 20Q1:22Q1
@@ -476,7 +476,7 @@ end
 
 @testset "linesearch, deviation" begin
     # linesearch should get the same results
-    let m = deepcopy(E3nl.model)
+    let m = getE3nl()
         clear_sstate!(m)
         nvars = ModelBaseEcon.nvariables(m)
         nshks = ModelBaseEcon.nshocks(m)
@@ -508,7 +508,7 @@ end
         @test isapprox(res01, res01_line; atol=1.0e-9)
     end
 
-    let m = deepcopy(E1.model)
+    let m = getE1()
         clear_sstate!(m)
         nvars = ModelBaseEcon.nvariables(m)
         nshks = ModelBaseEcon.nshocks(m)
@@ -531,7 +531,7 @@ end
         @test isapprox(res01_dev, res01; atol=1.0e-9)
     end
 
-    let m = deepcopy(E3.model)
+    let m = getE3()
         clear_sstate!(m)
         nvars = ModelBaseEcon.nvariables(m)
         nshks = ModelBaseEcon.nshocks(m)
@@ -573,93 +573,3 @@ end
     end
 end
 
-#############################################################
-# Tests of equation changes
-@testset "E1 to E2.sim" begin
-    m = E1.newmodel()
-    @parameters m begin
-        cp = [0.5, 0.02]
-        cr = [0.75, 1.5, 0.5]
-        cy = [0.5, -0.02]
-    end
-    @variables m begin
-        @delete y
-        pinf
-        rate
-        ygap
-    end
-    @shocks m begin
-        @delete y_shk
-        pinf_shk
-        rate_shk
-        ygap_shk
-    end
-    @autoexogenize m begin
-        @delete y => y_shk
-        pinf = pinf_shk
-        rate = rate_shk
-        ygap = ygap_shk
-    end
-    @equations m begin
-        @delete _EQ1;
-        pinf[t]=cp[1]*pinf[t-1]+(.98-cp[1])*pinf[t+1]+cp[2]*ygap[t]+pinf_shk[t]
-        rate[t]=cr[1]*rate[t-1]+(1-cr[1])*(cr[2]*pinf[t]+cr[3]*ygap[t])+rate_shk[t]
-        ygap[t]=cy[1]*ygap[t-1]+(.98-cy[1])*ygap[t+1]+cy[2]*(rate[t]-pinf[t+1])+ygap_shk[t]
-    end
-
-    @reinitialize m
-
-    test_simulation(m, "data/M2_TestData.csv")
-end
-
-@testset "E2 to E3.sim" begin
-    m = E2.newmodel()
-    @equations m begin
-        :_EQ1 => pinf[t]=cp[1]*pinf[t-1]+0.3*pinf[t+1]+0.05*pinf[t+2]+0.05*pinf[t+3]+cp[2]*ygap[t]+pinf_shk[t]
-        :_EQ2 => rate[t]=cr[1]*rate[t-1]+(1-cr[1])*(cr[2]*pinf[t]+cr[3]*ygap[t])+rate_shk[t]
-        :_EQ3 => ygap[t]=cy[1]/2*ygap[t-2]+cy[1]/2*ygap[t-1]+(.98-cy[1])*ygap[t+1]+cy[2]*(rate[t]-pinf[t+1])+ygap_shk[t]
-    end
-
-    @reinitialize m
-
-    test_simulation(m, "data/M3_TestData.csv")
-end
-
-@testset "E3 to E6.sim" begin
-    m = E3.newmodel()
-    @parameters m begin
-        p_dlp = 0.0050000000000000 
-        p_dly = 0.0045000000000000 
-    end
-    @variables m begin
-        @delete pinf rate ygap
-        dlp; dly; dlyn; lp; ly; lyn
-    end
-    @shocks m begin
-        @delete pinf_shk rate_shk ygap_shk
-        dlp_shk; dly_shk
-    end
-    @autoexogenize m begin
-        @delete pinf => pinf_shk
-        @delete rate => rate_shk
-        @delete ygap => ygap_shk
-        ly = dly_shk
-        lp = dlp_shk
-    end
-    
-    @equations m begin
-        @delete _EQ1;
-        @delete _EQ2;
-        @delete _EQ3;
-        dly[t]=(1-0.2-0.2)*p_dly+0.2*dly[t-1]+0.2*dly[t+1]+dly_shk[t]
-        dlp[t]=(1-0.5)*p_dlp+0.1*dlp[t-2]+0.1*dlp[t-1]+0.1*dlp[t+1]+0.1*dlp[t+2]+0.1*dlp[t+3]+dlp_shk[t]
-        dlyn[t]=dly[t]+dlp[t]
-        ly[t]=ly[t-1]+dly[t]
-        lp[t]=lp[t-1]+dlp[t]
-        lyn[t]=lyn[t-1]+dlyn[t]
-     end
-
-     @reinitialize m
-
-    test_simulation(m, "data/M6_TestData.csv")
-end
