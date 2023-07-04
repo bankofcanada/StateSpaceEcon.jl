@@ -258,7 +258,7 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
     # without initdecomp the resulting range is shorter
     # and the numbers will be identical for linear models
     @test rangeof(ref) ≠ rangeof(res1a)
-    @test compare(ref, res1a; atol, quiet=true) == !nonlin
+    @test compare(ref, res1a; atol, quiet=true, ignoremissing=true) == !nonlin
 
     #test 2 - only 1 shock at a time
     for shk in shks
@@ -291,7 +291,7 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
         # without initdecomp the resulting range is shorter
         # and the numbers are totally different
         @test rangeof(ref) ≠ rangeof(res1a)
-        @test compare(ref, res1a; atol, quiet=true, nans=true) == (m.maxlag == 0)
+        @test compare(ref, res1a; atol, quiet=true, nans=true, ignoremissing=true) == (m.maxlag == 0)
     end
 
     # test 3 - all shocks and init
