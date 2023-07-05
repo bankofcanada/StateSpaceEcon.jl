@@ -78,7 +78,7 @@ function kalman_filter!(
         kdstore!(kd, period; x)
 
         # covariance of updated state 
-        Px.data[:, :] = Px_ - K * H * Px_
+        Px.data[:, :] = Px_ - K * Pxy_' #=  H * Px_ =#
         kdstore!(kd, period; Px)
 
         #########################################
