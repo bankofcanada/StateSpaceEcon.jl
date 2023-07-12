@@ -20,6 +20,16 @@ using ModelBaseEcon
 @using_example S1
 @using_example S2
 
+getE1() = E1.newmodel()
+getE2() = E2.newmodel()
+getE3() = E3.newmodel()
+getE3nl() = E3nl.newmodel()
+getE6() = E6.newmodel()
+getE7() = E7.newmodel()
+getE7A() = E7A.newmodel()
+getS1() = S1.newmodel()
+getS2() = S2.newmodel()
+
 using Test
 using Random
 using Suppressor
@@ -50,7 +60,7 @@ import Pardiso
 end
 
 @testset "Plans" begin
-    m = deepcopy(E1.model)
+    m = getE1()
     p = Plan(m, 1:3)
     @test first(p.range) == 0U
     @test last(p.range) == 4U
@@ -146,7 +156,7 @@ include("simdatatests.jl")
 include("sstests.jl")
 
 @testset "misc" begin
-    m = deepcopy(E3.model)
+    m = getE3()
     sim = m.maxlag .+ (1:10)
     p = Plan(m, sim)
 
@@ -250,3 +260,5 @@ for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
     include("stochsims.jl")
 
 end
+
+include("modelchanges.jl")

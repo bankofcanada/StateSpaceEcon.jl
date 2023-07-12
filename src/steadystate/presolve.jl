@@ -1,9 +1,11 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
+
+using ModelBaseEcon.OrderedCollections
 
 """
     presolve_sstate!(model; <options>)
@@ -24,7 +26,7 @@ loop.
     solved for.
 
 `mask` and `values` are both input and output data to the algorithm. Any values
-that are successfully presolved are updated in place, and their `mask` enties
+that are successfully pre-solved are updated in place, and their `mask` entries
 are set to `true`.
 
 ### Options
@@ -51,13 +53,13 @@ function solve1d(sseqn, vals, ind, ::Val{:newton}, tol = 1e-12, maxiter = 5)
 end
 
 function _presolve_equations!(eqns, mask, values, method, verbose, tol)
-    eqns_solved = falses(size(eqns))
-    eqns_resid = zeros(size(eqns))
+    eqns_solved = falses(length(eqns))
+    eqns_resid = zeros(length(eqns))
     retval = false # return value: true if any mask changed, false otherwise
     updated = true  # keep track if any mask changed within the loop
     while updated && !all(eqns_solved)
         updated = false # keep track if anything changes this outer iteration
-        for (eqn_idx, sseqn) in enumerate(eqns)
+        for (eqn_idx, (eqn_key, sseqn)) in enumerate(eqns)
             eqns_solved[eqn_idx] && continue
             # mask is true for variables that are already solved
             unsolved = .!mask[sseqn.vinds]
@@ -69,7 +71,7 @@ function _presolve_equations!(eqns, mask, values, method, verbose, tol)
                 # mark it solved either way, but issue a warning if residual is not zero
                 eqns_solved[eqn_idx] = true
                 if verbose && abs(R) > 100tol
-                    @warn "Equation $eqn_idx has residual $R:\n    $sseqn"
+                    @warn "Equation $eqn_key has residual $R:\n    $sseqn"
                 end
             elseif nunsolved == 1
                 # only one variable left unsolved. call the 1d solver
@@ -83,11 +85,11 @@ function _presolve_equations!(eqns, mask, values, method, verbose, tol)
                     values[sseqn.vinds[ind]] = vals[ind]
                     retval = updated = mask[sseqn.vinds[ind]] = true
                     if verbose
-                        @info "Presolved equation $eqn_idx for $(sseqn.vsyms[ind]) = $(vals[ind])\n    $sseqn"
+                        @info "Presolved equation $eqn_key for $(sseqn.vsyms[ind]) = $(vals[ind])\n    $sseqn"
                     end
                 else
                     if verbose
-                        @info "Failed to presolve $eqn_idx for $(sseqn.vsyms[ind])\n    $sseqn"
+                        @info "Failed to presolve $eqn_key for $(sseqn.vsyms[ind])\n    $sseqn"
                     end
                 end
             else
@@ -106,10 +108,10 @@ presolve_sstate!(model::Model; kwargs...) =
 presolve_sstate!(model::Model, mask::AbstractVector{Bool}, values::AbstractVector{Float64};
     verbose = model.verbose, tol = model.tol, _1dsolver = :bisect, method = _1dsolver) =
     _presolve_equations!(ModelBaseEcon.alleqns(model.sstate), mask, values, method, verbose, tol)
-presolve_sstate!(eqns::Vector{SteadyStateEquation}, mask::AbstractVector{Bool}, values::AbstractVector{Float64};
+presolve_sstate!(eqns::OrderedDict{Symbol,SteadyStateEquation}, mask::AbstractVector{Bool}, values::AbstractVector{Float64};
     verbose = false, tol = 1e-12, _1dsolver = :bisect, method = _1dsolver) =
     _presolve_equations!(eqns, mask, values, method, verbose, tol)
 
 @assert precompile(presolve_sstate!, (Model, Vector{Bool}, Vector{Float64}))
-@assert precompile(presolve_sstate!, (Vector{SteadyStateEquation}, Vector{Bool}, Vector{Float64}))
+@assert precompile(presolve_sstate!, (OrderedDict{Symbol,SteadyStateEquation}, Vector{Bool}, Vector{Float64}))
 

@@ -8,7 +8,7 @@
 @using_example E6
 
 @testset "stochsims" begin
-    m = deepcopy(E6.model)
+    m = getE6()
     m.options.fctype = fcnatural
     @steadystate m lp = 0.6
     @steadystate m ly = 0.3

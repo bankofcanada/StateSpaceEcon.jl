@@ -27,7 +27,7 @@ Standard options (default values from `model.options`)
 """
 function check_sstate(model::Model; verbose::Bool = model.options.verbose, tol::Float64 = model.options.tol)
     # if parameters changed, see that constraints use the latest
-    for eqn in model.sstate.constraints
+    for eqn in values(model.sstate.constraints)
         ModelBaseEcon._update_eqn_params!(eqn.eval_resid, model.parameters)
     end
     R, J = global_SS_RJ(model.sstate.values, model)

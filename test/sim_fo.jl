@@ -85,17 +85,17 @@ end
 
 @using_example E2
 @testset "E2.fo.unant" begin
-    run_fo_unant_tests(deepcopy(E2.model))
+    run_fo_unant_tests(getE2())
 end
 
 @using_example E3
 @testset "E3.fo.unant" begin
-    run_fo_unant_tests(deepcopy(E3.model))
+    run_fo_unant_tests(getE3())
 end
 
 @using_example E6
 @testset "E6.fo.unant" begin
-    let m = deepcopy(E6.model)
+    let m = getE6()
         # set slopes to 0, otherwise we're not allowed to linearize
         m.p_dly = 0
         m.p_dlp = 0
@@ -199,12 +199,12 @@ end
         @steadystate m x = 6
         test_initdecomp_firstorder(m)
     end
-    for m in (E2.model, E3.model)
+    for m in (getE2(), getE3())
         m = deepcopy(m)
         empty!(m.sstate.constraints)
         test_initdecomp_firstorder(m)
     end
-    let m = deepcopy(E6.model)
+    let m = getE6()
         # set slopes to 0, otherwise we're not allowed to linearize
         m.p_dly = 0
         m.p_dlp = 0
@@ -258,7 +258,7 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
     # without initdecomp the resulting range is shorter
     # and the numbers will be identical for linear models
     @test rangeof(ref) ≠ rangeof(res1a)
-    @test compare(ref, res1a; atol, quiet=true) == !nonlin
+    @test compare(ref, res1a; atol, quiet=true, ignoremissing=true) == !nonlin
 
     #test 2 - only 1 shock at a time
     for shk in shks
@@ -291,7 +291,7 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
         # without initdecomp the resulting range is shorter
         # and the numbers are totally different
         @test rangeof(ref) ≠ rangeof(res1a)
-        @test compare(ref, res1a; atol, quiet=true, nans=true) == (m.maxlag == 0)
+        @test compare(ref, res1a; atol, quiet=true, nans=true, ignoremissing=true) == (m.maxlag == 0)
     end
 
     # test 3 - all shocks and init
@@ -326,12 +326,12 @@ end
         @steadystate m x = 6
         test_initdecomp_stackedtime(m, fctype=fclevel)
     end
-    for m in (E2.model, E3.model)
+    for m in (getE2(), getE3())
         m = deepcopy(m)
         empty!(m.sstate.constraints)
         test_initdecomp_stackedtime(m)
     end
-    let m = deepcopy(E6.model)
+    let m = getE6()
         # set slopes to 0, otherwise we're not allowed to linearize
         m.p_dly = 0
         m.p_dlp = 0

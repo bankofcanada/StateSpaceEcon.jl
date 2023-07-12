@@ -6,7 +6,7 @@
 ##################################################################################
 
 @testset "dynss" begin
-    m = deepcopy(S1.model)
+    m = getS1()
     # reset parameters
     m.α = 0.5
     m.β = 0.6
@@ -48,7 +48,7 @@
 end
 
 @testset "dynss2" begin
-    m = deepcopy(S2.model)
+    m = getS2()
 
 
     m.α = 0.4
