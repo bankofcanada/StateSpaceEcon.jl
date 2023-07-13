@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -12,8 +12,8 @@
         @shocks m Ex Ey
         @parameters m rate = 1.015
         @equations m begin
-            @log X[t] = rate * X[t - 1] + Ex[t]
-            Y[t] = Y[t - 1] + rate + Ey[t]
+            @log X[t] = rate * X[t-1] + Ex[t]
+            Y[t] = Y[t-1] + rate + Ey[t]
         end
 
         @initialize m
@@ -22,10 +22,10 @@
 
         clear_sstate!(m)
         sssolve!(m)
-        @test m.sstate.X.level ≈ 1.0 
+        @test m.sstate.X.level ≈ 1.0
         @test m.sstate.X.slope ≈ m.rate
-        @test m.sstate.Y.level + 1 ≈ 0.0 + 1 
-        @test m.sstate.Y.slope + 1 ≈ m.rate + 1 
+        @test m.sstate.Y.level + 1 ≈ 0.0 + 1
+        @test m.sstate.Y.slope + 1 ≈ m.rate + 1
 
         p = Plan(m, 1U:10U)
 
@@ -39,7 +39,7 @@
             @test k[s] == d[s]
         end
         @test k.X[1U] ≈ 1.0
-        @test k.Y[1U] + 1 ≈ 1.0 
+        @test k.Y[1U] + 1 ≈ 1.0
         @test pct(k.X, -1) ≈ TSeries(p.range, (m.rate - 1) * 100)
         @test diff(k.Y) ≈ TSeries(p.range, m.rate)
 
@@ -65,8 +65,8 @@
         @shocks m Ex Ey
         @parameters m rate = 1.015
         @equations m begin
-            @log X[t + 1] = rate * X[t] + Ex[t]
-            Y[t + 1] = Y[t] + rate + Ey[t]
+            @log X[t+1] = rate * X[t] + Ex[t]
+            Y[t+1] = Y[t] + rate + Ey[t]
         end
 
         @initialize m
@@ -77,8 +77,8 @@
         sssolve!(m)
         @test m.sstate.X.level + 1 ≈ 1.0 + 1
         @test m.sstate.X.slope + 1 ≈ m.rate + 1
-        @test m.sstate.Y.level + 1 ≈ 0.0 + 1 
-        @test m.sstate.Y.slope + 1 ≈ m.rate + 1 
+        @test m.sstate.Y.level + 1 ≈ 0.0 + 1
+        @test m.sstate.Y.slope + 1 ≈ m.rate + 1
 
         p = Plan(m, 1U:10U)
 
@@ -119,7 +119,7 @@
 
         # update exogenous data accordingly
         ed[firstdate(p)] = k[firstdate(p)]
-        ed[lastdate(p),1:2] .= rand(2)
+        ed[lastdate(p), 1:2] .= rand(2)
 
         @test simulate(m, p, ed, fctype=fcslope) ≈ k
         @test simulate(m, p, ed, fctype=fcnatural) ≈ k

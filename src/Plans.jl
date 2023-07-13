@@ -78,7 +78,7 @@ function Plan(model::Model, range::AbstractUnitRange)
     range = (first(range)-model.maxlag):(last(range)+model.maxlead)
     local varshks = model.varshks
     local N = length(varshks)
-    local names = tuple(Symbol.(varshks)...) # force conversion of Vector{ModelSymbol} to NTuple{N,Symbol}
+    local names = tuple(Symbol.(varshks)...) # force conversion of Vector{ModelVariable} to NTuple{N,Symbol}
     p = Plan(range, NamedTuple{names}(1:N), falses(length(range), length(varshks)))
     for (ind, var) = enumerate(varshks)
         if isshock(var) || isexog(var)
@@ -146,12 +146,16 @@ Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize
 #######################################
 # query the exo-end status of a variable
 
-@inline Base.getindex(p::Plan{T}, vars::Symbol...) where {T} = begin
+@inline Base.getindex(p::Plan, vars::Union{AbstractString,Symbol,ModelVariable}...) = Base.getindex(p, Symbol[vars...])
+@inline Base.getindex(p::Plan, vars::AbstractVector{<:Union{AbstractString,ModelVariable}}) = Base.getindex(p, Symbol[vars...])
+@inline Base.getindex(p::Plan{T}, vars::AbstractVector{Symbol}) where {T} = begin
     var_inds = Int[p.varshks[vars]...]
     Plan{T}(p.range, NamedTuple{(vars...,)}(eachindex(vars)), p.exogenous[:, var_inds])
 end
 
-@inline Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}, vars::Symbol...) where {T} = begin
+@inline Base.getindex(p::Plan, rng::AbstractUnitRange, vars::Union{AbstractString,Symbol,ModelVariable}...) = Base.getindex(p, rng, Symbol[vars...])
+@inline Base.getindex(p::Plan, rng::AbstractUnitRange, vars::AbstractVector{<:Union{AbstractString,ModelVariable}}) = Base.getindex(p, rng, Symbol[vars...])
+@inline Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}, vars::AbstractVector{Symbol}) where {T} = begin
     rng.start < p.range.start && throw(BoundsError(p, rng.start))
     rng.stop > p.range.stop && throw(BoundsError(p, rng.stop))
     var_inds = Int[p.varshks[vars]...]

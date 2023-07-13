@@ -68,7 +68,7 @@ function var_CiSc end
 
 """
     assign_fc!(x::Vector, exog::Vector, vind::Int, sd::StackedTimeSolverData, fc::FinalCondition)
-    
+
 Applying the final condition `fc` for variable with index `vind`. Exogenous data
 is provided in `exog` and stacked time solver data in `sd`. This function
 updates the solution vector `x` in place and returns `x`.
@@ -84,7 +84,7 @@ function assign_fc! end
 #######
 
 @inline function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCNone)
-    # No Jacobian correction 
+    # No Jacobian correction
     return Dict{Int,Vector{Float64}}()
 end
 
@@ -96,7 +96,7 @@ end
 #######
 
 @inline function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCGiven)
-    # No Jacobian correction 
+    # No Jacobian correction
     return Dict{Int,Vector{Float64}}()
 end
 
@@ -111,7 +111,7 @@ end
 #######
 
 @inline function var_CiSc(::StackedTimeSolverData, ::ModelVariable, ::FCMatchSSLevel)
-    # No Jacobian correction 
+    # No Jacobian correction
     return Dict{Int,Vector{Float64}}()
 end
 
@@ -319,7 +319,7 @@ function make_BI(JMAT::SparseMatrixCSC{Float64,Int}, II::AbstractVector{<:Abstra
 end
 
 StackedTimeSolverData(model::Model, plan::Plan, fctype::FinalCondition, variant::Symbol=model.options.variant) = StackedTimeSolverData(model, plan, setfc(model, fctype), variant)
-function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{FinalCondition}, variant::Symbol=model.options.variant)
+@timeit_debug timer function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{FinalCondition}, variant::Symbol=model.options.variant)
 
     evaldata = getevaldata(model, variant)
     var_to_idx = ModelBaseEcon.get_var_to_idx(model)
@@ -368,8 +368,9 @@ function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{
     # Prep the Jacobian matrix
     neq = 0 # running counter of equations added to matrix
     # Model equations are the same for each sim period, just shifted according to t
-    Jblock = [ti + NT * (var_to_idx[var] - 1) for eqn in equations for (var, ti) in keys(eqn.tsrefs)]
-    Iblock = [i for (i, eqn) in enumerate(equations) for _ in eqn.tsrefs]
+    Jblock = [ti + NT * (var_to_idx[var] - 1) for (_, eqn) in equations for (var, ti) in keys(eqn.tsrefs)]
+    Iblock = [i for (i, (_, eqn)) in enumerate(equations) for _ in eqn.tsrefs]
+
     Tblock = -model.maxlag:model.maxlead
     for t in sim
         push!(TT, t .+ Tblock)
@@ -394,7 +395,7 @@ function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{
     # We also need the times of the final conditions
     push!(TT, term)
 
-    # 
+    #
     exog_mask = falses(nunknowns * NT)
     # Initial conditions are set as exogenous values
     exog_mask[vec(LI[init, :])] .= true
@@ -412,7 +413,7 @@ function StackedTimeSolverData(model::Model, plan::Plan, fctype::AbstractVector{
         need_SS ? transform(steadystatearray(model, plan), model) : zeros(0, 0),
         islog.(model.allvars) .| isneglog.(model.allvars), islin.(model.allvars),
         evaldata, exog_mask, fc_mask, solve_mask,
-        Ref{Any}(nothing), getoption(model, :factorization, :lu))
+        Ref{Any}(nothing), getoption(model, :factorization, :default))
 
     return update_plan!(sd, model, plan; changed=true)
 end
@@ -420,7 +421,7 @@ end
 """
     assign_exog_data!(x::Matrix, exog::Matrix, sd::StackedTimeSolverData)
 
-Assign the exogenous points into `x` according to the plan with which `sd` was created using 
+Assign the exogenous points into `x` according to the plan with which `sd` was created using
 exogenous data from `exog`.  Also call [`assign_final_condition!`](@ref).
 
 !!! warning
@@ -436,7 +437,7 @@ end
 """
     assign_final_condition!(x::Matrix, exog::Matrix, sd::StackedTimeSolver)
 
-Assign the final conditions into `x`. The final condition types for the different variables of the model 
+Assign the final conditions into `x`. The final condition types for the different variables of the model
 are stored in the the solver data `sd`. `exog` is used for [`fcgiven`](@ref).
 
 !!! warning
@@ -455,7 +456,7 @@ end
 Compute the residual of the stacked time system at the given `point`. R is
 updated in place and returned.
 """
-function stackedtime_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
+@timeit_debug timer function stackedtime_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData)
     @assert size(point) == size(exog_data) == (sd.NT, sd.NU)
     # point = reshape(point, sd.NT, sd.NU)
     # exog_data = reshape(exog_data, sd.NT, sd.NU)
@@ -466,7 +467,7 @@ function stackedtime_R!(res::AbstractArray{Float64,1}, point::AbstractArray{Floa
     return res
 end
 
-#= disable 
+#= disable
 
 # this is not necessary with log-transformed variables
 # we keep it because it might be necessary for other transformations in the future.
@@ -573,7 +574,7 @@ function update_CiSc!(x, sd, ::Val{fcnatural})
         end
     end
     return nothing
-end 
+end
 =#
 
 
@@ -583,7 +584,7 @@ end
 Compute the residual and Jacobian of the stacked time system at the given
 `point`.
 """
-function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData;
+@timeit_debug timer function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData;
     debugging=false)
     nunknowns = sd.NU
     @assert size(point) == size(exog_data) == (sd.NT, nunknowns)
@@ -615,19 +616,86 @@ function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{
         else
             JJ = JAC[:, sd.solve_mask]
         end
-        try
-            # compute lu decomposition of the active part of J and cache it.
-            sd.J_factorized[] = sd.factorization == :qr ? qr(JJ) : lu(JJ)
-        catch e
-            if e isa SingularException
-                @error("The system is underdetermined with the given set of equations and final conditions.")
-            end
-            debugging && return RES, deepcopy(JJ)
-            rethrow()
-        end
+        # compute factorization of the active part of J and cache it.
+        sf_factorize!(Val(sd.factorization), sd.J_factorized, JJ)
     end
     return RES, sd.J_factorized[]
 end
+
+function sf_factorize!(v::Val, Rf::Ref{Any}, A::SparseMatrixCSC)
+    if isnothing(Rf[])
+        Rf[] = sf_prepare(v, A)
+    else
+        Rf[] = sf_factor!(Rf[], A)
+    end
+end
+
+
+#= KristofferC' implemetation (delete eventually, but keep it for now, just in case)
+
+using Pardiso
+
+mutable struct PardisoFactorization
+    ps::MKLPardisoSolver
+    J::SparseMatrixCSC
+    PardisoFactorization(ps::MKLPardisoSolver) = new(ps)
+end
+
+@timeit_debug timer  function pardiso_init()
+    ps = MKLPardisoSolver()
+    set_matrixtype!(ps, Pardiso.REAL_NONSYM)
+    pardisoinit(ps)
+    fix_iparm!(ps, :N)
+    # See https://www.intel.com/content/www/us/en/develop/documentation/onemkl-developer-reference-c/top/sparse-solver-routines/onemkl-pardiso-parallel-direct-sparse-solver-iface/pardiso-iparm-parameter.html
+    set_iparm!(ps, 2, 2) # The parallel (OpenMP) version of the nested dissection algorithm.
+    psf = PardisoFactorization(ps)
+    finalizer(psf) do x
+        set_phase!(x.ps, Pardiso.RELEASE_ALL)
+        pardiso(x.ps)
+    end
+    return psf
+end
+
+
+# See https://github.com/JuliaSparse/Pardiso.jl/blob/master/examples/exampleunsym.jl
+@timeit_debug timer  function pardiso_factorize(JJ; psf::Union{Nothing,PardisoFactorization})
+    reuse_ps = psf !== nothing
+    if psf === nothing
+        psf = pardiso_init()
+    end
+
+    ps = psf.ps
+    psf.J = get_matrix(ps, JJ, :N)
+
+    # No need to run the analysis phase if the sparsity pattern is unchanged
+    # and we reuse the same solver object
+    if !reuse_ps
+        set_phase!(ps, Pardiso.ANALYSIS)
+        pardiso(ps, psf.J, Float64[])
+    end
+    set_phase!(ps, Pardiso.NUM_FACT)
+    pardiso(ps, psf.J, Float64[])
+    return psf
+end
+
+@timeit_debug timer  function pardiso_solve!(ps::PardisoFactorization, x::AbstractArray)
+    ps, J = ps.ps, ps.J
+    set_phase!(ps, Pardiso.SOLVE_ITERATIVE_REFINE)
+    X = similar(x) # Solution is stored in X
+    pardiso(ps, X, J, x)
+    copy!(x, X)
+end
+
+
+@timeit_debug timer  function _factorize(JJ; psf)
+     if USE_PARDISO_FOR_LU
+        return pardiso_factorize(JJ; psf)
+    else
+        return lu(JJ)
+    end
+end
+
+=#
 
 """
     assign_update_step!(x::Array, lambda, dx, sd::StackedTimeSolverData)

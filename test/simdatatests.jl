@@ -47,11 +47,11 @@
         @test sd[:] == dta[:]
         @test sd[:a] isa TSeries && sd[:a].values == dta[:, 1]
         @test sd["b"] isa TSeries && sd["b"].values == dta[:, 2]
-        # 
+        #
         sd.a = dta[:, 1]
         sd.b = dta[:, 2]
         @test sd[:] == dta[:]
-        # 
+        #
         sd[:] = dta[:]
         sd.a = sd.b
         @test sd[:, 1] == sd[:, 2]
@@ -70,7 +70,7 @@
         @test_throws DimensionMismatch sd[2000Q3] = zeros(size(dta, 2) + 1)
         @test_throws ArgumentError sd[2000Y]
         @test_throws BoundsError sd[2010Q4] = rand(2)
-        # 
+        #
         @test sd[2001Q1:2002Q4] isa SimData
         @test sd[2001Q1:2002Q4] ≈ sd[5:12, :]
         sd[2001Q1:2002Q4] = 1:16
@@ -95,7 +95,7 @@
         @test similar(sd) isa typeof(sd)
         @test_throws BoundsError sd[1999Q1:2000Q4] = zeros(8, 2)
         @test_throws BoundsError sd[2004Q1:2013Q4, [:a, :b]]
-        # setindex with two 
+        # setindex with two
         sd[2001Q1, (:b,)] = [3.5]
         @test sd[5, 2] == 3.5
         sd[2000Q1:2001Q4, (:b,)] .= 3.7

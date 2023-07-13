@@ -43,7 +43,7 @@ function sssolve!(model::Model;
 
     # !! make sure constraints use the latest parameter values
     # !! before calling SolverData constructor, because it computes the initial residual
-    for eqn in ss.constraints
+    for eqn in values(ss.constraints)
         ModelBaseEcon._update_eqn_params!(eqn.eval_resid, model.parameters)
     end
 

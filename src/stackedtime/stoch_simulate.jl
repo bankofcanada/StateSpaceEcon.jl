@@ -8,7 +8,8 @@
 # version of simulate for stochastic simulations 
 
 #  NOTE: This requires TimeSeriesEcon v0.5.1 where map(func, ::Workspace) returns a Workspace.
-_make_result_container(shocks, basedata) = map(_ -> copy(basedata), shocks)
+_make_result_container(shocks::Workspace, basedata)::Workspace = map(_ -> copy(basedata), shocks)
+_make_result_container(shocks::Vector, basedata)::Vector{MaybeSimData} = convert(Vector{MaybeSimData}, map(_ -> copy(basedata), shocks))
 
 function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
     check::Bool=false,
@@ -19,10 +20,13 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
     maxiter::Int=m.options.maxiter,
     fctype=getoption(m, :fctype, fcgiven),
     #= Newton-Raphson options =#
-    sparse_solver::Function=\,
     linesearch::Bool=getoption(m, :linesearch, false),
     warn_maxiter::Bool=getoption(getoption(m, :warn, Options()), :maxiter, false)
 )
+
+    if isempty(shocks)
+        return _make_result_container(shocks, baseline);
+    end
 
     # get the range of all shocks realizations (this will be the full simulation range)
     shkrng = mapreduce(rangeof, union, values(shocks))
@@ -47,7 +51,7 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
             tinds = Plans._offset(p, rangeof(val))
             vind = p.varshks[shk]
             if !all(p.exogenous[tinds, vind])
-                throw(ArgumentError("$shk in shocks realization $key is endogenous in the given plan."))
+                @warn "$shk in shocks[$key] is endogenous in the given plan."
             end
         end
     end
@@ -122,7 +126,7 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
 
             # solve 
             try
-                converged = sim_nr!(eₜ, dₜ, maxiter, tol, verbose, sparse_solver, linesearch)
+                converged = sim_nr!(eₜ, dₜ, maxiter, tol, verbose, linesearch)
                 if warn_maxiter && !converged
                     @warn("Newton-Raphson reached maximum number of iterations for $skey at $(t:sim_end)")
                 end
@@ -137,9 +141,10 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
     end # time loop
 
     # strip auxvar columns and inverse transform
+    have_auxs = (m.nauxs > 0)
     for (key, result) in pairs(results)
         isfailed(result) && continue
-        if m.nauxs > 0
+        if have_auxs
             result = result[:, m.varshks]
         end
         results[key] = inverse_transform(result, m)

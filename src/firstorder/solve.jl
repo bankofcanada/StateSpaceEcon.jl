@@ -50,7 +50,7 @@ function VarMaps(model::Model)
     ex_vars = Tuple{Symbol,Int}[]
     for mvar in model.allvars
         var = mvar.name
-        lags, leads = extrema(lag for eqn in model.equations
+        lags, leads = extrema(lag for eqn in values(model.equations)
                               for (name, lag) in keys(eqn.tsrefs)
                               if name == var)
         if isexog(mvar) || isshock(mvar)

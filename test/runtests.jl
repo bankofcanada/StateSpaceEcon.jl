@@ -20,9 +20,20 @@ using ModelBaseEcon
 @using_example S1
 @using_example S2
 
+getE1() = E1.newmodel()
+getE2() = E2.newmodel()
+getE3() = E3.newmodel()
+getE3nl() = E3nl.newmodel()
+getE6() = E6.newmodel()
+getE7() = E7.newmodel()
+getE7A() = E7A.newmodel()
+getS1() = S1.newmodel()
+getS2() = S2.newmodel()
+
 using Test
 using Random
 using Suppressor
+import Pardiso
 
 @testset "1dsolvers" begin
     # f(x) = (x-2)*(x-3) = a x^2 + b x + c with vals = [a, x, b, c]
@@ -49,7 +60,7 @@ using Suppressor
 end
 
 @testset "Plans" begin
-    m = deepcopy(E1.model)
+    m = getE1()
     p = Plan(m, 1:3)
     @test first(p.range) == 0U
     @test last(p.range) == 4U
@@ -145,7 +156,7 @@ include("simdatatests.jl")
 include("sstests.jl")
 
 @testset "misc" begin
-    m = deepcopy(E3.model)
+    m = getE3()
     sim = m.maxlag .+ (1:10)
     p = Plan(m, sim)
 
@@ -215,11 +226,39 @@ end
     @test t1 == TSeries(1U, [1, 1, 3, 5, 5, 5, 5, 5])
 end
 
-include("simtests.jl")
-include("logsimtests.jl")
-include("sim_fo.jl")
-include("shockdecomp.jl")
-include("dynss.jl")
 include("misc.jl")
 
-include("stochsims.jl")
+@testset "sparse" begin
+    @test (use_pardiso(); StateSpaceEcon.StackedTimeSolver.sf_default == :pardiso)
+    @test (use_umfpack(); StateSpaceEcon.StackedTimeSolver.sf_default == :umfpack)
+    let m = Model()
+        @test (use_pardiso!(m); m.factorization == :pardiso)
+        @test (use_umfpack!(m); m.factorization == :umfpack)
+    end
+end
+
+# make sure Pardiso runs deterministic (single thread) for the tests
+Pardiso.set_nprocs_mkl!(1)
+
+for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
+
+    sfdef.value == :default && continue
+
+    # Pardiso in macos is giving "Not enough memory".  Disable for now
+    # sfdef.value == :pardiso && Sys.isapple() && continue
+
+    @info "Using $(sfdef)"
+
+    Core.eval(StateSpaceEcon.StackedTimeSolver, :(sf_default = $(sfdef)))
+
+    include("simtests.jl")
+    include("logsimtests.jl")
+    include("sim_fo.jl")
+    include("shockdecomp.jl")
+    include("dynss.jl")
+
+    include("stochsims.jl")
+
+end
+
+include("modelchanges.jl")
