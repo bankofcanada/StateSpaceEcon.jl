@@ -145,11 +145,32 @@ end
             push!(m1.variables, :beta)
             r = Plan(m1, 8U:15U)
             exogenize!(r, :beta, 10U:13U)
-            out = @capture_out compare_plans(p, r; alphabetical=true)
-            @test out == "\nRange  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U    9U:9U   10U:10U  11U:13U  14U:15U\n     a    ~ .      X .      ~ .      ~ .      ~ ~      ~ ~      ~ ~      . ~      . ~  \n    as    X .      ~ .      X .      X .      X X      X X      X X      . X      . X  \n     b    ~ .      X .      ~ .      X .      X .      ~ .      ~ .      . .      . .  \n  beta    . .      . .      . .      . .      . ~      . ~      . X      . X      . ~  \n    bs    X .      ~ .      X .      ~ .      ~ X      X X      X X      . X      . X  \n     c    ~ .      ~ .      ~ .      ~ .      ~ ~      ~ ~      ~ ~      . ~      . ~  \n"
+
+            # print to io buffer
+            io = IOBuffer()
+            compare_plans(io, p, r; alphabetical=true)
+            seek(io, 0)
+            @test read(io, String) == "\nRange  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U    9U:9U   10U:10U  11U:13U  14U:15U\n     a    ~ .      X .      ~ .      ~ .      ~ ~      ~ ~      ~ ~      . ~      . ~  \n    as    X .      ~ .      X .      X .      X X      X X      X X      . X      . X  \n     b    ~ .      X .      ~ .      X .      X .      ~ .      ~ .      . .      . .  \n  beta    . .      . .      . .      . .      . ~      . ~      . X      . X      . ~  \n    bs    X .      ~ .      X .      ~ .      ~ X      X X      X X      . X      . X  \n     c    ~ .      ~ .      ~ .      ~ .      ~ ~      ~ ~      ~ ~      . ~      . ~  \n"
+            
+            # print only rows with differences
+            io = IOBuffer()
+            compare_plans(io, p, r; alphabetical=true, diff=true)
+            seek(io, 0)
+            @test read(io, String) == "\nRange  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U    9U:9U   10U:10U  11U:13U  14U:15U\n     b    ~ .      X .      ~ .      X .      X .      ~ .      ~ .      . .      . .  \n  beta    . .      . .      . .      . .      . ~      . ~      . X      . X      . ~  \n    bs    X .      ~ .      X .      ~ .      ~ X      X X      X X      . X      . X  \n"
+            
+            # print summary in REPL
+            out = @capture_out compare_plans(p, r; summary=true)
+            @test out == "Range  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\nbs differs between the plans for the range(s) 7U:8U.\n"
+            
+            # return MVTSeries
+            out_mvts = compare_plans(p, r)
+            @test out_mvts == MVTSeries(7U, (:a,:c,:as,:bs), [0 0 0 0 ; 0 0 0 0 ; 3 3 3 3 ; 2 2 3 3]')
+
+            # return MVTSeries
+            out_mvts2 = compare_plans(r, p)
+            @test out_mvts2 == MVTSeries(7U, (:a,:c,:as,:bs), [0 0 0 0 ; 0 0 0 0 ; 3 3 3 3 ; 1 1 3 3]')
         end
     end
-
 end
 
 include("simdatatests.jl")
