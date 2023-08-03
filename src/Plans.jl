@@ -99,10 +99,25 @@ Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
 Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
 TimeSeriesEcon.rangeof(p::Plan) = p.range
 
-function Base.copyto!(dest::Plan, rng::AbstractUnitRange, scr::Plan)
-    dest.varshks == scr.varshks || throw(ArgumentError("Both plans must have the same variables and shocks in the same order."))
+function Base.copyto!(dest::Plan, rng::AbstractUnitRange, scr::Plan; verbose = true)
+    aligned_rng = intersect(rng, rangeof(scr), rangeof(dest))
+    if dest.varshks !== scr.varshks
+        srckeys = Set(keys(scr.varshks))
+        for (var, col)  in pairs(dest.varshks)
+            if var in srckeys
+                copyto!(dest.exogenous, _offset(dest, aligned_rng), col:col, scr.exogenous, _offset(scr, aligned_rng), scr.varshks[var]:scr.varshks[var])
+            elseif verbose
+                @warn "$var is not in the source plan. Skipping."
+            end
+        end
+        ignored_plan_keys = setdiff(keys(dest.varshks),srckeys)
+        if length(ignored_plan_keys) > 0 && verbose
+            @warn "The plan for the following variables were not copied as they are not in the destination plan:\n $(ignored_plan_keys)"
+        end
+    else
     idx2 = axes(dest.exogenous, 2)  # same for both dest and scr
-    copyto!(dest.exogenous, _offset(dest, rng), idx2, scr.exogenous, _offset(scr, rng), idx2)
+        copyto!(dest.exogenous, _offset(dest, aligned_rng), idx2, scr.exogenous, _offset(scr, aligned_rng), idx2)
+    end
     return dest
 end
 
