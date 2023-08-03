@@ -177,12 +177,12 @@ end
         begin
             # When the plans are similar the copy becomes a copy of the source plan
             p_copy = deepcopy(p)
-            copyto!(p_copy, q; verbose=false)
+            copyto!(p_copy, q)
             @test p_copy == q
 
             # When the plans partially overlap, change the overlapping varshks/ranges
             p_copy = deepcopy(p)
-            copyto!(p_copy, r; verbose=false)
+            copyto!(p_copy, r)
             @test p_copy.range == p.range
             @test p_copy.varshks == p.varshks
             @test p_copy.exogenous == BitArray([ 
@@ -202,17 +202,22 @@ end
             # When plans don't overlap, no changes are made
             r2 = Plan(m1, 12U:15U)
             p_copy = deepcopy(p)
-            copyto!(p_copy, r2; verbose=false)
+            copyto!(p_copy, r2)
             @test p_copy == p
 
-            # when providing a range outside of the plans, an error is thrown
+            # Error is thrown if explicit range is provided and the plans do not overlap
+            r2 = Plan(m1, 12U:15U)
             p_copy = deepcopy(p)
-            @test_throws BoundsError copyto!(p_copy, 22U:30U, r; verbose=false)
+            @test_throws ArgumentError copyto!(p_copy, 7U:14U, r2)
+
+            # Error is thrown if provided range is outside the plans
+            p_copy = deepcopy(p)
+            @test_throws ArgumentError copyto!(p_copy, 22U:30U, r; verbose=false)
 
             # Test warnings
             p_copy = deepcopy(p)
             @test_logs (:warn, ":b is not in the source plan. Skipping.") (
-                :warn, "The plan for the following variables/shocks were not copied as they are not in the destination plan:\n [:b]") copyto!(p_copy, r)
+                :warn, "The plan for the following variables/shocks were not copied as they are not in the destination plan:\n [:b]") copyto!(p_copy, r; verbose=true)
         end
     end
 end

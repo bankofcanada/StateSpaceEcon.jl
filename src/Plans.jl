@@ -99,9 +99,11 @@ Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
 Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
 TimeSeriesEcon.rangeof(p::Plan) = p.range
 
-function Base.copyto!(dest::Plan, scr::Plan; verbose = true, rng=nothing)
+function Base.copyto!(dest::Plan, scr::Plan; verbose = false, rng=nothing)
     if rng === nothing 
         rng = intersect(rangeof(dest), rangeof(scr))
+    elseif length(intersect(rangeof(dest), rangeof(scr), rng)) == 0
+        throw(ArgumentError("The two plans do not overlap in the range provided."))
     end
     if dest.varshks !== scr.varshks
         srckeys = Set(keys(scr.varshks))
