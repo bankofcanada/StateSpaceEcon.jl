@@ -640,14 +640,16 @@ Each cell in the MVTSeries have an interger value corresponding to the following
 * 2 -> exogenous in the right plan only.
 * 3 -> exogenous in both plans.
 
-The MVTSeries aligns the right plan with the left plan; variables, shocks, and periods only
-included in the right plan will not be part of the return MVTSeries.
+The MVTSeries only includes the overlap between the plans; variables, shocks, and periods only
+included in oe of the plans will not be part of the return MVTSeries.
 
-A detailed comparison can also be printed to a file with the `outfile` argument.
+A detailed comparison can also be printed to a file with the `outfile` or `io` arguments.
 
 ### Options
-* `outfile=""` - save the comparison to the target outfile if provided.
-* `io=nothing` - output the comparison to a particular iobuffer.
+* `outfile=""` - save the detailed comparison to the target outfile path, if provided.
+* `io=nothing` - output the detailed comparison to a particular iobuffer.
+* `diff=false` - only populate detailed comparison with variables and shocks 
+  which differ between the plans.
 * `alphabetical=false` - set to `true` to sort the variables. By default
   variables will be listed in the same order as in the left plan.
 * `exog_mark="X"` - a short string (ideally 1 character) to mark exogenous
@@ -660,7 +662,6 @@ A detailed comparison can also be printed to a file with the `outfile` argument.
 * `pagelines=0` - Set to a positive integer to enable pagination. Number is
   interpreted as the number of lines to repeat the header line (the one with the
   ranges).
-* `diff=false` - only populate outfile with varshks which differ between the plans.
 * `summary=false` - print summary on plan differences to stdout.
 * `legend=false` - print legend for comparison matrix to stdout.
 """
