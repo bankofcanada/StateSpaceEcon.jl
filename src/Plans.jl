@@ -631,6 +631,7 @@ export count_endo_points, count_exog_points
 """
     compare_plans(left, right; options)
     compare_plans(file, left, right; options)
+    compare_plans(Base.stdout, left, right; options)
 
 Returns an MVTSeries with summary information comparing the two plans.
 Each cell in the MVTSeries have an interger value corresponding to the following rubric:
@@ -669,7 +670,7 @@ function compare_plans end
 export compare_plans
 
 compare_plans(file::AbstractString, left::Plan, right::Plan; kwargs...) = compare_plans(left, right; outfile=file, kwargs...)
-compare_plans(io::IOBuffer, left::Plan, right::Plan; kwargs...) = compare_plans(left, right; io=io, kwargs...)
+compare_plans(io::Union{IOBuffer, Base.TTY}, left::Plan, right::Plan; kwargs...) = compare_plans(left, right; io=io, kwargs...)
 
 function compare_plans(left::Plan, right::Plan; outfile = "",
         io = nothing, 
@@ -727,14 +728,14 @@ function compare_plans(left::Plan, right::Plan; outfile = "",
         end
     end
     
-    if outfile == "" && io == nothing
-        return combined_mvts
+    if outfile == "" && io === nothing
+        @goto return_section
     end
 
     # print to file
     doclose = false
-    if io == nothing
-        open(outfile, "w")
+    if io === nothing
+        io = open(outfile, "w")
         doclose = true
     end
     
@@ -794,6 +795,7 @@ function compare_plans(left::Plan, right::Plan; outfile = "",
 
     doclose && close(io)
 
+    @label return_section
     if legend
         println("Comparison legend:")
         println("* 0 -> endogenous in both plans.")
