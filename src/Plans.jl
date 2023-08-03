@@ -99,30 +99,32 @@ Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
 Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
 TimeSeriesEcon.rangeof(p::Plan) = p.range
 
-function Base.copyto!(dest::Plan, rng::AbstractUnitRange, scr::Plan; verbose = true)
-    aligned_rng = intersect(rng, rangeof(scr), rangeof(dest))
+function Base.copyto!(dest::Plan, scr::Plan; verbose = true, rng=nothing)
+    if rng === nothing 
+        rng = intersect(rangeof(dest), rangeof(scr))
+    end
     if dest.varshks !== scr.varshks
         srckeys = Set(keys(scr.varshks))
         for (var, col)  in pairs(dest.varshks)
             if var in srckeys
-                copyto!(dest.exogenous, _offset(dest, aligned_rng), col:col, scr.exogenous, _offset(scr, aligned_rng), scr.varshks[var]:scr.varshks[var])
+                copyto!(dest.exogenous, _offset(dest, rng), col:col, scr.exogenous, _offset(scr, rng), scr.varshks[var]:scr.varshks[var])
             elseif verbose
-                @warn "$var is not in the source plan. Skipping."
+                @warn ":$var is not in the source plan. Skipping."
             end
         end
         ignored_plan_keys = setdiff(keys(dest.varshks),srckeys)
         if length(ignored_plan_keys) > 0 && verbose
-            @warn "The plan for the following variables were not copied as they are not in the destination plan:\n $(ignored_plan_keys)"
+            @warn "The plan for the following variables/shocks were not copied as they are not in the destination plan:\n $(ignored_plan_keys)"
         end
     else
         idx2 = axes(dest.exogenous, 2)  # same for both dest and scr
-        copyto!(dest.exogenous, _offset(dest, aligned_rng), idx2, scr.exogenous, _offset(scr, aligned_rng), idx2)
+        copyto!(dest.exogenous, _offset(dest, rng), idx2, scr.exogenous, _offset(scr, rng), idx2)
     end
     return dest
 end
 
-Base.copyto!(dest::Plan, rng::MIT, scr::Plan) = Base.copyto!(dest, rng:rng, scr)
-Base.copyto!(dest::Plan, src::Plan) = Base.copyto!(dest, intersect(rangeof(dest), rangeof(src)), src)
+Base.copyto!(dest::Plan, rng::AbstractUnitRange, scr::Plan; verbose = true) = Base.copyto!(dest, scr; verbose=verbose, rng=rng)
+Base.copyto!(dest::Plan, rng::MIT, scr::Plan; verbose=true) = Base.copyto!(dest, scr; verbose=verbose, rng=rng:rng)
 
 _offset(p::Plan{T}, idx::T) where {T<:MIT} = convert(Int, idx - first(p.range) + 1)
 _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where {T<:MIT} =
@@ -688,7 +690,7 @@ function compare_plans(left::Plan, right::Plan; outfile = "",
     right_vars = keys(right.varshks)
     aligned_right = deepcopy(left)
     aligned_right.exogenous .= 0
-    copyto!(aligned_right, rangeof(left), right; verbose=false)
+    copyto!(aligned_right, right; verbose=false)
     left_matrix = Int64.(left.exogenous)
     right_matrix = Int64.(aligned_right.exogenous) .* 2
     combined_matrix = left_matrix .+ right_matrix

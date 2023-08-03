@@ -127,6 +127,12 @@ end
         exog_endo!(q, m.a, m.as, 2U:6U)
         exog_endo!(p, m.b, m.bs, 5U:8U)
 
+        m1 = deepcopy(m)
+        deleteat!(m1.variables, 2)
+        push!(m1.variables, :beta)
+        r = Plan(m1, 8U:15U)
+        exogenize!(r, :beta, 10U:13U)
+
         begin
             io = IOBuffer()
             compare_plans(io, p, q)
@@ -140,11 +146,7 @@ end
             @test read(io, String) == "\nSame range: 0U:10U\nSame variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n     a    ~ ~      X X      ~ X      ~ X      ~ ~      ~ ~  \n     b    ~ ~      X X      ~ ~      X ~      X ~      ~ ~  \n     c    ~ ~      ~ ~      ~ ~      ~ ~      ~ ~      ~ ~  \n\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n\n    as    X X      ~ ~      X ~      X ~      X X      X X  \n    bs    X X      ~ ~      X X      ~ X      ~ X      X X  \n"
         end
         begin
-            m1 = deepcopy(m)
-            deleteat!(m1.variables, 2)
-            push!(m1.variables, :beta)
-            r = Plan(m1, 8U:15U)
-            exogenize!(r, :beta, 10U:13U)
+            # non-matching plan ranges/varshocks
 
             # print to io buffer
             io = IOBuffer()
@@ -160,7 +162,7 @@ end
             
             # print summary in REPL
             out = @capture_out compare_plans(p, r; summary=true)
-            @test out == "Range  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\nbs differs between the plans for the range(s) 7U:8U.\n"
+            @test out == "Range  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\n:bs differs between the plans for the range(s) 7U:8U.\n"
             
             # return MVTSeries
             out_mvts = compare_plans(p, r)
@@ -169,9 +171,53 @@ end
             # return MVTSeries
             out_mvts2 = compare_plans(r, p)
             @test out_mvts2 == MVTSeries(7U, (:a,:c,:as,:bs), [0 0 0 0 ; 0 0 0 0 ; 3 3 3 3 ; 1 1 3 3]')
+
+        end
+        # copyto!
+        begin
+            # When the plans are similar the copy becomes a copy of the source plan
+            p_copy = deepcopy(p)
+            copyto!(p_copy, q; verbose=false)
+            @test p_copy == q
+
+            # When the plans partially overlap, change the overlapping varshks/ranges
+            p_copy = deepcopy(p)
+            copyto!(p_copy, r; verbose=false)
+            @test p_copy.range == p.range
+            @test p_copy.varshks == p.varshks
+            @test p_copy.exogenous == BitArray([ 
+                0  0  0  1  1;
+                0  0  0  1  1;
+                1  1  0  0  0;
+                1  1  0  0  0;
+                0  0  0  1  1;
+                0  1  0  1  0;
+                0  1  0  1  0;
+                0  1  0  1  1;
+                0  1  0  1  1;
+                0  0  0  1  1;
+                0  0  0  1  1;
+            ])
+
+            # When plans don't overlap, no changes are made
+            r2 = Plan(m1, 12U:15U)
+            p_copy = deepcopy(p)
+            copyto!(p_copy, r2; verbose=false)
+            @test p_copy == p
+
+            # when providing a range outside of the plans, an error is thrown
+            p_copy = deepcopy(p)
+            @test_throws BoundsError copyto!(p_copy, 22U:30U, r; verbose=false)
+
+            # Test warnings
+            p_copy = deepcopy(p)
+            @test_logs (:warn, ":b is not in the source plan. Skipping.") (
+                :warn, "The plan for the following variables/shocks were not copied as they are not in the destination plan:\n [:b]") copyto!(p_copy, r)
         end
     end
 end
+
+
 
 include("simdatatests.jl")
 include("sstests.jl")
