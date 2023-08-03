@@ -716,14 +716,14 @@ function compare_plans(left::Plan, right::Plan; outfile = "",
             println(length(intersect(left_vars, right_vars)), " common variables.")
         end
         for var in keys(combined_mvts)
-            mits = rangeof(combined_mvts[var])[differences[var] .== false]
+            mits = rangeof(combined_mvts[var])[.!differences[var]]
             if length(mits) > 0
                 ranges = _mits_to_ranges(mits)
-                str = "$var differs between the plans for the range(s) $(ranges[1])"
+                print(":$var differs between the plans for the range(s) $(ranges[1])")
                 for rng in ranges[2:end]
-                    str *= ", $rng"
+                    print(", $rng")
                 end
-                println("$str.")
+                print(".\n")
             end
         end
     end
