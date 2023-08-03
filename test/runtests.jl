@@ -208,21 +208,90 @@ end
             # Error is thrown if explicit range is provided and the plans do not overlap
             r2 = Plan(m1, 12U:15U)
             p_copy = deepcopy(p)
-            @test_throws ArgumentError copyto!(p_copy, 7U:14U, r2)
+            @test_throws BoundsError copyto!(p_copy, 7U:14U, r2)
 
             # Error is thrown if provided range is outside the plans
             p_copy = deepcopy(p)
-            @test_throws ArgumentError copyto!(p_copy, 22U:30U, r; verbose=false)
+            @test_throws BoundsError copyto!(p_copy, 22U:30U, r; verbose=false)
 
             # Test warnings
             p_copy = deepcopy(p)
-            @test_logs (:warn, ":b is not in the source plan. Skipping.") (
-                :warn, "The plan for the following variables/shocks were not copied as they are not in the destination plan:\n [:b]") copyto!(p_copy, r; verbose=true)
+            @test_logs(
+                (:warn, "Ranges not updated in destination plan: 0U:6U"),
+                (:warn, "Ignored source plan variables (missing in destination plan): beta"),
+                (:warn, "Variables not updated in destination plan (missing in source plan): b"),
+                copyto!(p_copy, r; verbose=true)
+            )
         end
     end
 end
 
+@testset "copyto! plans" begin
+    ma = Model();
+    @variables ma x a b c;
+    md = Model();
+    @variables md b c d z;
 
+    p1 = Plan(ma, 2020Q1:2021Q4)
+    copyto!(p1.exogenous, rand(Bool, size(p1.exogenous)))
+    n1, n2 = size(p1.exogenous)
+
+    
+    # same everythig
+    p2 = Plan(ma, 2020Q1:2021Q4)
+    @test @test_nowarn (copyto!(p2, p1); true)
+    @test p1 == p2
+    
+    # update sub-range
+    p2 = Plan(ma, 2019Q1:2023Q4)
+    @test @test_logs (:warn, "Ranges not updated in destination plan: 2019Q1:2019Q4, 2022Q1:2023Q4") (copyto!(p2, p1; verbose=true); true)
+    @test p1 == p2[rangeof(p1)]
+    for rng in (2019Q1:2019Q4, 2022Q1:2023Q4)
+        @test p2[rng].exogenous == falses(length(rng), length(p2.varshks))
+    end
+
+    # plans with different ranges
+    # rng not given, default to common range
+    p2 = Plan(ma, 2019Q1:2020Q4)
+    @test @test_nowarn (copyto!(p2, p1); true)
+    @test p1[2020Q1:2020Q4] == p2[2020Q1:2020Q4]
+    @test p2[2019Q1:2019Q4].exogenous == falses(4,n2)
+    
+    # rng given
+    p2 = Plan(ma, 2019Q1:2020Q4)
+    @test @test_nowarn (copyto!(p2, 2020Q3, p1); true)
+    @test p1[2020Q3:2020Q3] == p2[2020Q3:2020Q3]
+    @test p2[2019Q1:2020Q2].exogenous == falses(6,n2)
+    @test p2[2020Q4:2020Q4].exogenous == falses(1,n2)
+    
+    @test @test_nowarn (copyto!(p2, 2020Q1:2020Q3, p1); true)
+    @test p1[2020Q1:2020Q3] == p2[2020Q1:2020Q3]
+    @test p2[2019Q1:2019Q4].exogenous == falses(4,n2)
+    @test p2[2020Q4:2020Q4].exogenous == falses(1,n2)
+    
+    # given bad
+    p2 = Plan(ma, 2019Q1:2020Q4)
+    @test_throws BoundsError copyto!(p2, 2019Q2:2020Q3, p1)
+    @test p2.exogenous == falses(8,n2)
+   
+    # Empty range intersection 
+    p2 = Plan(ma, 2018Q1:2019Q4)
+    @test @test_nowarn (copyto!(p2, p1); true)
+    p2 = Plan(ma, 2018Q1:2019Q4)
+    @test @test_logs (:warn, r".*empty range.*") (copyto!(p2, p1; verbose=true); true)
+
+    # different plans
+    p3 = Plan(md, rangeof(p1))
+    @test @test_nowarn (copyto!(p3, p1); true)
+    @test p3.exogenous[:,1:2] == p1.exogenous[:,3:4]
+    @test p3.exogenous[:,3:4] == falses(8,2)
+    @test @test_logs(
+        (:warn, r"Ignored source plan variables \(missing in destination plan\): (a, x|x, a)"),
+        (:warn, r"Variables not updated in destination plan \(missing in source plan\): (d, z|z, d)"),
+        (copyto!(p3, p1; verbose=true); true)
+    )
+    
+end
 
 include("simdatatests.jl")
 include("sstests.jl")

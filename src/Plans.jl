@@ -99,34 +99,46 @@ Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
 Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
 TimeSeriesEcon.rangeof(p::Plan) = p.range
 
-function Base.copyto!(dest::Plan, scr::Plan; verbose = false, rng=nothing)
-    if rng === nothing 
-        rng = intersect(rangeof(dest), rangeof(scr))
-    elseif length(intersect(rangeof(dest), rangeof(scr), rng)) == 0
-        throw(ArgumentError("The two plans do not overlap in the range provided."))
+function Base.copyto!(dest::Plan, rng::AbstractUnitRange, src::Plan; verbose=false)
+    if isempty(rng)
+        verbose && @warn "Nothing to copy - empty range"
+        return dest
     end
-    if dest.varshks !== scr.varshks
-        srckeys = Set(keys(scr.varshks))
-        for (var, col)  in pairs(dest.varshks)
-            if var in srckeys
-                copyto!(dest.exogenous, _offset(dest, rng), col:col, scr.exogenous, _offset(scr, rng), scr.varshks[var]:scr.varshks[var])
-            elseif verbose
-                @warn ":$var is not in the source plan. Skipping."
-            end
+    rng ⊈ rangeof(dest) && throw(BoundsError(dest, rng))
+    rng ⊈ rangeof(src) && throw(BoundsError(src, rng))
+    if verbose && rng != rangeof(dest)
+        @warn "Ranges not updated in destination plan: $(join(_mits_to_ranges(setdiff(rangeof(dest), rng)), ", "))"
+    end
+    idx1 = _offset(dest, rng)
+    jdx1 = _offset(src, rng)
+    # if same columns, 
+    if dest.varshks == src.varshks   # ===, not ==, so we compare names too
+        jdx2 = idx2 = axes(dest.exogenous, 2)
+        copyto!(dest.exogenous, idx1, idx2, src.exogenous, jdx1, jdx2)
+        return dest
+    end
+    # we have to copy columns one at a time
+    if verbose
+        not_in_dest = setdiff(keys(src.varshks), keys(dest.varshks))
+        if !isempty(not_in_dest)
+            @warn "Ignored source plan variables (missing in destination plan): $(join(not_in_dest, ", "))"
         end
-        ignored_plan_keys = setdiff(keys(dest.varshks),srckeys)
-        if length(ignored_plan_keys) > 0 && verbose
-            @warn "The plan for the following variables/shocks were not copied as they are not in the destination plan:\n $(ignored_plan_keys)"
+        not_in_src = setdiff(keys(dest.varshks), keys(src.varshks))
+        if !isempty(not_in_dest)
+            @warn "Variables not updated in destination plan (missing in source plan): $(join(not_in_src, ", "))"
         end
-    else
-        idx2 = axes(dest.exogenous, 2)  # same for both dest and scr
-        copyto!(dest.exogenous, _offset(dest, rng), idx2, scr.exogenous, _offset(scr, rng), idx2)
+    end
+    for (var, i2) in pairs(dest.varshks)
+        j2 = get(src.varshks, var, -1)
+        if j2 > 0
+            copyto!(dest.exogenous, idx1, i2:i2, src.exogenous, jdx1, j2:j2)
+        end
     end
     return dest
 end
 
-Base.copyto!(dest::Plan, rng::AbstractUnitRange, scr::Plan; verbose = true) = Base.copyto!(dest, scr; verbose=verbose, rng=rng)
-Base.copyto!(dest::Plan, rng::MIT, scr::Plan; verbose=true) = Base.copyto!(dest, scr; verbose=verbose, rng=rng:rng)
+Base.copyto!(dest::Plan, rng::MIT, scr::Plan; verbose=false) = Base.copyto!(dest, rng:rng, scr; verbose)
+Base.copyto!(dest::Plan, src::Plan; verbose=false) = Base.copyto!(dest, intersect(rangeof(dest), rangeof(src)), src; verbose)
 
 _offset(p::Plan{T}, idx::T) where {T<:MIT} = convert(Int, idx - first(p.range) + 1)
 _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where {T<:MIT} =
