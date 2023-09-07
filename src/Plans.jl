@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -53,6 +53,12 @@ end
 
 Plan(model::Model, r::Union{MIT,Int}) = Plan(model, r:r)
 
+# account for default frequencies
+Plan{MIT{Quarterly}}(args...) = Plan{MIT{Quarterly{3}}}(args...)
+Plan{MIT{HalfYearly}}(args...) = Plan{MIT{HalfYearly{6}}}(args...)
+Plan{MIT{Yearly}}(args...) = Plan{MIT{Yearly{12}}}(args...)
+Plan{MIT{Weekly}}(args...) = Plan{MIT{Weekly{7}}}(args...)
+
 """
     Plan(model, range)
 
@@ -72,7 +78,7 @@ function Plan(model::Model, range::AbstractUnitRange)
     range = (first(range)-model.maxlag):(last(range)+model.maxlead)
     local varshks = model.varshks
     local N = length(varshks)
-    local names = tuple(Symbol.(varshks)...) # force conversion of Vector{ModelSymbol} to NTuple{N,Symbol}
+    local names = tuple(Symbol.(varshks)...) # force conversion of Vector{ModelVariable} to NTuple{N,Symbol}
     p = Plan(range, NamedTuple{names}(1:N), falses(length(range), length(varshks)))
     for (ind, var) = enumerate(varshks)
         if isshock(var) || isexog(var)
@@ -91,6 +97,48 @@ Base.length(p::Plan) = length(p.range)
 Base.IndexStyle(::Plan) = IndexLinear()
 Base.similar(p::Plan) = Plan(p.range, p.varshks, similar(p.exogenous))
 Base.copy(p::Plan) = Plan(p.range, p.varshks, copy(p.exogenous))
+TimeSeriesEcon.rangeof(p::Plan) = p.range
+
+function Base.copyto!(dest::Plan, rng::AbstractUnitRange, src::Plan; verbose=false)
+    if isempty(rng)
+        verbose && @warn "Nothing to copy - empty range"
+        return dest
+    end
+    rng ⊈ rangeof(dest) && throw(BoundsError(dest, rng))
+    rng ⊈ rangeof(src) && throw(BoundsError(src, rng))
+    if verbose && rng != rangeof(dest)
+        @warn "Ranges not updated in destination plan: $(join(_mits_to_ranges(setdiff(rangeof(dest), rng)), ", "))"
+    end
+    idx1 = _offset(dest, rng)
+    jdx1 = _offset(src, rng)
+    # if same columns, 
+    if dest.varshks == src.varshks   # ===, not ==, so we compare names too
+        jdx2 = idx2 = axes(dest.exogenous, 2)
+        copyto!(dest.exogenous, idx1, idx2, src.exogenous, jdx1, jdx2)
+        return dest
+    end
+    # we have to copy columns one at a time
+    if verbose
+        not_in_dest = setdiff(keys(src.varshks), keys(dest.varshks))
+        if !isempty(not_in_dest)
+            @warn "Ignored source plan variables (missing in destination plan): $(join(not_in_dest, ", "))"
+        end
+        not_in_src = setdiff(keys(dest.varshks), keys(src.varshks))
+        if !isempty(not_in_dest)
+            @warn "Variables not updated in destination plan (missing in source plan): $(join(not_in_src, ", "))"
+        end
+    end
+    for (var, i2) in pairs(dest.varshks)
+        j2 = get(src.varshks, var, -1)
+        if j2 > 0
+            copyto!(dest.exogenous, idx1, i2:i2, src.exogenous, jdx1, j2:j2)
+        end
+    end
+    return dest
+end
+
+Base.copyto!(dest::Plan, rng::MIT, scr::Plan; verbose=false) = Base.copyto!(dest, rng:rng, scr; verbose)
+Base.copyto!(dest::Plan, src::Plan; verbose=false) = Base.copyto!(dest, intersect(rangeof(dest), rangeof(src)), src; verbose)
 
 _offset(p::Plan{T}, idx::T) where {T<:MIT} = convert(Int, idx - first(p.range) + 1)
 _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where {T<:MIT} =
@@ -119,8 +167,9 @@ end
 # A range with a model returns a plan trimmed over that range and extended for initial and final conditions.
 Base.getindex(p::Plan{MIT{Unit}}, rng::AbstractUnitRange{Int}, m::Model) = p[UnitRange{MIT{Unit}}(rng), m]
 @inline function Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}, m::Model) where {T<:MIT}
-    rng = (rng.start-m.maxlag):(rng.stop+m.maxlead)
-    return p[rng]
+    # rng = (rng.start-m.maxlag):(rng.stop+m.maxlead)
+    # return p[rng]
+    copyto!(Plan(m, rng), rng, p)
 end
 
 Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize` and `endogenize` to alter plan.")
@@ -128,10 +177,22 @@ Base.setindex!(p::Plan, x, i...) = error("Cannot assign directly. Use `exogenize
 #######################################
 # query the exo-end status of a variable
 
-@inline Base.getindex(p::Plan{T}, vars::Symbol...) where {T} = begin
-    var_inds = [p.varshks[v] for v in vars]
+@inline Base.getindex(p::Plan, vars::Union{AbstractString,Symbol,ModelVariable}...) = Base.getindex(p, Symbol[vars...])
+@inline Base.getindex(p::Plan, vars::AbstractVector{<:Union{AbstractString,ModelVariable}}) = Base.getindex(p, Symbol[vars...])
+@inline Base.getindex(p::Plan{T}, vars::AbstractVector{Symbol}) where {T} = begin
+    var_inds = Int[p.varshks[vars]...]
     Plan{T}(p.range, NamedTuple{(vars...,)}(eachindex(vars)), p.exogenous[:, var_inds])
 end
+
+@inline Base.getindex(p::Plan, rng::AbstractUnitRange, vars::Union{AbstractString,Symbol,ModelVariable}...) = Base.getindex(p, rng, Symbol[vars...])
+@inline Base.getindex(p::Plan, rng::AbstractUnitRange, vars::AbstractVector{<:Union{AbstractString,ModelVariable}}) = Base.getindex(p, rng, Symbol[vars...])
+@inline Base.getindex(p::Plan{T}, rng::AbstractUnitRange{T}, vars::AbstractVector{Symbol}) where {T} = begin
+    rng.start < p.range.start && throw(BoundsError(p, rng.start))
+    rng.stop > p.range.stop && throw(BoundsError(p, rng.stop))
+    var_inds = Int[p.varshks[vars]...]
+    Plan{T}(rng, NamedTuple{(vars...,)}(eachindex(vars)), p.exogenous[_offset(p, rng), var_inds])
+end
+
 
 #######################################
 # Pretty printing
@@ -168,7 +229,7 @@ function Base.show(io::IO, p::Plan)
     limit = get(io, :limit, true)
     cp = collapsed_range(p)
     # find the longest string left of "=>" for padding
-    maxl = maximum(length("$k") for (k, v) in cp)
+    maxl = maximum(length ∘ string ∘ first, cp)
     if limit
         dcol = ncol - maxl - 6
     else
@@ -297,7 +358,7 @@ end
 function importplan(io::IO)
     # parse line 1. Example: "Plan{MIT{Quarterly}} with range 2000Q1:2100Q1"
     line = readline(io)
-    m = match(r"Plan\{MIT\{(\w+)\}\} with range ([\w:]+)", line)
+    m = match(r"Plan\{MIT\{(\w+|\w+\{\d+\})\}\} with range (\w+(?:\{\d+\})?:\w+(?:\{\d+\})?)", line)
     if m === nothing
         error("expected Plan{MIT{Frequency}} at the start of line 1, got ", line, ".")
     end
@@ -305,7 +366,7 @@ function importplan(io::IO)
     rng = parse_range(m.captures[2], false, 1)
     # parse line 2. Example: "Range: 2000Q1:2100Q1"  range must match line 1
     line = readline(io)
-    m = match(r"Range: ([\w:]+)", line)
+    m = match(r"Range: (\w+(?:\{\d+\})?:\w+(?:\{\d+\})?)", line)
     if m === nothing
         error("expected Range: at the start of line 2, got ", line, ".")
     end
@@ -319,19 +380,12 @@ function importplan(io::IO)
     if m === nothing
         error("expected Variables: at the start of line 3, got ", line, ".")
     end
-    nt = let
-        nt = parse_namedtuple(m.captures[1], 3)
-        nms = collect(keys(nt))
-        inds = collect(nt)
-        if inds != 1:length(inds)
-            if Set(inds) != Set(1:length(inds))
-                error("indexes of variables on line 3 are not valid.")
-            end
-            tmp = Dict(i => n for (i, n) in zip(inds, nms))
-            nt = NamedTuple{((tmp[i] for i = 1:length(inds))...,)}(1:length(inds))
-        end
-        nt
+    nt = parse_namedtuple(m.captures[1], 3)
+    if Set(nt) != Set(1:length(nt))
+        error("Indexes of variables on line 3 are not valid.")
     end
+    # sort nt by its values (variable indexes)
+    nt = (; sort!(collect(pairs(nt)), by=last)...)
     # parse line 4.  Example "(X) = Exogenous, (-) = Endogenous
     line = readline(io)
     m = match(r"\((.+?)\) = Exogenous, \((.+?)\) = Endogenous:", line)
@@ -341,16 +395,19 @@ function importplan(io::IO)
     exog_mark, endo_mark = m.captures
     # parse line 5. Example "  NAME,  2000Q1:2010Q1, 2010Q2, 2010Q2:2020Q4"
     line = readline(io) * " "
-    m = match(r"\s*NAME(.\S*)\s+([\w:]+(.\S*)\s*.*)", line)
+    m = match(r"\s*NAME(.\S*)\s+(\w+(?:\{\d+\})?(?::\w+(?:\{\d+\})?)?([^\w\{\}:]\S*)\s*.*)", line)
     if m === nothing
         error("unexpected line 5: ", line, ".")
     end
     _name_delim = m.captures[1]
     _range_delim = m.captures[3]
-    ranges = [parse_range(strip(str), true, 5) for str in split(m.captures[2], _range_delim; keepempty=false)]
-    # parse the rest of it
     p = Plan{MIT{freq}}(rng, nt, falses(length(rng), length(nt)))
-    ranges_inds = [[_offset(p, r)...] for r in ranges]
+    ranges_inds = Vector{Int}[]
+    for str in split(m.captures[2], _range_delim; keepempty=false)
+        r = parse_range(strip(str), true, 5)
+        push!(ranges_inds, [_offset(p, r);])
+    end
+    # parse the rest of it
     pat = Regex("\\s+(\\w+)\\s*$(_name_delim)\\s*(.*)")
     for i = 1:length(nt)
         line = readline(io)
@@ -394,16 +451,16 @@ end
 
 function parse_frequency(str, line=nothing)
     e = Meta.parse(str)
-    ans = e isa Symbol ? eval(e) : nothing
+    ans = e isa Symbol || e isa Expr ? eval(e) : nothing
     if !(ans isa Type && ans <: Frequency)
         error("expected frequency, got ", str, line === nothing ? "." : " on line $line.")
     end
-    ans
+    return sanitize_frequency(ans)
 end
 
 function parse_namedtuple(str, line=nothing)
     e = Meta.parse(str)
-    ans = Meta.isexpr(e, :tuple) && all(Meta.isexpr(ee, :(=)) for ee in e.args) ? eval(e) : nothing
+    ans = Meta.isexpr(e, :tuple) && all(Base.Fix2(Meta.isexpr, :(=)), e.args) ? eval(e) : nothing
     if !(ans isa NamedTuple{NAMES,NTuple{N,Int}} where {NAMES,N})
         error("expected NamedTuple, got ", str, line === nothing ? "." : " on line $line.")
     end
@@ -590,41 +647,114 @@ export count_endo_points, count_exog_points
 """
     compare_plans(left, right; options)
     compare_plans(file, left, right; options)
+    compare_plans(Base.stdout, left, right; options)
 
-Display a comparison of two plans, or save it in a text file.
+Returns an MVTSeries with summary information comparing the two plans.
+Each cell in the MVTSeries have an interger value corresponding to the following rubric:
+
+* 0 -> endogenous in both plans.
+* 1 -> exogenous in the left plan only.
+* 2 -> exogenous in the right plan only.
+* 3 -> exogenous in both plans.
+
+The MVTSeries only includes the overlap between the plans; variables, shocks, and periods only
+included in oe of the plans will not be part of the return MVTSeries.
+
+A detailed comparison can also be printed to a file with the `outfile` or `io` arguments.
 
 ### Options
+* `outfile=""` - save the detailed comparison to the target outfile path, if provided.
+* `io=nothing` - output the detailed comparison to a particular iobuffer.
+* `diff=false` - only populate detailed comparison with variables and shocks 
+  which differ between the plans.
 * `alphabetical=false` - set to `true` to sort the variables. By default
   variables will be listed in the same order as in the left plan.
 * `exog_mark="X"` - a short string (ideally 1 character) to mark exogenous
   values.
-* `endo_mark="-"` - a short string (ideally 1 character) to mark endogenous
+* `endo_mark="~"` - a short string (ideally 1 character) to mark endogenous
   values.
-* `missing_mark="M"` - a short string (ideally 1 character) to display when a
+* `missing_mark="."` - a short string (ideally 1 character) to display when a
   variable is missing from one of the plans.
 * `delim=" "` - delimiter. Use `","`` to make it a CSV file.
 * `pagelines=0` - Set to a positive integer to enable pagination. Number is
   interpreted as the number of lines to repeat the header line (the one with the
   ranges).
+* `summary=false` - print summary on plan differences to stdout.
+* `legend=false` - print legend for comparison matrix to stdout.
 """
 function compare_plans end
 export compare_plans
 
-compare_plans(left::Plan, right::Plan; kwargs...) = compare_plans(Base.stdout, left, right; kwargs...)
-@inline compare_plans(file::AbstractString, left::Plan, right::Plan; kwargs...) = (
-    open(file, "w") do f
-        compare_plans(f, left, right; kwargs...)
+compare_plans(file::AbstractString, left::Plan, right::Plan; kwargs...) = compare_plans(left, right; outfile=file, kwargs...)
+compare_plans(io::Union{IOBuffer, Base.TTY}, left::Plan, right::Plan; kwargs...) = compare_plans(left, right; io=io, kwargs...)
+
+function compare_plans(left::Plan, right::Plan; outfile = "",
+        io = nothing, 
+        alphabetical=false,  # whether to sort variables
+        pagelines=0,
+        exog_mark="X", endo_mark="~", missing_mark=".", # symbols used for each class
+        delim=" ",  # set to "," to get a CSV file (with 3 skip rows and 1 header row)
+        _name_delim=delim,  # padding after NAME column
+        _range_delim=delim,    # padding between range columns
+        diff = false, # whether to print only variables/shocks which differ
+        summary = false, # whether to print summary information to stdout
+        legend = false # whether to print the legend for the matrix numbers
+    ) #
+    left_vars = keys(left.varshks)
+    right_vars = keys(right.varshks)
+    aligned_right = deepcopy(left)
+    aligned_right.exogenous .= 0
+    copyto!(aligned_right, right; verbose=false)
+    left_matrix = Int64.(left.exogenous)
+    right_matrix = Int64.(aligned_right.exogenous) .* 2
+    combined_matrix = left_matrix .+ right_matrix
+    combined_mvts = MVTSeries(first(rangeof(left)), collect(keys(left.varshks)), combined_matrix)
+    combined_mvts = combined_mvts[intersect(rangeof(left),rangeof(right)), intersect(left_vars, right_vars)]
+
+    
+
+    if summary || diff
+        differences = combined_mvts .% 3 .== 0
     end
-)
-function compare_plans(io::IO, left::Plan, right::Plan;
-    alphabetical=false,  # whether to sort variables
-    pagelines=0,
-    exog_mark="X", endo_mark="~", missing_mark=".", # symbols used for each class
-    delim=" ",  # set to "," to get a CSV file (with 3 skip rows and 1 header row)
-    _name_delim=delim,  # padding after NAME column
-    _range_delim=delim    # padding between range columns
-)
-    # summary(io, p)
+    if summary
+        if left.range == right.range
+            println("Same range: ", left.range)
+        else
+            println("Range  left: ", left.range)
+            println("Range right: ", right.range)
+        end
+        
+        if Set(left_vars) == Set(right_vars)
+            println("Same variables.")
+        else
+            println("Variables only in left plan: ", setdiff(left_vars, right_vars))
+            println("Variables only in right plan: ", setdiff(right_vars, left_vars))
+            println(length(intersect(left_vars, right_vars)), " common variables.")
+        end
+        for var in keys(combined_mvts)
+            mits = rangeof(combined_mvts[var])[.!differences[var]]
+            if length(mits) > 0
+                ranges = _mits_to_ranges(mits)
+                print(":$var differs between the plans for the range(s) $(ranges[1])")
+                for rng in ranges[2:end]
+                    print(", $rng")
+                end
+                print(".\n")
+            end
+        end
+    end
+    
+    if outfile == "" && io === nothing
+        @goto return_section
+    end
+
+    # print to file
+    doclose = false
+    if io === nothing
+        io = open(outfile, "w")
+        doclose = true
+    end
+    
     println(io)
     frequencyof(left.range) == frequencyof(right.range) || TimeSeriesEcon.mixed_freq_error(left.range, right.range)
     if left.range == right.range
@@ -633,8 +763,6 @@ function compare_plans(io::IO, left::Plan, right::Plan;
         println(io, "Range  left: ", left.range)
         println(io, "Range right: ", right.range)
     end
-    left_vars = keys(left.varshks)
-    right_vars = keys(right.varshks)
     if Set(left_vars) == Set(right_vars)
         println(io, "Same variables.")
     else
@@ -659,6 +787,9 @@ function compare_plans(io::IO, left::Plan, right::Plan;
         sort!(allvars)
     end
     for (lno, var) in enumerate(allvars)
+        if diff && var ∈ keys(combined_mvts) && all(differences[var])
+            continue
+        end
         print(io, lpad(var, width1), _name_delim)
         tmp = String[]
         for (rng, w) in zip(ranges, width2)
@@ -677,8 +808,42 @@ function compare_plans(io::IO, left::Plan, right::Plan;
             println(io, "\n", lpad("NAME", width1), _name_delim, join(header, _range_delim), "\n")
         end
     end
+
+    doclose && close(io)
+
+    @label return_section
+    if legend
+        println("Comparison legend:")
+        println("* 0 -> endogenous in both plans.")
+        println("* 1 -> exogenous in the left plan only.")
+        println("* 2 -> exogenous in the right plan only.")
+        println("* 3 -> exogenous in both plans.")
+    end
+
+    return combined_mvts
 end
 
+"""
+    _mits_to_ranges(v::Vector{<:MIT})
+
+Converts a vector of MITs to a vector of continuous MIT ranges.
+"""
+function _mits_to_ranges(v::Vector{<:MIT})
+    ranges = Vector{UnitRange{MIT{frequencyof(v[1])}}}()
+    current_mit = v[1]
+    current_adj = 0
+    for el in v[2:end]
+        if el == current_mit + current_adj +1
+            current_adj += 1
+        else
+            push!(ranges, current_mit:current_mit+current_adj)
+            current_mit = el
+            current_adj = 0
+        end   
+    end
+    push!(ranges, current_mit:current_mit+current_adj)
+    return ranges
+end
 
 end # module Plans
 

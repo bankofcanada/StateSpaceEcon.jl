@@ -1,20 +1,21 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
-empty!(E1.model.sstate.constraints)
+
 @testset "E1.sstate" begin
-    let m = deepcopy(E1.model)
+    let m = getE1()
+        empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
         clear_sstate!(m)
         sssolve!(m)
         @test check_sstate(m) == 0
         @test m.sstate.mask == [false, false, true, true]
-        # 
+        #
         @steadystate m y = 1.2
         m.α = 0.5
         m.β = 1.0 - m.α
@@ -23,7 +24,7 @@ empty!(E1.model.sstate.constraints)
         @test check_sstate(m) == 0
         @test m.sstate.mask == [true, false, true, true]
         @test m.sstate.values[1] == 1.2
-        # 
+        #
         m.α = 0.4
         m.β = 1.0 - m.α
         clear_sstate!(m)
@@ -32,17 +33,17 @@ empty!(E1.model.sstate.constraints)
         @test check_sstate(m) == 0
         @test m.sstate.mask == trues(4)
         @test m.sstate.values == [1.2, 0.0, 0.0, 0.0]
-        # 
+        #
         empty!(m.sstate.constraints)
         m.α = 0.3
         m.β = 1.0 - m.α
         clear_sstate!(m)
         @suppress begin
-            sssolve!(m; verbose=true, nropts = Options(linesearch = true))
+            sssolve!(m; verbose=true, nropts=Options(linesearch=true))
         end
         @test check_sstate(m) == 0
         @test m.sstate.values[2] == 0.0
-        # 
+        #
         empty!(m.sstate.constraints)
         m.α = 0.3
         m.β = 1.0 - m.α
@@ -51,16 +52,16 @@ empty!(E1.model.sstate.constraints)
     end
 end
 
-empty!(E1.model.sstate.constraints)
 @testset "E1.sstate, auto" begin
-    let m = deepcopy(E1.model)
+    let m = getE1()
+        empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
         clear_sstate!(m)
         sssolve!(m; method=:auto)
         @test check_sstate(m) == 0
         @test m.sstate.mask == [true, true, true, true]  # different from default
-        # 
+        #
         @steadystate m y = 1.2
         m.α = 0.5
         m.β = 1.0 - m.α
@@ -69,7 +70,7 @@ empty!(E1.model.sstate.constraints)
         @test check_sstate(m) == 0
         @test m.sstate.mask == [true, true, true, true] # different from default
         @test m.sstate.values[1] == 1.2
-        # 
+        #
         m.α = 0.4
         m.β = 1.0 - m.α
         clear_sstate!(m)
@@ -78,7 +79,7 @@ empty!(E1.model.sstate.constraints)
         @test check_sstate(m) == 0
         @test m.sstate.mask == trues(4)
         @test m.sstate.values == [1.2, 0.0, 0.0, 0.0]
-        # 
+        #
         empty!(m.sstate.constraints)
         m.α = 0.3
         m.β = 1.0 - m.α
@@ -91,16 +92,16 @@ empty!(E1.model.sstate.constraints)
     end
 end
 
-empty!(E1.model.sstate.constraints)
 @testset "E1.sstate, lm" begin
-    let m = deepcopy(E1.model)
+    let m = getE1()
+        empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
         clear_sstate!(m)
         sssolve!(m; method=:lm)
         @test check_sstate(m) == 0
         @test m.sstate.mask == [true, true, true, true]  # different from default
-        # 
+        #
         @steadystate m y = 1.2
         m.α = 0.5
         m.β = 1.0 - m.α
@@ -109,7 +110,7 @@ empty!(E1.model.sstate.constraints)
         @test check_sstate(m) == 0
         @test m.sstate.mask == [true, true, true, true]  # different from default
         @test m.sstate.values[1] == 1.2
-        # 
+        #
         m.α = 0.4
         m.β = 1.0 - m.α
         clear_sstate!(m)
@@ -118,7 +119,7 @@ empty!(E1.model.sstate.constraints)
         @test check_sstate(m) == 0
         @test m.sstate.mask == trues(4)
         @test m.sstate.values == [1.2, 0.0, 0.0, 0.0]
-        # 
+        #
         empty!(m.sstate.constraints)
         m.α = 0.3
         m.β = 1.0 - m.α
@@ -131,9 +132,9 @@ empty!(E1.model.sstate.constraints)
     end
 end
 
-empty!(E2.model.sstate.constraints)
 @testset "E2.sstate" begin
-    let m = deepcopy(E2.model)
+    let m = getE2()
+        empty!(m.sstate.constraints)
         clear_sstate!(m)
         sssolve!(m)
         @test check_sstate(m) == 0
@@ -158,7 +159,7 @@ empty!(E2.model.sstate.constraints)
 end
 
 @testset "E6.sstate" begin
-    let m = deepcopy(E6.model)
+    let m = getE6()
         m.options.maxiter = 50
 
         clear_sstate!(m)
@@ -180,7 +181,7 @@ end
 end
 
 @testset "E7.sstate" begin
-    let m = deepcopy(E7.model)
+    let m = getE7()
         m.options.maxiter = 100
         m.options.tol = 1e-9
 
@@ -195,7 +196,7 @@ end
         @steadystate m lc = 14
         clear_sstate!(m)
         sssolve!(m)
-        @test check_sstate(m, tol = 10m.tol) == 0
+        @test check_sstate(m, tol=10m.tol) == 0
         @test all(m.sstate.mask)
         @test m.sstate.values ≈ [0.004, 0.0, 0.004, 0.0, 0.004, 0.0, 14.0, 0.004, 7.0, 0.004, 9.267287357063445, 0.004, 14.000911466453774, 0.004, 0, 0, 0, 0, 14.000911466453774, 0.004, 9.267287357063445, 0.004]
 
@@ -241,7 +242,7 @@ end
 end
 
 @testset "SSTEST" begin
-    let m = SSTEST.model
+    let m = deepcopy(SSTEST.model)
         @test sum(issteady.(m.allvars)) == 2
         clear_sstate!(m)
         @test issssolved(m)
@@ -285,7 +286,7 @@ end
             @test check_sstate(m; verbose=true) == 6
         end
         @test occursin("System may be inconsistent", out)
-       
+
     end
 end
 
@@ -296,12 +297,12 @@ end
         @variables m c
         @equations m begin
             a[t] = (a[t-1] + 10)^2
-            b[t] = b[t-1]/0
+            b[t] = b[t-1] / 0
             b[t] = (a[t-1] + 10)^2
             c[t] = a[t] + b[t]
         end
         @initialize m
-        
+
         # tests
         @test sum(issteady.(m.allvars)) == 2
         clear_sstate!(m)
@@ -318,8 +319,8 @@ end
 end
 
 @testset "presolve, ssZeroSlope" begin
-    empty!(E1.model.sstate.constraints)
-    let m = deepcopy(E1.model)
+    let m = getE1()
+        empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
         clear_sstate!(m)
@@ -328,8 +329,8 @@ end
         @test m.sstate.mask == [false, false, true, true]
     end
     
-    empty!(E1.model.sstate.constraints)
-    let m = deepcopy(E1.model)
+    let m = getE1()
+        empty!(m.sstate.constraints)
         m.α = 0.5
         m.β = 1.0 - m.α
         m.flags.ssZeroSlope = true

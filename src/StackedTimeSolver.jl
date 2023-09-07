@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -23,14 +23,40 @@ using Printf
 using ModelBaseEcon
 using TimeSeriesEcon
 
+using TimerOutputs
+const timer = TimerOutput()
+
 using ..Plans
 
-include("stackedtime/abstract.jl")
+import ..steadystatearray
+import ..SimData
+import ..rawdata
+
+import ..SimFailed
+import ..isfailed
+import ..MaybeSimData
+
+import ModelBaseEcon.hasevaldata
+import ModelBaseEcon.getevaldata
+import ModelBaseEcon.setevaldata!
+import ModelBaseEcon.hassolverdata
+import ModelBaseEcon.getsolverdata
+import ModelBaseEcon.setsolverdata!
+
+using Pardiso
+
+
+using SuiteSparse
+using SuiteSparse.UMFPACK
+
+include("stackedtime/sparse.jl")
+
 include("stackedtime/fctypes.jl")
 include("stackedtime/misc.jl")
 include("stackedtime/solverdata.jl")
 include("stackedtime/simulate.jl")
 include("stackedtime/shockdecomp.jl")
+include("stackedtime/stoch_simulate.jl")
 
 end # module
 
@@ -46,9 +72,9 @@ export FCMatchSSRate, fcslope, fcrate
 export FCConstRate, fcnatural
 export setfc
 
-export simulate, shockdecomp
-export array2data, array2workspace, data2array, data2workspace, workspace2array, workspace2data
+export use_pardiso, use_pardiso!
+export use_umfpack, use_umfpack!
+
 # the following are deprecated
 export seriesoverlay, dictoverlay
-export dict2array, array2dict, dict2data, data2dict
 

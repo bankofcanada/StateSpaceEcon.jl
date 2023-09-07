@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2023, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -20,8 +20,20 @@ using ModelBaseEcon
 @using_example S1
 @using_example S2
 
+getE1() = E1.newmodel()
+getE2() = E2.newmodel()
+getE3() = E3.newmodel()
+getE3nl() = E3nl.newmodel()
+getE6() = E6.newmodel()
+getE7() = E7.newmodel()
+getE7A() = E7A.newmodel()
+getS1() = S1.newmodel()
+getS2() = S2.newmodel()
+
 using Test
+using Random
 using Suppressor
+import Pardiso
 
 @testset "1dsolvers" begin
     # f(x) = (x-2)*(x-3) = a x^2 + b x + c with vals = [a, x, b, c]
@@ -48,7 +60,7 @@ using Suppressor
 end
 
 @testset "Plans" begin
-    m = deepcopy(E1.model)
+    m = getE1()
     p = Plan(m, 1:3)
     @test first(p.range) == 0U
     @test last(p.range) == 4U
@@ -85,7 +97,7 @@ end
 
         pio = IOBuffer()
         exportplan(pio, p)
-        seek(pio, 0)
+        seekstart(pio)
         q = importplan(pio)
         @test p == q
     end
@@ -115,6 +127,12 @@ end
         exog_endo!(q, m.a, m.as, 2U:6U)
         exog_endo!(p, m.b, m.bs, 5U:8U)
 
+        m1 = deepcopy(m)
+        deleteat!(m1.variables, 2)
+        push!(m1.variables, :beta)
+        r = Plan(m1, 8U:15U)
+        exogenize!(r, :beta, 10U:13U)
+
         begin
             io = IOBuffer()
             compare_plans(io, p, q)
@@ -128,23 +146,158 @@ end
             @test read(io, String) == "\nSame range: 0U:10U\nSame variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n     a    ~ ~      X X      ~ X      ~ X      ~ ~      ~ ~  \n     b    ~ ~      X X      ~ ~      X ~      X ~      ~ ~  \n     c    ~ ~      ~ ~      ~ ~      ~ ~      ~ ~      ~ ~  \n\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n\n    as    X X      ~ ~      X ~      X ~      X X      X X  \n    bs    X X      ~ ~      X X      ~ X      ~ X      X X  \n"
         end
         begin
-            m1 = deepcopy(m)
-            deleteat!(m1.variables, 2)
-            push!(m1.variables, :beta)
-            r = Plan(m1, 8U:15U)
-            exogenize!(r, :beta, 10U:13U)
-            out = @capture_out compare_plans(p, r; alphabetical=true)
-            @test out == "\nRange  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U    9U:9U   10U:10U  11U:13U  14U:15U\n     a    ~ .      X .      ~ .      ~ .      ~ ~      ~ ~      ~ ~      . ~      . ~  \n    as    X .      ~ .      X .      X .      X X      X X      X X      . X      . X  \n     b    ~ .      X .      ~ .      X .      X .      ~ .      ~ .      . .      . .  \n  beta    . .      . .      . .      . .      . ~      . ~      . X      . X      . ~  \n    bs    X .      ~ .      X .      ~ .      ~ X      X X      X X      . X      . X  \n     c    ~ .      ~ .      ~ .      ~ .      ~ ~      ~ ~      ~ ~      . ~      . ~  \n"
+            # non-matching plan ranges/varshocks
+
+            # print to io buffer
+            io = IOBuffer()
+            compare_plans(io, p, r; alphabetical=true)
+            seek(io, 0)
+            @test read(io, String) == "\nRange  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U    9U:9U   10U:10U  11U:13U  14U:15U\n     a    ~ .      X .      ~ .      ~ .      ~ ~      ~ ~      ~ ~      . ~      . ~  \n    as    X .      ~ .      X .      X .      X X      X X      X X      . X      . X  \n     b    ~ .      X .      ~ .      X .      X .      ~ .      ~ .      . .      . .  \n  beta    . .      . .      . .      . .      . ~      . ~      . X      . X      . ~  \n    bs    X .      ~ .      X .      ~ .      ~ X      X X      X X      . X      . X  \n     c    ~ .      ~ .      ~ .      ~ .      ~ ~      ~ ~      ~ ~      . ~      . ~  \n"
+            
+            # print only rows with differences
+            io = IOBuffer()
+            compare_plans(io, p, r; alphabetical=true, diff=true)
+            seek(io, 0)
+            @test read(io, String) == "\nRange  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U    9U:9U   10U:10U  11U:13U  14U:15U\n     b    ~ .      X .      ~ .      X .      X .      ~ .      ~ .      . .      . .  \n  beta    . .      . .      . .      . .      . ~      . ~      . X      . X      . ~  \n    bs    X .      ~ .      X .      ~ .      ~ X      X X      X X      . X      . X  \n"
+            
+            # print summary in REPL
+            out = @capture_out compare_plans(p, r; summary=true)
+            @test out == "Range  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\n:bs differs between the plans for the range(s) 7U:8U.\n"
+            
+            # return MVTSeries
+            out_mvts = compare_plans(p, r)
+            @test out_mvts == MVTSeries(7U, (:a,:c,:as,:bs), [0 0 0 0 ; 0 0 0 0 ; 3 3 3 3 ; 2 2 3 3]')
+
+            # return MVTSeries
+            out_mvts2 = compare_plans(r, p)
+            @test out_mvts2 == MVTSeries(7U, (:a,:c,:as,:bs), [0 0 0 0 ; 0 0 0 0 ; 3 3 3 3 ; 1 1 3 3]')
+
+        end
+        # copyto!
+        begin
+            # When the plans are similar the copy becomes a copy of the source plan
+            p_copy = deepcopy(p)
+            copyto!(p_copy, q)
+            @test p_copy == q
+
+            # When the plans partially overlap, change the overlapping varshks/ranges
+            p_copy = deepcopy(p)
+            copyto!(p_copy, r)
+            @test p_copy.range == p.range
+            @test p_copy.varshks == p.varshks
+            @test p_copy.exogenous == BitArray([ 
+                0  0  0  1  1;
+                0  0  0  1  1;
+                1  1  0  0  0;
+                1  1  0  0  0;
+                0  0  0  1  1;
+                0  1  0  1  0;
+                0  1  0  1  0;
+                0  1  0  1  1;
+                0  1  0  1  1;
+                0  0  0  1  1;
+                0  0  0  1  1;
+            ])
+
+            # When plans don't overlap, no changes are made
+            r2 = Plan(m1, 12U:15U)
+            p_copy = deepcopy(p)
+            copyto!(p_copy, r2)
+            @test p_copy == p
+
+            # Error is thrown if explicit range is provided and the plans do not overlap
+            r2 = Plan(m1, 12U:15U)
+            p_copy = deepcopy(p)
+            @test_throws BoundsError copyto!(p_copy, 7U:14U, r2)
+
+            # Error is thrown if provided range is outside the plans
+            p_copy = deepcopy(p)
+            @test_throws BoundsError copyto!(p_copy, 22U:30U, r; verbose=false)
+
+            # Test warnings
+            p_copy = deepcopy(p)
+            @test_logs(
+                (:warn, "Ranges not updated in destination plan: 0U:6U"),
+                (:warn, "Ignored source plan variables (missing in destination plan): beta"),
+                (:warn, "Variables not updated in destination plan (missing in source plan): b"),
+                copyto!(p_copy, r; verbose=true)
+            )
         end
     end
-
 end
 
-# include("simdatatests.jl")
+@testset "copyto! plans" begin
+    ma = Model();
+    @variables ma x a b c;
+    md = Model();
+    @variables md b c d z;
+
+    p1 = Plan(ma, 2020Q1:2021Q4)
+    copyto!(p1.exogenous, rand(Bool, size(p1.exogenous)))
+    n1, n2 = size(p1.exogenous)
+
+    
+    # same everythig
+    p2 = Plan(ma, 2020Q1:2021Q4)
+    @test @test_nowarn (copyto!(p2, p1); true)
+    @test p1 == p2
+    
+    # update sub-range
+    p2 = Plan(ma, 2019Q1:2023Q4)
+    @test @test_logs (:warn, "Ranges not updated in destination plan: 2019Q1:2019Q4, 2022Q1:2023Q4") (copyto!(p2, p1; verbose=true); true)
+    @test p1 == p2[rangeof(p1)]
+    for rng in (2019Q1:2019Q4, 2022Q1:2023Q4)
+        @test p2[rng].exogenous == falses(length(rng), length(p2.varshks))
+    end
+
+    # plans with different ranges
+    # rng not given, default to common range
+    p2 = Plan(ma, 2019Q1:2020Q4)
+    @test @test_nowarn (copyto!(p2, p1); true)
+    @test p1[2020Q1:2020Q4] == p2[2020Q1:2020Q4]
+    @test p2[2019Q1:2019Q4].exogenous == falses(4,n2)
+    
+    # rng given
+    p2 = Plan(ma, 2019Q1:2020Q4)
+    @test @test_nowarn (copyto!(p2, 2020Q3, p1); true)
+    @test p1[2020Q3:2020Q3] == p2[2020Q3:2020Q3]
+    @test p2[2019Q1:2020Q2].exogenous == falses(6,n2)
+    @test p2[2020Q4:2020Q4].exogenous == falses(1,n2)
+    
+    @test @test_nowarn (copyto!(p2, 2020Q1:2020Q3, p1); true)
+    @test p1[2020Q1:2020Q3] == p2[2020Q1:2020Q3]
+    @test p2[2019Q1:2019Q4].exogenous == falses(4,n2)
+    @test p2[2020Q4:2020Q4].exogenous == falses(1,n2)
+    
+    # given bad
+    p2 = Plan(ma, 2019Q1:2020Q4)
+    @test_throws BoundsError copyto!(p2, 2019Q2:2020Q3, p1)
+    @test p2.exogenous == falses(8,n2)
+   
+    # Empty range intersection 
+    p2 = Plan(ma, 2018Q1:2019Q4)
+    @test @test_nowarn (copyto!(p2, p1); true)
+    p2 = Plan(ma, 2018Q1:2019Q4)
+    @test @test_logs (:warn, r".*empty range.*") (copyto!(p2, p1; verbose=true); true)
+
+    # different plans
+    p3 = Plan(md, rangeof(p1))
+    @test @test_nowarn (copyto!(p3, p1); true)
+    @test p3.exogenous[:,1:2] == p1.exogenous[:,3:4]
+    @test p3.exogenous[:,3:4] == falses(8,2)
+    @test @test_logs(
+        (:warn, r"Ignored source plan variables \(missing in destination plan\): (a, x|x, a)"),
+        (:warn, r"Variables not updated in destination plan \(missing in source plan\): (d, z|z, d)"),
+        (copyto!(p3, p1; verbose=true); true)
+    )
+    
+end
+
+include("simdatatests.jl")
 include("sstests.jl")
 
 @testset "misc" begin
-    m = deepcopy(E3.model)
+    m = getE3()
     sim = m.maxlag .+ (1:10)
     p = Plan(m, sim)
 
@@ -214,11 +367,39 @@ end
     @test t1 == TSeries(1U, [1, 1, 3, 5, 5, 5, 5, 5])
 end
 
-include("simtests.jl")
-include("logsimtests.jl")
-
-include("shockdecomp.jl")
-
-include("dynss.jl")
-
 include("misc.jl")
+
+@testset "sparse" begin
+    @test (use_pardiso(); StateSpaceEcon.StackedTimeSolver.sf_default == :pardiso)
+    @test (use_umfpack(); StateSpaceEcon.StackedTimeSolver.sf_default == :umfpack)
+    let m = Model()
+        @test (use_pardiso!(m); m.factorization == :pardiso)
+        @test (use_umfpack!(m); m.factorization == :umfpack)
+    end
+end
+
+# make sure Pardiso runs deterministic (single thread) for the tests
+Pardiso.set_nprocs_mkl!(1)
+
+for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
+
+    sfdef.value == :default && continue
+
+    # Pardiso in macos is giving "Not enough memory".  Disable for now
+    # sfdef.value == :pardiso && Sys.isapple() && continue
+
+    @info "Using $(sfdef)"
+
+    Core.eval(StateSpaceEcon.StackedTimeSolver, :(sf_default = $(sfdef)))
+
+    include("simtests.jl")
+    include("logsimtests.jl")
+    include("sim_fo.jl")
+    include("shockdecomp.jl")
+    include("dynss.jl")
+
+    include("stochsims.jl")
+
+end
+
+include("modelchanges.jl")
