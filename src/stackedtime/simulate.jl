@@ -82,7 +82,15 @@ Solve the simulation problem.
     return false
 end
 
-
+function check_converged(converged, warn_maxiter)
+    if !converged
+        if warn_maxiter == :error
+            error("Newton-Raphson reached maximum number of iterations (`maxiter`).")
+        elseif warn_maxiter != false
+            @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
+        end
+    end
+end
 
 function simulate(m::Model,
     p_ant::Plan,
@@ -106,7 +114,7 @@ function simulate(m::Model,
     expectation_horizon::Union{Nothing,Int64}=nothing,
     #= Newton-Raphson options =#
     linesearch::Bool=getoption(m, :linesearch, false),
-    warn_maxiter::Bool=getoption(getoption(m, :warn, Options()), :maxiter, false)
+    warn_maxiter=getoption(getoption(m, :warn, Options()), :maxiter, false)
 )
 
     unant_given = !isempty(exog_unant)
@@ -160,9 +168,7 @@ function simulate(m::Model,
             @info "Simulating $(p_ant.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
         end
         converged = sim_nr!(x, gdata, maxiter, tol, verbose, linesearch)
-        if warn_maxiter && !converged
-            @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
-        end
+        check_converged(converged, warn_maxiter)
     else # unanticipated shocks
 
         #=== prepare sub-ranges ===#
@@ -233,9 +239,7 @@ function simulate(m::Model,
                     @info "Simulating $(p_ant.range[t:T]) with $((tol, maxiter))" # anticipate expectation_horizon gdata.FC
                 end
                 converged = sim_nr!(xx, gdata, maxiter, tol, verbose, linesearch)
-                if warn_maxiter && !converged
-                    @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
-                end
+                check_converged(converged, warn_maxiter)
                 last_run = Workspace(; t, xx, gdata)
             end
             if last_run.t > t0
@@ -246,9 +250,7 @@ function simulate(m::Model,
                     @info "Simulating $(p_ant.range[t:T]) with $((tol, maxiter))" # anticipate expectation_horizon gdata.FC
                 end
                 converged = sim_nr!(xx, gdata, maxiter, tol, verbose, linesearch)
-                if warn_maxiter && !converged
-                    @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
-                end
+                check_converged(converged, warn_maxiter)
             end
         else
             # when expectation_horizon is given,
@@ -280,9 +282,7 @@ function simulate(m::Model,
                     @info "Simulating $(p_ant.range[t:T])" # anticipate expectation_horizon sdata.FC
                 end
                 converged = sim_nr!(xx, sdata, maxiter, tol, verbose, linesearch)
-                if warn_maxiter && !converged
-                    @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
-                end
+                check_converged(converged, warn_maxiter)
             end
             # intermediate simulations
             last_t::Int64 = t0
@@ -328,9 +328,7 @@ function simulate(m::Model,
                     @info("Simulating $(p_ant.range[t] .+ (0:expectation_horizon - 1))") # anticipate expectation_horizon sdata.FC
                 end
                 converged = sim_nr!(xx, sdata, maxiter, tol, verbose, linesearch)
-                if warn_maxiter && !converged
-                    @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
-                end
+                check_converged(converged, warn_maxiter)
                 last_t = t  # keep track of last simulation time
             end
             # last simulation
@@ -352,9 +350,7 @@ function simulate(m::Model,
                         @info "Simulating $(p_ant.range[last_t + 1:T])" # anticipate expectation_horizon sdata.FC
                     end
                     converged = sim_nr!(xx, sdata, maxiter, tol, verbose, linesearch)
-                    if warn_maxiter && !converged
-                        @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
-                    end
+                    check_converged(converged, warn_maxiter)
                 end
             end
             # x = x[begin:end-expectation_horizon, :]
