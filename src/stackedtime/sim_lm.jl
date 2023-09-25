@@ -9,7 +9,7 @@ function _sim_lm_step(
     x::AbstractArray{Float64},
     Δx::AbstractArray{Float64},
     sd::StackedTimeSolverData;
-    lm_params=[0.1, 10.0]
+    lm_params=[0.1, 8.0, 0.0]
 )
 
     lambda, nu, qual = lm_params
@@ -52,7 +52,7 @@ function _sim_lm_first_step(
     x::AbstractArray{Float64},
     Δx::AbstractArray{Float64},
     sd::StackedTimeSolverData;
-    lm_params=[0.1, 10.0]
+    lm_params=[0.1, 8.0, 0.0]
 )
 
     lambda, nu, qual = lm_params
@@ -128,9 +128,9 @@ function sim_lm!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     R = Vector{Float64}(undef, size(sd.J, 1))
     stackedtime_R!(R, x, x, sd)
     nR0 = 1.0
-    nR = norm(R, Inf)
+    nR0 = norm(R, Inf)
     if verbose
-        @info "0, || Fx || = $(nR)"
+        @info "0, || Fx || = $(nR0)"
     end
     # step 1
     _sim_lm_first_step(x, Δx, sd; lm_params)
@@ -153,7 +153,7 @@ function sim_lm!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
         if verbose
             @info "$it, || Fx || = $(nR), || Δx || = $(nΔx), lambda = $(lm_params[1]), qual = $(lm_params[3])"
         end
-        if (nΔx < 1e-5) && ((4nR < nR0 < 1e-2) || (nR / nR0 > 0.8)) && (lm_params[1] <= 1e-3)
+        if (true || nΔx < 1e-2) && ((2nR < nR0 < 1e-2) || (nR / nR0 > 0.8)) && (lm_params[1] <= 1e-3)
             if verbose
                 @info "    --- switching to Newton-Raphson ---   "
             end
