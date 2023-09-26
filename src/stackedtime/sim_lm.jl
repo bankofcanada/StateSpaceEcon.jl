@@ -123,6 +123,12 @@ Solve the simulation problem using the Levenberg–Marquardt method.
 function sim_lm!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     maxiter::Int64, tol::Float64, verbose::Bool, linesearch::Bool=false
 )
+
+    @warn "Levenberg–Marquardt method is experimental."
+    if verbose
+        @info "Simulation using Levenberg–Marquardt method."
+    end
+
     lm_params = [0.1, 8.0, 0.0]
     Δx = Vector{Float64}(undef, size(sd.J, 1))
     R = Vector{Float64}(undef, size(sd.J, 1))
@@ -153,14 +159,14 @@ function sim_lm!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
         if verbose
             @info "$it, || Fx || = $(nR), || Δx || = $(nΔx), lambda = $(lm_params[1]), qual = $(lm_params[3])"
         end
-        if (true || nΔx < 1e-2) && ((2nR < nR0 < 1e-2) || (nR / nR0 > 0.8)) && (lm_params[1] <= 1e-3)
+        if  (nΔx < 1e-5 || true ) &&  ((4nR < nR0 && nR < 1e-2) || (nR / nR0 > 0.8)) && (lm_params[1] <= 1e-4)
             if verbose
                 @info "    --- switching to Newton-Raphson ---   "
             end
             sd.J_factorized[] = nothing
             return sim_nr!(x, sd, maxiter, tol, verbose, linesearch)
         end
-        nR0 = nR
+        # nR0 = nR
     end
     return false
 end

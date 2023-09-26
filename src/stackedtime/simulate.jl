@@ -45,7 +45,11 @@ function simulate(m::Model,
     sim_solver=:sim_nr
 )
 
-    sim_solve! = sim_solver == :sim_nr ? sim_nr! : sim_solver == :sim_lm ? sim_lm! : error("Unknown solver $sim_solver.")
+    sim_solve! =
+        sim_solver == :sim_nr ? sim_nr! :
+        sim_solver == :sim_lm ? sim_lm! :
+        sim_solver == :sim_gn ? sim_gn! :
+        error("Unknown solver $sim_solver.")
 
     unant_given = !isempty(exog_unant)
 
