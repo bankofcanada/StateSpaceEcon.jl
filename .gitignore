@@ -5,3 +5,5 @@ coverage
 
 docs/build
 docs/Manifest.toml
+
+*.mem

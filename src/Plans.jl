@@ -140,20 +140,24 @@ end
 Base.copyto!(dest::Plan, rng::MIT, scr::Plan; verbose=false) = Base.copyto!(dest, rng:rng, scr; verbose)
 Base.copyto!(dest::Plan, src::Plan; verbose=false) = Base.copyto!(dest, intersect(rangeof(dest), rangeof(src)), src; verbose)
 
-_offset(p::Plan{T}, idx::T) where {T<:MIT} = convert(Int, idx - first(p.range) + 1)
-_offset(p::Plan{T}, idx::AbstractUnitRange{T}) where {T<:MIT} =
+@inline _offset(p::Plan{T}, idx::T) where {T<:MIT} = convert(Int, idx - first(p.range) + 1)
+@inline _offset(p::Plan{T}, idx::AbstractUnitRange{T}) where {T<:MIT} =
     _offset(p, first(idx)):_offset(p, last(idx))
 
 ## Integer index is taken as is
-Base.getindex(p::Plan, idx::Int) = p[p.range[idx]]
-Base.getindex(p::Plan, idx::AbstractUnitRange{Int}) = p[p.range[idx]]
-Base.getindex(p::Plan, idx::Int, ::Val{:inds}) = findall(p.exogenous[idx, :])
+@inline Base.getindex(p::Plan, idx::Int) = begin
+    nms = collect(keys(p.varshks))
+    nms[p.exogenous[idx, :]]
+end
+@inline Base.getindex(p::Plan, idx::AbstractUnitRange{Int}) = p[p.range[idx]]
+@inline Base.getindex(p::Plan, idx::Int, ::Val{:inds}) = findall(p.exogenous[idx, :])
 
 # Index of the frequency type returns the list of exogenous symbols
-Base.getindex(p::Plan, idx::MIT) = [keys(p.varshks)[p[_offset(p, idx), Val(:inds)]]...,]
+@inline Base.getindex(p::Plan, idx::MIT) = p[_offset(p, idx)]
+
 @inline function Base.getindex(p::Plan, idx::MIT, ::Val{:inds})
     first(p.range) ≤ idx ≤ last(p.range) || throw(BoundsError(p, idx))
-    return p[_offset(p, idx), Val(true)]
+    return p[_offset(p, idx), Val(:inds)]
 end
 
 # A range returns the plan trimmed over that exact range.
