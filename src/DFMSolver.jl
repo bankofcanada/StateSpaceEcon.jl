@@ -10,8 +10,9 @@ module DFMSolver
 using LinearAlgebra
 using Distributions
 
-using ModelBaseEcon
 using TimeSeriesEcon
+using ModelBaseEcon
+using ModelBaseEcon.DFMModels
 
 using ..StateSpaceEcon
 using ..Plans
@@ -19,8 +20,8 @@ import ..Kalman
 
 
 include("dfm/plandata.jl")
-include("dfm/simulate.jl")
-include("dfm/kalman.jl")
+# include("dfm/simulate.jl")
+# include("dfm/kalman.jl")
 
 end
 

@@ -4,6 +4,7 @@ authors = ["Atai Akunov <aakunov@bankofcanada.ca>", "Boyan Bejanov <bbejanov@ban
 version = "0.5.3"
 
 [deps]
+ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 DiffResults = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
@@ -21,6 +22,7 @@ TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [compat]
 DelimitedFiles = "1.7"
+ComponentArrays = "0.15"
 DiffResults = "1.0"
 ForwardDiff = "0.10"
 LinearAlgebra = "1.7"
