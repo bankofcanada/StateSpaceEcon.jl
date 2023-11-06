@@ -38,6 +38,8 @@ Base.getindex(sd::SimData, rows, vars::ModelVariable) = getindex(sd, rows, vars.
 Base.setindex!(sd::SimData, val, rows, vars::_MVCollection) = setindex!(sd, val, rows, map(_getname, vars))
 Base.setindex!(sd::SimData, val, rows, vars::ModelVariable) = setindex!(sd, val, rows, vars.name)
 
+Base.view(sd::SimData, vars::_MVCollection) = view(sd, :, map(_getname, vars))
+Base.view(sd::SimData, vars::ModelVariable) = view(sd, :, vars.name)
 Base.view(sd::SimData, rows, vars::_MVCollection) = view(sd, rows, map(_getname, vars))
 Base.view(sd::SimData, rows, vars::ModelVariable) = view(sd, rows, vars.name)
 
