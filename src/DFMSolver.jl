@@ -26,11 +26,11 @@ import ..Kalman
 
 include("dfm/plandata.jl")
 include("dfm/random.jl")
-# include("dfm/simulate.jl")
+include("dfm/simulate.jl")
 # include("dfm/kalman.jl")
 
 end
 
 using .DFMSolver
 export rand_shocks!
-
+export simulate!
