@@ -403,4 +403,8 @@ for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
 
 end
 
+include("sim_solver.jl")
+
+# keep this one last because it overwrites getE?()
 include("modelchanges.jl")
+
