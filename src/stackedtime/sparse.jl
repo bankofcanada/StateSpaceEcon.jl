@@ -8,7 +8,8 @@
 
 # selected sparse linear algebra library is a Symbol
 const sf_libs = (
-    :default,   #
+    :none,      # do not pre-factorize the Jacobian matrix
+    :default,   # use the current default, which can be changed via use_umfpack() and use_pardiso()
     :umfpack,   # use Julia's standard library (UMFPACK)
     :pardiso,   # use Pardiso - the one included with MKL
 )
@@ -62,6 +63,19 @@ export use_pardiso, use_pardiso!
 # a function to solve the linear system
 # sf_solve!(f::Factorization, x::AbstractArray) = throw(ArgumentError("Unknown factorization type $(typeof(f))."))
 
+
+###########################################################################
+### :none 
+
+mutable struct NoFactorization{Tv} <: Factorization{Tv}
+    A::SparseMatrixCSC{Tv,Int}
+end
+# don't factorize, just store the matrix
+sf_prepare(::Val{:none}, A::SparseMatrixCSC) = NoFactorization{Float64}(A)
+# don't factorize, just store the matrix
+sf_factor!(f::NoFactorization, A::SparseMatrixCSC) = (f.A = A; f)
+# we could do ldiv(f.A, x), but we insist on throwing an error -- if you want to solve, don't use model.factorization = :none
+sf_solve!(f::NoFactorization, x::AbstractArray) = error("Cannot solve without valid factorization.")
 
 ###########################################################################
 ###  Default (UMFPACK)

@@ -588,7 +588,7 @@ Compute the residual and Jacobian of the stacked time system at the given
 `point`.
 """
 @timeit_debug timer function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData;
-    debugging=false)
+    debugging=false, factorization=sd.factorization)
     nunknowns = sd.NU
     @assert size(point) == size(exog_data) == (sd.NT, nunknowns)
     # point = reshape(point, sd.NT, nunknowns)
@@ -620,7 +620,7 @@ Compute the residual and Jacobian of the stacked time system at the given
             JJ = JAC[:, sd.solve_mask]
         end
         # compute factorization of the active part of J and cache it.
-        sf_factorize!(Val(sd.factorization), sd.J_factorized, JJ)
+        sf_factorize!(Val(factorization), sd.J_factorized, JJ)
     end
     return RES, sd.J_factorized[]
 end

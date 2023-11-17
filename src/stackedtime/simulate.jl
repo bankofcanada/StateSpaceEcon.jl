@@ -9,85 +9,12 @@
     return model
 end
 
-"""
-    sim_nr!(x, sd, maxiter, tol, verbose [, linesearch])
-
-Solve the simulation problem.
-  * `x` - the array of data for the simulation. All initial, final and exogenous
-    conditions are already in place.
-  * `sd::AbstractSolverData` - the solver data constructed for the simulation
-    problem.
-  * `maxiter` - maximum number of iterations.
-  * `tol` - desired accuracy.
-  * `verbose` - whether or not to print progress information.
-  * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a 
-    search along the descent direction for a sufficient decrease in f. It will 
-    do this at each iteration. Default is `false`.
-
-"""
-@timeit_debug timer function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
-    maxiter::Int64, tol::Float64, verbose::Bool, linesearch::Bool=false)
-    for it = 1:maxiter
-        Fx = stackedtime_R!(Vector{Float64}(undef, size(sd.J, 1)), x, x, sd)
-        nFx = norm(Fx, Inf)
-        if nFx < tol
-            if verbose
-                @info "$it, || Fx || = $(nFx)"
-            end
-            return true
-        end
-        Δx, Jx = stackedtime_RJ(x, x, sd)
-        Δx = sf_solve!(Jx, Δx)
-
-        λ = 1.0
-        if linesearch
-            nf = norm(Fx)
-            # the Armijo rule: C.T.Kelly, Iterative Methods for Linear and Nonlinear Equations, ch.8.1, p.137
-            α = 1e-4
-            σ = 0.5
-            while λ > 0.00001
-                x_buf = copy(x)
-                assign_update_step!(x_buf, -λ, Δx, sd)
-                nrb2 = try
-                    stackedtime_R!(Fx, x_buf, x_buf, sd)
-                    norm(Fx)
-                catch e
-                    Inf
-                end
-                if nrb2 < (1.0 - α * λ) * nf
-                    # if verbose && λ < 1.0
-                    #     @info "Linesearch success with λ = $λ."
-                    # end
-                    break
-                end
-                λ = σ * λ
-            end
-            if verbose
-                if λ <= 0.00001
-                    @warn "Linesearch failed."
-                elseif λ < 1.0
-                    @info "Linesearch success with λ=$λ"
-                end
-            end
-        end
-        nΔx = λ * norm(vec(Δx), Inf)
-        assign_update_step!(x, -λ, Δx, sd)
-        if verbose
-            @info "$it, || Fx || = $(nFx), || Δx || = $(nΔx)"
-        end
-        if nΔx < tol
-            return true
-        end
-    end
-    return false
-end
-
 function check_converged(converged, warn_maxiter)
     if !converged
         if warn_maxiter == :error
-            error("Newton-Raphson reached maximum number of iterations (`maxiter`).")
+            error("Non-linear solver reached maximum number of iterations (`maxiter`).")
         elseif warn_maxiter != false
-            @warn("Newton-Raphson reached maximum number of iterations (`maxiter`).")
+            @warn("Non-linear solver reached maximum number of iterations (`maxiter`).")
         end
     end
 end
@@ -114,8 +41,15 @@ function simulate(m::Model,
     expectation_horizon::Union{Nothing,Int64}=nothing,
     #= Newton-Raphson options =#
     linesearch::Bool=getoption(m, :linesearch, false),
-    warn_maxiter=getoption(getoption(m, :warn, Options()), :maxiter, false)
+    warn_maxiter=getoption(getoption(m, :warn, Options()), :maxiter, false),
+    sim_solver=:sim_nr
 )
+
+    sim_solve! =
+        sim_solver == :sim_nr ? sim_nr! :
+        sim_solver == :sim_lm ? sim_lm! :
+        sim_solver == :sim_gn ? sim_gn! :
+        error("Unknown solver $sim_solver.")
 
     unant_given = !isempty(exog_unant)
 
@@ -167,7 +101,7 @@ function simulate(m::Model,
         if verbose
             @info "Simulating $(p_ant.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
         end
-        converged = sim_nr!(x, gdata, maxiter, tol, verbose, linesearch)
+        converged = sim_solve!(x, gdata, maxiter, tol, verbose, linesearch)
         check_converged(converged, warn_maxiter)
     else # unanticipated shocks
 
@@ -238,7 +172,7 @@ function simulate(m::Model,
                 if verbose
                     @info "Simulating $(p_ant.range[t:T]) with $((tol, maxiter))" # anticipate expectation_horizon gdata.FC
                 end
-                converged = sim_nr!(xx, gdata, maxiter, tol, verbose, linesearch)
+                converged = sim_solve!(xx, gdata, maxiter, tol, verbose, linesearch)
                 check_converged(converged, warn_maxiter)
                 last_run = Workspace(; t, xx, gdata)
             end
@@ -249,7 +183,7 @@ function simulate(m::Model,
                 if verbose
                     @info "Simulating $(p_ant.range[t:T]) with $((tol, maxiter))" # anticipate expectation_horizon gdata.FC
                 end
-                converged = sim_nr!(xx, gdata, maxiter, tol, verbose, linesearch)
+                converged = sim_solve!(xx, gdata, maxiter, tol, verbose, linesearch)
                 check_converged(converged, warn_maxiter)
             end
         else
@@ -281,7 +215,7 @@ function simulate(m::Model,
                 if verbose
                     @info "Simulating $(p_ant.range[t:T])" # anticipate expectation_horizon sdata.FC
                 end
-                converged = sim_nr!(xx, sdata, maxiter, tol, verbose, linesearch)
+                converged = sim_solve!(xx, sdata, maxiter, tol, verbose, linesearch)
                 check_converged(converged, warn_maxiter)
             end
             # intermediate simulations
@@ -327,7 +261,7 @@ function simulate(m::Model,
                 if verbose
                     @info("Simulating $(p_ant.range[t] .+ (0:expectation_horizon - 1))") # anticipate expectation_horizon sdata.FC
                 end
-                converged = sim_nr!(xx, sdata, maxiter, tol, verbose, linesearch)
+                converged = sim_solve!(xx, sdata, maxiter, tol, verbose, linesearch)
                 check_converged(converged, warn_maxiter)
                 last_t = t  # keep track of last simulation time
             end
@@ -349,7 +283,7 @@ function simulate(m::Model,
                     if verbose
                         @info "Simulating $(p_ant.range[last_t + 1:T])" # anticipate expectation_horizon sdata.FC
                     end
-                    converged = sim_nr!(xx, sdata, maxiter, tol, verbose, linesearch)
+                    converged = sim_solve!(xx, sdata, maxiter, tol, verbose, linesearch)
                     check_converged(converged, warn_maxiter)
                 end
             end
