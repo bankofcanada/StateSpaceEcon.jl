@@ -21,11 +21,18 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
     fctype=getoption(m, :fctype, fcgiven),
     #= Newton-Raphson options =#
     linesearch::Bool=getoption(m, :linesearch, false),
-    warn_maxiter::Bool=getoption(getoption(m, :warn, Options()), :maxiter, false)
+    warn_maxiter=getoption(getoption(m, :warn, Options()), :maxiter, false),
+    sim_solver=:sim_nr
 )
 
+    sim_solve! =
+        sim_solver == :sim_nr ? sim_nr! :
+        sim_solver == :sim_lm ? sim_lm! :
+        sim_solver == :sim_gn ? sim_gn! :
+        error("Unknown solver $sim_solver.")
+
     if isempty(shocks)
-        return _make_result_container(shocks, baseline);
+        return _make_result_container(shocks, baseline)
     end
 
     # get the range of all shocks realizations (this will be the full simulation range)
@@ -126,10 +133,8 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
 
             # solve 
             try
-                converged = sim_nr!(eₜ, dₜ, maxiter, tol, verbose, linesearch)
-                if warn_maxiter && !converged
-                    @warn("Newton-Raphson reached maximum number of iterations for $skey at $(t:sim_end)")
-                end
+                converged = sim_solve!(eₜ, dₜ, maxiter, tol, verbose, linesearch)
+                check_converged(converged, warn_maxiter)
             catch
                 # marked as failed 
                 results[rkey] = SimFailed(t)
