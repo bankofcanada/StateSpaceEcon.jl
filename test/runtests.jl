@@ -384,6 +384,7 @@ Pardiso.set_nprocs_mkl!(1)
 for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
 
     sfdef.value == :default && continue
+    sfdef.value == :none && continue
 
     # Pardiso in macos is giving "Not enough memory".  Disable for now
     # sfdef.value == :pardiso && Sys.isapple() && continue
@@ -402,4 +403,8 @@ for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
 
 end
 
+include("sim_solver.jl")
+
+# keep this one last because it overwrites getE?()
 include("modelchanges.jl")
+

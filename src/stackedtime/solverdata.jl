@@ -237,11 +237,13 @@ function update_plan!(sd::StackedTimeSolverData, model::Model, plan::Plan; chang
         @. sd.solve_mask = !(sd.fc_mask | sd.exog_mask)
         @assert !any(sd.exog_mask .& sd.fc_mask)
         @assert sum(sd.solve_mask) == size(sd.J, 1)
+        sm_index = cumsum(sd.solve_mask)
 
         # Update the Jacobian correction matrix, if exogenous plan changed
         II, JJ, VV = Int[], Int[], Float64[]
         last_sim_t = last(sim)
         var_to_idx = ModelBaseEcon.get_var_to_idx(model)
+        JJvar = fill(0, NTFC)
         for (vi, (v, fc)) in enumerate(zip(unknowns, sd.FC))
             @assert vi == var_to_idx[v]
             # var_CiSc returns a Dict with keys equal to the column offset relative to last_sim_t
@@ -254,16 +256,17 @@ function update_plan!(sd::StackedTimeSolverData, model::Model, plan::Plan; chang
                     continue
                 end
                 # The column index in the active matrix
-                JJvar = let
-                    # Full matrix has sd.NU*sd.NT columns
-                    # We take a vector with this many `false`s and put a `true` only in `col_ind` position
-                    # Then we select only the active positions in this vector (that's foo[sd.solve_mask])
-                    # Then we find the index of the `true` value - that's the column index in the active sub-matrix.
-                    foo = falses(sd.NU * sd.NT)
-                    foo[col_ind] = true
-                    ind = findall(foo[sd.solve_mask])
-                    repeat(ind, NTFC)
-                end
+                # JJvar = begin
+                #     # Full matrix has sd.NU*sd.NT columns
+                #     # We take a vector with this many `false`s and put a `true` only in `col_ind` position
+                #     # Then we select only the active positions in this vector (that's foo[sd.solve_mask])
+                #     # Then we find the index of the `true` value - that's the column index in the active sub-matrix.
+                #     foo = falses(sd.NU * sd.NT)
+                #     foo[col_ind] = true
+                #     ind = findall(foo[sd.solve_mask])
+                #     repeat(ind, NTFC)
+                # end
+                fill!(JJvar, sm_index[col_ind])
                 # The row indices for this block
                 #   the block for variable 1 gets row indexes 1 .. NTFC
                 #   the block for variable 2 gets row indexes NTFC+1 .. 2*NTFC
@@ -585,7 +588,7 @@ Compute the residual and Jacobian of the stacked time system at the given
 `point`.
 """
 @timeit_debug timer function stackedtime_RJ(point::AbstractArray{Float64}, exog_data::AbstractArray{Float64}, sd::StackedTimeSolverData;
-    debugging=false)
+    debugging=false, factorization=sd.factorization)
     nunknowns = sd.NU
     @assert size(point) == size(exog_data) == (sd.NT, nunknowns)
     # point = reshape(point, sd.NT, nunknowns)
@@ -617,7 +620,7 @@ Compute the residual and Jacobian of the stacked time system at the given
             JJ = JAC[:, sd.solve_mask]
         end
         # compute factorization of the active part of J and cache it.
-        sf_factorize!(Val(sd.factorization), sd.J_factorized, JJ)
+        sf_factorize!(Val(factorization), sd.J_factorized, JJ)
     end
     return RES, sd.J_factorized[]
 end
