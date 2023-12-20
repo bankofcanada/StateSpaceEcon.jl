@@ -58,7 +58,7 @@ function _filter_iteration(kf::KFilter, t, KFM::AbstractKFModel, user_data...)
     Pxy_pred = K = kf.K  # K and Pxy_pred occupy the same memory
 
     # predict state
-    kf_predict_x!(t, x_pred, Px_pred, x, Px, KFM, user_data...)
+    kf_predict_x!(t, x_pred, Px_pred, nothing, x, Px, KFM, user_data...)
     # store predicted state
     kfd_setvalue!(kfd, x_pred, t, Val(:x_pred))
     kfd_setvalue!(kfd, Px_pred, t, Val(:Px_pred))
@@ -72,10 +72,10 @@ function _filter_iteration(kf::KFilter, t, KFM::AbstractKFModel, user_data...)
 
     # compute the Kalman gain:  K = Pxy_pred / Py_pred
     CPy = cholesky!(Symmetric(Py_pred, :L))
-    # copyto!(kf.K, kf.Pxy_pred)  # this is a no-op since they use the same memory
-    rdiv!(kf.K, CPy)
+    # copyto!(K, Pxy_pred)  # this is a no-op since they use the same memory
+    rdiv!(K, CPy)
     # store Kalman gain matrix
-    kfd_setvalue!(kfd, kf.K, t, Val(:K))
+    kfd_setvalue!(kfd, K, t, Val(:K))
 
     # observe y
     kf_true_y!(t, y, KFM, user_data...)
