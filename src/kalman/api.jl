@@ -15,11 +15,11 @@ abstract type AbstractKFModel end
 # structure
 #
 # x - vector of latent state variables
-# v - vector of state noise variables
+# v - vector of state noise variables ~ N(0, Q)
 # y - vector of observed variables
-# n - vector of observation noise variables
+# w - vector of observation noise variables ~ N(0, R)
 #
-#   y[t] = H(x[t], n[t])
+#   y[t] = H(x[t], w[t])
 #   x[t] = F(x[t-1], v[t])
 #
 # The user must provide implementations of the functions H and F
@@ -30,7 +30,7 @@ abstract type AbstractKFModel end
 
 
 """
-    kf_predict_x!(t, xₜ, Pxₜ, xₜ₋₁, Pxₜ₋₁, model::AbstractKFModel, user_data...)
+    kf_predict_x!(t, xₜ, Pxₜ, Pxxₜ₋₁ₜ, xₜ₋₁, Pxₜ₋₁, model::AbstractKFModel, user_data...)
 
 Compute the expected value and covariance matrix of the state variables at t
 given the mean and covariance of the state variables at t-1.
@@ -38,16 +38,20 @@ given the mean and covariance of the state variables at t-1.
 Users must implement a method of this function for their type of model.
 
 When called, `xₜ₋₁` and `Pxₜ₋₁` are given and contain the state and its
-covariance at t-1. The implementation must compute the expected state and its
-covariance at t, and write them in-place into `xₜ` and `Pxₜ` respectively.
+covariance at t-1. The implementation must compute the expected state, its
+covariance at t, and the cross covariance of state at t-1 and t, 
+and write them in-place into `xₜ`, `Pxₜ`, and `Pxxₜ₋₁ₜ` respectively.
+
+Each of the output arguments can be `nothing`, which would indicate that they
+don't need to be computed.
 
 `t` contains the period and can be used in case the state transition depends on
 exogenous data.
 """
-function kf_predict_x!(t, xₜ, Pxₜ, xₜ₋₁, Pxₜ₋₁, model::AbstractKFModel, user_data...)
+function kf_predict_x!(t, xₜ, Pxₜ, Pxxₜ₋₁ₜ, xₜ₋₁, Pxₜ₋₁, model::AbstractKFModel, user_data...)
     # implement transition equations here, e.g.,
     #   xₜ[:] = F * xₜ₋₁
-    #   Pxₜ[:,:] = F * Pxₜ₋₁ * F' + Gv * Pvₜ * Gv'
+    #   Pxₜ[:,:] = F * Pxₜ₋₁ * F' + Q * Pvₜ * Q'
     error("Not implemented for $(typeof(model)).")
 end
 
@@ -65,13 +69,16 @@ at t. The implementation must compute the expected observation vector, its
 covariance, and the state-observed covariance at t, and write them in-place into
 `yₜ`, `Pyₜ` and `Pxyₜ` respectively.
 
+Each of the output arguments can be `nothing`, which would indicate that they
+don't need to be computed.
+
 `t` contains the period and can be used in case the state transition depends on
 exogenous data.
 """
 function kf_predict_y!(t, yₜ, Pyₜ, Pxyₜ, xₜ, Pxₜ, model::AbstractKFModel, user_data...)
     # implement observation equations here, e.g.,
     #   yₜ[:] = H * xₜ
-    #   Pyₜ[:,:] = H * Pxₜ * H' + Gn * Pnₜ * Gn'
+    #   Pyₜ[:,:] = H * Pxₜ * H' + R * Pwₜ * R'
     #   Pxyₜ[:,:] = Pxₜ * H'
     error("Not implemented for $(typeof(model)).")
 end
