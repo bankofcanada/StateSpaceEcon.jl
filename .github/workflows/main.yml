@@ -6,10 +6,10 @@ name: build
 on:
   # Triggers the workflow on push or pull request events but only for the master branch
   push:
-    branches: [ master, "!dev_dfm" ]
+    branches: [ "master" ]
     paths: [ "**.jl" ]
   pull_request:
-    branches: [ "*"]
+    branches: [ "*", "!dev_with_mbe" ]
     paths: [ "**.jl" ]
 
   # Allows you to run this workflow manually from the Actions tab
