@@ -42,7 +42,7 @@ end
 
 Base.eltype(::Type{KFilter{KFD}}) where {KFD<:AbstractKFData} = eltype(KFD)
 
-function _filter_iteration(kf::KFilter, t, model::AbstractKFModel, user_data...)
+function _filter_iteration(kf::KFilter, t, KFM::AbstractKFModel, user_data...)
 
     kfd = kf.kfd
 
@@ -58,13 +58,13 @@ function _filter_iteration(kf::KFilter, t, model::AbstractKFModel, user_data...)
     Pxy_pred = K = kf.K  # K and Pxy_pred occupy the same memory
 
     # predict state
-    kf_predict_x!(t, x_pred, Px_pred, x, Px, model, user_data)
+    kf_predict_x!(t, x_pred, Px_pred, x, Px, KFM, user_data...)
     # store predicted state
     kfd_setvalue!(kfd, x_pred, t, Val(:x_pred))
     kfd_setvalue!(kfd, Px_pred, t, Val(:Px_pred))
 
     # predict observation
-    kf_predict_y!(t, y_pred, Py_pred, Pxy_pred, x_pred, Px_pred, model, user_data...)
+    kf_predict_y!(t, y_pred, Py_pred, Pxy_pred, x_pred, Px_pred, KFM, user_data...)
     # store predicted observation
     kfd_setvalue!(kfd, y_pred, t, Val(:y_pred))
     kfd_setvalue!(kfd, Py_pred, t, Val(:Py_pred))
@@ -78,7 +78,7 @@ function _filter_iteration(kf::KFilter, t, model::AbstractKFModel, user_data...)
     kfd_setvalue!(kfd, kf.K, t, Val(:K))
 
     # observe y
-    kf_true_y!(t, y, model, user_data...)
+    kf_true_y!(t, y, KFM, user_data...)
     kfd_setvalue!(kfd, y, t, Val(:y))
     # observation error
     # copyto!(error_y, y) # this is a no-op since error_y and y occupy the same memory
@@ -121,7 +121,7 @@ function _assign_loglik(kfd::AbstractKFData{R,NS,NO,T}, t, error_y, CPy) where {
             return quote
                 ldiv!(CPy.L, error_y)
                 half_log_det_Py = 0
-                for i = 1:NS
+                for i = 1:NO
                     half_log_det_Py += CPy.L[i, i]
                 end
                 loglik = -0.5 * ($nc + half_log_det_Py + dot(error_y, error_y))
@@ -145,13 +145,13 @@ end
 
 function filter!(kf::KFilter,
     x0::AbstractVector, Px0::AbstractMatrix,
-    model::AbstractKFModel, user_data...
+    KFM::AbstractKFModel, user_data...
 )
     kf.x .= x0
     kf.Px .= Px0
 
     for t = kf.range
-        _filter_iteration(kf, t, model, user_data...)
+        _filter_iteration(kf, t, KFM, user_data...)
     end
 
     return kf
@@ -163,6 +163,6 @@ function filter!(kfd::AbstractKFData, args...)
 end
 
 filter(N::Integer, args...) = filter(1:N, args...)
-filter(range::UnitRange, x0::AbstractVector, Px0::AbstractMatrix, model::AbstractKFModel, user_data...) =
-    filter!(KFDataFilter(range, model, user_data...), x0, Px0, model, user_data...)
+filter(range::UnitRange, x0::AbstractVector, Px0::AbstractMatrix, KFM::AbstractKFModel, user_data...) =
+    filter!(KFDataFilter(range, KFM, user_data...), x0, Px0, KFM, user_data...)
 
