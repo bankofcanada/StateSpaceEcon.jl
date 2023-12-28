@@ -16,6 +16,9 @@ using Statistics
 using ComponentArrays
 using Distributions
 
+# misc 
+using UnPack
+
 # github.com/bankofcanada
 using TimeSeriesEcon
 using ModelBaseEcon
