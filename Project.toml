@@ -21,6 +21,7 @@ SuiteSparse = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
 TimeSeriesEcon = "8b6756d2-c55c-11ea-2998-5f67ea17da60"
 TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
+UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [compat]
 DelimitedFiles = "1.7"
@@ -38,6 +39,7 @@ Statistics = "1.7"
 Suppressor = "0.2"
 TimeSeriesEcon = "0.7"
 TimerOutputs = "0.5"
+UnPack = "1"
 julia = "1.7"
 
 [extras]
