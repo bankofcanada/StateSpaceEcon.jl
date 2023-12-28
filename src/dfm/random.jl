@@ -23,7 +23,7 @@ end
 
 ShocksSampler(dfm::DFM) = ShocksSampler(dfm.model, dfm.params)
 function ShocksSampler(bm::ModelBaseEcon.DFMModels.DFMBlockOrModel, p::DFMParams)
-    ShocksSampler(shocks(bm), get_covariance(p, bm))
+    ShocksSampler(shocks(bm), get_covariance(bm, p))
 end
 
 Base.length(s::ShocksSampler) = size(s.cov, 1)
