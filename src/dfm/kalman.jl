@@ -20,8 +20,8 @@ end
 function DFMKalmanWks(M::DFM)
     NO = Kalman.kf_length_y(M)
     NS = Kalman.kf_length_x(M)
-    Λ =DFMModels.fill_loading!(Matrix{Float64}(undef, NO, NS), M.model, M.params)
-    A =DFMModels.fill_transition!(Matrix{Float64}(undef, NS, NS), M.model, M.params)
+    Λ = DFMModels.fill_loading!(Matrix{Float64}(undef, NO, NS), M.model, M.params)
+    A = DFMModels.fill_transition!(Matrix{Float64}(undef, NS, NS), M.model, M.params)
     R = DFMModels.fill_covariance!(Matrix{Float64}(undef, NO, NO), M.model, M.params, Val(:Observed))
     Q = DFMModels.fill_covariance!(Matrix{Float64}(undef, NS, NS), M.model, M.params, Val(:State))
     return DFMKalmanWks(Λ, R, A, Q, similar(A), similar(Λ))
@@ -30,21 +30,28 @@ end
 
 function Kalman.kf_predict_x!(t, xₜ, Pxₜ, Pxxₜ₋₁ₜ, xₜ₋₁, Pxₜ₋₁, M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M))
 
+    # xₜ = A * xₜ₋₁
     if !isnothing(xₜ)
-        # xₜ = A * xₜ₋₁
         BLAS.gemv!('N', 1.0, wks.A, xₜ₋₁, 0.0, xₜ)
     end
 
+    isnothing(Pxₜ) && isnothing(Pxxₜ₋₁ₜ) && return
+
+    # this one is needed for both Pxₜ and Pxxₜ₋₁ₜ 
+    #    Txx = A * Pxxₜ₋₁ₜ
+    BLAS.symm!('R', 'U', 1.0, Pxₜ₋₁, wks.A, 0.0, wks.Txx)
+
+    # Pxₜ = A * Pxₜ₋₁ * A' + G * Q * G'
     if !isnothing(Pxₜ)
-        # Pxₜ = A * Pxₜ₋₁ * A' + G * Q * G'
-        BLAS.symm!('R', 'U', 1.0, Pxₜ₋₁, wks.A, 0.0, wks.Txx)
+        #   Pxₜ = Txx * A'
         BLAS.gemm!('N', 'T', 1.0, wks.Txx, wks.A, 0.0, Pxₜ)
+        #   Pxₜ = Pxₜ + G * Q * G'
         Pxₜ .+= wks.Q # G = I
     end
-    
+
+    # Pxxₜ₋₁ₜ = Pxₜ₋₁ * A'
     if !isnothing(Pxxₜ₋₁ₜ)
-        # Pxxₜ₋₁ₜ = Pxₜ₋₁ * A' 
-        BLAS.symm!('R', 'U', 1.0, Pxₜ₋₁, wks.A, 0.0, wks.Txx)
+        #    Txx already contains A * Pxₜ₋₁
         Pxxₜ₋₁ₜ .= transpose(wks.Txx)
     end
 
@@ -59,16 +66,19 @@ function Kalman.kf_predict_y!(t, yₜ, Pyₜ, Pxyₜ, xₜ, Pxₜ, M::DFM, ::Sim
         yₜ .+= M.params.observed.mean
     end
 
+    isnothing(Pyₜ) && isnothing(Pxyₜ) && return
+
+    # this one is needed for both Pyₜ and Pxyₜ
+    BLAS.symm!('R', 'U', 1.0, Pxₜ, wks.Λ, 0.0, wks.Tyx)
+
     if !isnothing(Pyₜ)
         # Pyₜ = Λ Pxₜ Λ' + G * R * G'
-        BLAS.symm!('R', 'U', 1.0, Pxₜ, wks.Λ, 0.0, wks.Tyx)
         BLAS.gemm!('N', 'T', 1.0, wks.Tyx, wks.Λ, 0.0, Pyₜ)
         Pyₜ .+= wks.R # G = I
     end
-    
+
     if !isnothing(Pxyₜ)
         # Pxyₜ = Pxₜ * Λ'
-        BLAS.symm!('R', 'U', 1.0, Pxₜ, wks.Λ, 0.0, wks.Tyx)
         Pxyₜ .= transpose(wks.Tyx)
     end
     return

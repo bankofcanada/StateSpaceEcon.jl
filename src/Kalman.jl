@@ -14,6 +14,7 @@ using TimeSeriesEcon
 using ModelBaseEcon
 using ..StateSpaceEcon
 
+using UnPack
 using MacroTools
 
 include("kalman/api.jl")
@@ -22,6 +23,7 @@ include("kalman/filter.jl")
 
 # include("kalman/plain.jl")
 # include("kalman/sqrt.jl")
-# include("kalman/smoother.jl")
+
+include("kalman/smoother.jl")
 
 end
