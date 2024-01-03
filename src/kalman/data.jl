@@ -51,7 +51,27 @@ Base.eltype(::Type{<:AbstractKFData{RANGE,NS,NO,T}}) where {RANGE,NS,NO,T} =
     @isdefined(T) ? T : Real
 
 
+function TimeSeriesEcon.compare_equal(x::T, y::T; kwargs...) where {T<:AbstractKFData}
+    equal = true
+    for prop in propertynames(x)
+        if !compare(getproperty(x, prop), getproperty(y, prop), prop; kwargs...)
+            equal = false
+        end
+    end
+    return equal
+end
 
+function TimeSeriesEcon.compare_equal(x::T1, y::T2; kwargs...) where {T1<:AbstractKFData, T2<:AbstractKFData}
+    equal = true
+    for prop in union(propertynames(x), propertynames(y))
+        propx = hasproperty(x, prop) ? getproperty(x, prop) : missing
+        propy = hasproperty(y, prop) ? getproperty(y, prop) : missing
+        if !compare(propx, propy, prop; kwargs...)
+            equal = false
+        end
+    end
+    return equal
+end
 
 """
     struct _KFValueInfo ... end

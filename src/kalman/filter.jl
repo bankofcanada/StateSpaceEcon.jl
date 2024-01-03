@@ -124,15 +124,19 @@ function _assign_res2(kfd::AbstractKFData, t, error_y)
     end
 end
 
-function _assign_loglik(kfd::AbstractKFData{R,NS,NO,T}, t, error_y, CPy) where {R,NS,NO,T}
+function _assign_loglik(kfd::AbstractKFData{R,NS,NO,T}, t, error_y, CPy::Cholesky) where {R,NS,NO,T}
     if @generated
         if hasfield(kfd, :loglik)
             nc = NO * log(2 * π)
             return quote
-                ldiv!(CPy.L, error_y)
+                if CPy.uplo == 'L'
+                    ldiv!(CPy.L, error_y)
+                else
+                    rdiv!(error_y, CPy.U)
+                end
                 half_log_det_Py = 0
                 for i = 1:NO
-                    half_log_det_Py += log(CPy.L[i, i])
+                    half_log_det_Py += log(CPy.factors[i, i])
                 end
                 loglik = -0.5 * ($nc + 2half_log_det_Py + dot(error_y, error_y))
                 @kfd_set! kfd t loglik
@@ -142,10 +146,14 @@ function _assign_loglik(kfd::AbstractKFData{R,NS,NO,T}, t, error_y, CPy) where {
         end
     else
         nc = NO * log(2 * π)
-        ldiv!(CPy.L, error_y)
+        if CPy.uplo == 'L'
+            ldiv!(CPy.L, error_y)
+        else
+            rdiv!(error_y, CPy.U)
+        end
         half_log_det_Py = 0
         for i = 1:NO
-            half_log_det_Py += log(CPy.L[i, i])
+            half_log_det_Py += log(CPy.factors[i, i])
         end
         loglik = -0.5 * (nc + 2half_log_det_Py + dot(error_y, error_y))
         @kfd_set! kfd t loglik
