@@ -20,8 +20,8 @@
 # y - vector of observed variables
 # w - vector of observation noise variables ~ N(0, R)
 #
-#   y[t] = H(x[t], w[t])
-#   x[t] = F(x[t-1], v[t])
+#   y[t]   = H(x[t], w[t])
+#   x[t+1] = F(x[t], v[t])
 #
 # The user must provide implementations of the functions H and F
 # that compute the expected value and covariance of the left-hand-side,
@@ -120,4 +120,15 @@ function kf_length_y(model, user_data...)
     # return the length of the observed vector y
     error("Not implemented for $(typeof(model))")
 end
+
+kf_islinear(model, user_data...) = false
+kf_isstationary(model, user_data...) = false
+
+function kf_linear_stationary(H, F, Q, R, model, user_data...)
+    # fill the matrices H, F, Q, and R for the linear model
+    #    y[t] = H * x[t] + v[t]      v ~ N(0, Q)
+    #  x[t+1] = F * x[t] + w[t]      w ~ N(0, R)
+    error("Not implemented for $(typeof(model))")
+end
+
 

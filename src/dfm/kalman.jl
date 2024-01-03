@@ -27,6 +27,16 @@ function DFMKalmanWks(M::DFM)
     return DFMKalmanWks(Λ, R, A, Q, similar(A), similar(Λ))
 end
 
+Kalman.kf_islinear(M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M)) = true
+Kalman.kf_isstationary(M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M)) = true
+
+function Kalman.kf_linear_stationary(H, F, Q, R, M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M))
+    copyto!(H, wks.Λ)
+    copyto!(F, wks.A)
+    copyto!(Q, wks.Q)
+    copyto!(R, wks.R)
+    return
+end
 
 function Kalman.kf_predict_x!(t, xₜ, Pxₜ, Pxxₜ₋₁ₜ, xₜ₋₁, Pxₜ₋₁, M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M))
 
