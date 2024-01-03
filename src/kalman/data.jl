@@ -137,11 +137,13 @@ Base.setindex!(kfd::AbstractKFData, value, t::Integer, name::Symbol) = kfd_setva
     tt = _offset_expr(RANGE)
     ndims = length(vinfo.dims)
     if ndims == 0
-        return :(kfd.$NAME[t] = value)
+        return :(kfd.$NAME[$tt] = value)
     elseif ndims == 1
-        return :(kfd.$NAME[:, t] = value)
+        # return :(copyto!(view(kfd.$NAME, :, $tt), value))
+        return :(kfd.$NAME[:, $tt] = value)
     elseif ndims == 2
-        return :(kfd.$NAME[:, :, t] = value)
+        # return :(copyto!(view(kfd.$NAME, :, :, $tt), value))
+        return :(kfd.$NAME[:, :, $tt] = value)
     else
         return :(error("UNexpected value with ndims = $ndims"))
     end
