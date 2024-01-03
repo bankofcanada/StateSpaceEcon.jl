@@ -29,7 +29,7 @@
 #   aₜ₊₁ = E(αₜ₊₁ | Yₜ)
 #   Pₜ₊₁ = Var(αₜ₊₁ | Yₜ)
 
-function dk_filter!(kf::KFilter, Y, Z, T, H, Q, R, a₁, P₁)
+function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁)
 
     _Q = if R isa UniformScaling
         Q
@@ -37,15 +37,15 @@ function dk_filter!(kf::KFilter, Y, Z, T, H, Q, R, a₁, P₁)
         R * Q * transpose(R)
     end
 
+    have_mu = dot(mu, mu) > 0
+
     kfd = kf.kfd
     # implement the algorithm in 4.3.2 on p. 85
 
     K = Kₜ = kf.K
 
     x_pred = aₜ₊₁ = aₜ = kf.x_pred
-    aₜ[:] = a₁
     Px_pred = Pₜ₊₁ = Pₜ = kf.Px_pred
-    Pₜ[:, :] = P₁
 
     x = auₜ = kf.x
     Px = Puₜ = kf.Px
@@ -54,18 +54,28 @@ function dk_filter!(kf::KFilter, Y, Z, T, H, Q, R, a₁, P₁)
     error_y = vₜ = kf.error_y
     Py_pred = Fₜ = kf.Py_pred
 
+
     ZP = similar(transpose(Z))
-    U = similar(Fₜ)
+    UorL = similar(Fₜ)
     TP = similar(Pₜ)
+
+    aₜ[:] = a₁
+    BLAS.gemv!('N', 1.0, T, a₁, 0.0, aₜ)
+
+    Pₜ[:, :] = P₁
+    BLAS.gemm!('N', 'N', 1.0, T, Pₜ, 0.0, TP)
+    BLAS.gemm!('N', 'T', 1.0, TP, T, 0.0, Pₜ)
+    BLAS.axpy!(1.0, _Q, Pₜ)
 
     for t = kf.range
 
         # y_pred[:] = Z * aₜ
         BLAS.gemv!('N', 1.0, Z, aₜ, 0.0, y_pred)
+        have_mu && BLAS.axpy!(1.0, mu, y_pred)
 
         # vₜ[:] = Y[t, :] - y_pred
-        copyto!(vₜ, y_pred)
-        BLAS.axpby!(1.0, Y[t,:], -1.0, vₜ)
+        copyto!(vₜ, Y[t, :])
+        BLAS.axpy!(-1.0, y_pred, vₜ)
 
         # Either:  PZᵀ[:, :] = Pₜ * transpose(Z)
         # BLAS.gemm!('N', 'T', 1.0, Pₜ, Z, 0.0, PZᵀ)
@@ -74,32 +84,36 @@ function dk_filter!(kf::KFilter, Y, Z, T, H, Q, R, a₁, P₁)
         BLAS.gemm!('N', 'N', 1.0, Z, Pₜ, 0.0, ZP)
 
         # Fₜ[:, :] = Z * PZᵀ + H
-        copyto!(Fₜ, H)
         # BLAS.gemm!('N', 'N', 1.0, Z, PZᵀ, 1.0, Fₜ)
-        BLAS.gemm!('N', 'T', 1.0, ZP, Z, 1.0, Fₜ)
+        BLAS.gemm!('N', 'T', 1.0, ZP, Z, 0.0, Fₜ)
+        BLAS.axpy!(1.0, H, Fₜ)
 
         @kfd_set! kfd t y_pred Py_pred error_y
 
         # Compute K = P Zᵀ / Fₜ using Cholesky factorization (faster than LU)
 
         # Cholesky factorization  Fₜ = Uᵀ U 
-        copyto!(U, UpperTriangular(Fₜ))
-        LAPACK.potrf!('U', U)  
-        CF = Cholesky(UpperTriangular(U))
+        copyto!(UorL, LowerTriangular(Fₜ))
+        LAPACK.potrf!('L', UorL)
+        CF = Cholesky(LowerTriangular(UorL))
 
         copyto!(Kₜ, transpose(ZP))
         rdiv!(Kₜ, CF)
 
         # auₜ[:] = aₜ + Kₜ * vₜ
-        copyto!(auₜ, aₜ)
-        BLAS.gemv!('N', 1.0, Kₜ, vₜ, 1.0, auₜ)
+        BLAS.gemv!('N', 1.0, Kₜ, vₜ, 0.0, auₜ)
+        BLAS.axpy!(1.0, aₜ, auₜ)
 
         # Puₜ[:, :] = Pₜ - Kₜ * transpose(PZᵀ)
-        copyto!(Puₜ, Pₜ)
         # BLAS.gemm!('N', 'T', -1.0, Kₜ, PZᵀ, 1.0, Puₜ)
-        BLAS.gemm!('N', 'N', -1.0, Kₜ, ZP, 1.0, Puₜ)
+        BLAS.gemm!('N', 'N', -1.0, Kₜ, ZP, 0.0, Puₜ)
+        BLAS.axpy!(1.0, Pₜ, Puₜ)
 
         @kfd_set! kfd t x_pred Px_pred K x Px
+
+        # compute likelihood and residual-squared
+        _assign_res2(kfd, t, error_y)
+        _assign_loglik(kfd, t, error_y, CF)
 
         # aₜ₊₁ .= T * (aₜ + Kₜ * vₜ)
         # aₜ₊₁[:] = T * auₜ
@@ -117,3 +131,17 @@ function dk_filter!(kf::KFilter, Y, Z, T, H, Q, R, a₁, P₁)
 end
 
 
+
+function dk_smoother!(kf::KFilter, Y, Z, T, H, Q, R, a₁, P₁)
+
+    _Q = if R isa UniformScaling
+        Q
+    else
+        R * Q * transpose(R)
+    end
+
+    kfd = kf.kfd
+    # implement the algorithm in 4.3.2 on p. 85
+
+    return
+end
