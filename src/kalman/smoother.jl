@@ -63,8 +63,8 @@ function smoother!(kf::KFilter, model, user_data...)
     kfd = kf.kfd
     @unpack x_smooth, Px_smooth, y_smooth, Py_smooth = kf
     t = last(kf.range)
-    x_smooth .= kfd_getvalue(kfd, t, Val(:x))
-    Px_smooth .= kfd_getvalue(kfd, t, Val(:Px))
+    x_smooth .= kfd[t, Val(:x)]
+    Px_smooth .= kfd[t, Val(:Px)]
     kf_predict_y!(t, y_smooth, Py_smooth, nothing, x_smooth, Px_smooth, model, user_data...)
     @kfd_set! kfd t x_smooth Px_smooth y_smooth Py_smooth
     while t > first(kf.range)
