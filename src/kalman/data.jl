@@ -109,8 +109,11 @@ const KFDataInfo = (;
 _offset_expr(::Integer) = :t
 _offset_expr(RANGE::UnitRange) = (offset = first(RANGE) - 1; :(Int(t - $offset)))
 
-Base.getindex(kfd::AbstractKFData, t::Integer, name::Symbol) = kfd_getvalue(kfd, t, Val(name))
-@generated function kfd_getvalue(kfd::AbstractKFData{RANGE}, t::Integer, ::Val{NAME}) where {RANGE,NAME}
+Base.view(kfd::AbstractKFData, t::Integer, name::Symbol) = kfd_getvalue(view, kfd, t, Val(name))
+Base.view(kfd::AbstractKFData, t::Integer, name::Val) = kfd_getvalue(view, kfd, t, name)
+Base.getindex(kfd::AbstractKFData, t::Integer, name::Symbol) = kfd_getvalue(getindex, kfd, t, Val(name))
+Base.getindex(kfd::AbstractKFData, t::Integer, v::Val) = kfd_getvalue(getindex, kfd, t, v)
+@generated function kfd_getvalue(access::Function, kfd::AbstractKFData{RANGE}, t::Integer, ::Val{NAME}) where {RANGE,NAME}
     vinfo = get(KFDataInfo, NAME, nothing)
     # if a non-standard field is requested, we return an error
     if isnothing(vinfo)
@@ -124,11 +127,11 @@ Base.getindex(kfd::AbstractKFData, t::Integer, name::Symbol) = kfd_getvalue(kfd,
     # figure out the number of dimensions in this field
     ndims = length(vinfo.dims)
     if ndims == 0
-        return :(kfd.$NAME[$tt])
+        return :(access(kfd.$NAME, $tt))
     elseif ndims == 1
-        return :(kfd.$NAME[:, $tt])
+        return :(access(kfd.$NAME, :, $tt))
     elseif ndims == 2
-        return :(kfd.$NAME[:, :, $tt])
+        return :(access(kfd.$NAME, :, :, $tt))
     else
         return :(error("Unexpected value with ndims = $ndims"))
     end
@@ -166,7 +169,7 @@ Base.setindex!(kfd::AbstractKFData, value, t::Integer, name::Symbol) = kfd_setva
         # return :(copyto!(view(kfd.$NAME, :, :, $tt), value))
         return :(kfd.$NAME[:, :, $tt] = value)
     else
-        return :(error("UNexpected value with ndims = $ndims"))
+        return :(error("Unexpected value with ndims = $ndims"))
     end
 end
 
@@ -291,6 +294,13 @@ end
 
 macro kfd_get(kfd, t, value::Symbol)
     return esc(:(
-        kfd_getvalue($kfd, $t, Val($(Meta.quot(value))))
+        $kfd[$t, Val($(Meta.quot(value)))]
     ))
 end
+
+macro kfd_view(kfd, t, value::Symbol)
+    return esc(:(
+        view($kfd, $t, Val($(Meta.quot(value))))
+    ))
+end
+

@@ -47,7 +47,7 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
 
     x_pred = aₜ₊₁ = aₜ = kf.x_pred
     Px_pred = Pₜ₊₁ = Pₜ = kf.Px_pred
-    Pxy_pred = kf.Pxy_pred
+    # Pxy_pred = kf.Pxy_pred
 
     x = auₜ = kf.x
     Px = Puₜ = kf.Px
@@ -57,7 +57,7 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
     Py_pred = Fₜ = kf.Py_pred
 
 
-    ZP = similar(transpose(Z))
+    ZP = similar(Z)
     UorL = similar(Fₜ)
     TP = similar(Pₜ)
 
@@ -71,7 +71,9 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
         BLAS.axpy!(1.0, _Q, Pₜ)
     end
 
-    for t = kf.range
+    tstart, tstop = extrema(kf.range)
+    t = tstart
+    while true
 
         # y_pred[:] = Z * aₜ
         BLAS.gemv!('N', 1.0, Z, aₜ, 0.0, y_pred)
@@ -120,6 +122,9 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
         _assign_res2(kfd, t, error_y)
         _assign_loglik(kfd, t, error_y, CF)
 
+        t = t + 1
+        t > tstop && break
+
         # aₜ₊₁ .= T * (aₜ + Kₜ * vₜ)
         # aₜ₊₁[:] = T * auₜ
         BLAS.gemv!('N', 1.0, T, auₜ, 0.0, aₜ₊₁)
@@ -147,7 +152,7 @@ function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R)
     #  therefore for us
     #     Lₜ = T ( I - Kₜ Z )
 
-    # implement the algorithm in 4.4.4 on p. 91
+    # Implement the algorithm in section 4.4.4 on p. 91
     #    rₜ₋₁ = Zᵀ Fₜ⁻¹ vₜ + Lₜᵀ rₜ
     #    Nₜ₋₁ = Zᵀ Fₜ⁻¹ Z + Lₜᵀ Nₜ Lₜ
     #    aˢₜ = aₜ + Pₜ rₜ₋₁
@@ -155,80 +160,90 @@ function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R)
     # with initialization 
     #    rₙ = 0,  Nₙ = 0
 
+    # From Table 4.4 on p. 104
+    # Cov(aˢₜ, aˢⱼ) = Pₜ Lₜᵀ Lₜ₊₁ᵀ … Lⱼ₋₁ᵀ ( I - Nⱼ₋₁ Pⱼ) for j = t+1, ..., n
+    # for j = t + 1, we have 
+    #        Cov(aˢₜ, aˢₜ₊₁) = Pₜ Lₜᵀ ( I - Nₜ Pₜ₊₁ )
+
     have_mu = dot(mu, mu) > 0
 
     kfd = kf.kfd
 
-    x_smooth = aˢₜ = kf.x_smooth
-    Px_smooth = Vₜ = kf.Px_smooth
-
-    error_y = vₜ = kf.error_y
-
-    rₜ = rₜ₋₁ = kf.x
-    Nₜ = Nₜ₋₁ = kf.Px
-
-    Kₜ = kf.K  # use this 
-    Lₜ = similar(Vₜ)
-
-    aₜ = kf.x_pred
-    Pₜ = kf.Px_pred
-    Fₜ = Cholesky(LowerTriangular(kf.Py_pred))
-
-    y_smooth = kf.y_smooth
-    Py_smooth = kf.Py_smooth
-
-    fill!(rₜ, 0)
-    fill!(Nₜ, 0)
-
+    rₜ₋₁ = kf.x
+    Nₜ₋₁ = kf.Px
+    
+    fill!(rₜ₋₁, 0)
+    fill!(Nₜ₋₁, 0)
+    
+    Lₜ = Matrix{Float64}(undef, kf.nx, kf.nx)
     TMPx = Vector{Float64}(undef, kf.nx)
     TMPxx = Matrix{Float64}(undef, kf.nx, kf.nx)
-    TMPxy = Matrix{Float64}(undef, kf.nx, kf.ny)
+    ZᵀiFₜ = TMPxy = Matrix{Float64}(undef, kf.nx, kf.ny)
 
-    for t = reverse(kf.range)
+    tstart, tstop = extrema(kf.range)
 
-        vₜ[:] = @kfd_get kfd t error_y
-        aₜ[:] = @kfd_get kfd t x_pred
-        Pₜ[:, :] = @kfd_get kfd t Px_pred
-        Fₜ.factors[:, :] = @kfd_get kfd t Ly_pred
-        Kₜ[:, :] = @kfd_get kfd t K
-
+    t = tstop+1
+    # Initialize Pₙ₊₁ with Pₙ -- close enough if n is large
+    Pₜ = @kfd_view kfd tstop Px_pred
+    #     to be exact: Pₜ = T * Pₙ * transpose(T) * transpose(I - Kₙ * Z) + _Q
+    #     also, it gets multiplied by Nₙ, which is 0, so it doesn't matter!
+    while t > tstart
+        t = t - 1
+        
+        aₜ = @kfd_view kfd t x_pred
+        Pₜ₊₁ = Pₜ
+        Pₜ = @kfd_view kfd t Px_pred
+        vₜ = @kfd_view kfd t error_y
+        Kₜ = @kfd_view kfd t K
+        Fₜ = Cholesky(LowerTriangular(@kfd_view kfd t Ly_pred))
+        
         # Lₜ[:,:] = T * ( I - Kₜ * Z )
         copyto!(TMPxx, I)
         BLAS.gemm!('N', 'N', -1.0, Kₜ, Z, 1.0, TMPxx)
         BLAS.gemm!('N', 'N', 1.0, T, TMPxx, 0.0, Lₜ)
+        
+        Pxx_pred = @kfd_view kfd t Pxx_pred
+        # Pxx_pred[:, :] = Pₜ * transpose(Lₜ) * (I - Nₜ * Pₜ₊₁)
+        copyto!(Pxx_pred, I)
+        # NOTE: Nₜ₋₁ actually contains Nₜ, since it has not been updated this iteration yet
+        t == tstop || BLAS.gemm!('N', 'N', -1.0, Nₜ₋₁, Pₜ₊₁, 1.0, Pxx_pred)  
+        BLAS.gemm!('T', 'N', 1.0, Lₜ, Pxx_pred, 0.0, TMPxx)
+        BLAS.gemm!('N', 'N', 1.0, Pₜ, TMPxx, 0.0, Pxx_pred)
 
+        copyto!(ZᵀiFₜ, transpose(Z))
+        rdiv!(ZᵀiFₜ, Fₜ)
+        
         # rₜ₋₁[:] = (transpose(Z) / Fₜ) * vₜ + transpose(Lₜ) * rₜ
-        copyto!(TMPxy, transpose(Z))
-        rdiv!(TMPxy, Fₜ)
-
-        copyto!(TMPx, rₜ)  # rₜ₋₁ and rₜ are stored in the same memory
+        copyto!(TMPx, rₜ₋₁)  # rₜ₋₁ and rₜ are stored in the same memory
         BLAS.gemv!('T', 1.0, Lₜ, TMPx, 0.0, rₜ₋₁)
-        BLAS.gemv!('N', 1.0, TMPxy, vₜ, 1.0, rₜ₋₁)
+        BLAS.gemv!('N', 1.0, ZᵀiFₜ, vₜ, 1.0, rₜ₋₁)
 
         # Nₜ₋₁[:,:] = (transpose(Z) / Fₜ) * Z + transpose(Lₜ) * Nₜ * Lₜ
-        BLAS.gemm!('T', 'N', 1.0, Lₜ, Nₜ, 0.0, TMPxx)
+        BLAS.gemm!('T', 'N', 1.0, Lₜ, Nₜ₋₁, 0.0, TMPxx)  # Nₜ and Nₜ₋₁ are stored in the same memory
         BLAS.gemm!('N', 'N', 1.0, TMPxx, Lₜ, 0.0, Nₜ₋₁)
-        BLAS.gemm!('N', 'N', 1.0, TMPxy, Z, 1.0, Nₜ₋₁)
+        BLAS.gemm!('N', 'N', 1.0, ZᵀiFₜ, Z, 1.0, Nₜ₋₁)
 
+        aˢₜ = @kfd_view kfd t x_smooth
         # aˢₜ[:] = aₜ + Pₜ * rₜ₋₁
         copyto!(aˢₜ, aₜ)
         BLAS.gemv!('N', 1.0, Pₜ, rₜ₋₁, 1.0, aˢₜ)
 
+        Vₜ = @kfd_view kfd t Px_smooth
         # Vₜ[:,:] = Pₜ - Pₜ * Nₜ₋₁ * Pₜ
         copyto!(Vₜ, Pₜ)
         BLAS.gemm!('N', 'N', 1.0, Pₜ, Nₜ₋₁, 0.0, TMPxx)
         BLAS.gemm!('N', 'N', -1.0, TMPxx, Pₜ, 1.0, Vₜ)
 
+        y_smooth = @kfd_view kfd t y_smooth
         # y_smooth[:] = mu + Z * x_smooth
         BLAS.gemv!('N', 1.0, Z, aˢₜ, 0.0, y_smooth)
         have_mu && BLAS.axpy!(1.0, mu, y_smooth)
-
+        
+        Py_smooth = @kfd_view kfd t Py_smooth
         # Py_smooth[:] = Z * Px_smooth * transpose(Z) + H
         copyto!(Py_smooth, H)
         BLAS.gemm!('N', 'T', 1.0, Vₜ, Z, 0.0, TMPxy)
         BLAS.gemm!('N', 'N', 1.0, Z, TMPxy, 1.0, Py_smooth)
-
-        @kfd_set! kfd t x_smooth Px_smooth y_smooth Py_smooth
 
     end
 
