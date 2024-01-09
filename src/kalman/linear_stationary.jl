@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -202,13 +202,13 @@ function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R)
         BLAS.gemm!('N', 'N', -1.0, Kₜ, Z, 1.0, TMPxx)
         BLAS.gemm!('N', 'N', 1.0, T, TMPxx, 0.0, Lₜ)
         
-        Pxx_pred = @kfd_view kfd t Pxx_pred
-        # Pxx_pred[:, :] = Pₜ * transpose(Lₜ) * (I - Nₜ * Pₜ₊₁)
-        copyto!(Pxx_pred, I)
+        Pxx_smooth = @kfd_view kfd t Pxx_smooth
+        # Pxx_smooth[:, :] = Pₜ * transpose(Lₜ) * (I - Nₜ * Pₜ₊₁)
+        copyto!(Pxx_smooth, I)
         # NOTE: Nₜ₋₁ actually contains Nₜ, since it has not been updated this iteration yet
-        t == tstop || BLAS.gemm!('N', 'N', -1.0, Nₜ₋₁, Pₜ₊₁, 1.0, Pxx_pred)  
-        BLAS.gemm!('T', 'N', 1.0, Lₜ, Pxx_pred, 0.0, TMPxx)
-        BLAS.gemm!('N', 'N', 1.0, Pₜ, TMPxx, 0.0, Pxx_pred)
+        t == tstop || BLAS.gemm!('N', 'N', -1.0, Nₜ₋₁, Pₜ₊₁, 1.0, Pxx_smooth)  
+        BLAS.gemm!('T', 'N', 1.0, Lₜ, Pxx_smooth, 0.0, TMPxx)
+        BLAS.gemm!('N', 'N', 1.0, Pₜ, TMPxx, 0.0, Pxx_smooth)
 
         copyto!(ZᵀiFₜ, transpose(Z))
         rdiv!(ZᵀiFₜ, Fₜ)
