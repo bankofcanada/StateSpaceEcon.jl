@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -19,7 +19,7 @@ function _smoother_iteration(kf::KFilter, t, model, user_data...)
     
     x_smooth = kf.x_smooth          # on input contains x_smooth[t+1]
     Px_smooth = kf.Px_smooth        # on input contains Px_smooth[t+1]
-    J = Pxx_pred = kf.Pxx_pred      # input ignored
+    J = Pxx_smooth = kf.Pxx_smooth      # input ignored
 
     y_smooth = kf.y_smooth
     Py_smooth = kf.Py_smooth
@@ -27,14 +27,14 @@ function _smoother_iteration(kf::KFilter, t, model, user_data...)
     x = view(kfd.x, :, t)           # x and Px are used read-only here, so
     Px = view(kfd.Px, :, :, t)      #    we can take them directly from kfd
     
-    # Get Pxx_pred = Eₜ[(xₜ - xₜₜ)(xₜ₊₁ - xₜ₊₁ₜ)']
-    #   in the linear case: Pxx_pred[t,t+1] = Px[t] * transposed(F[t])
-    kf_predict_x!(t+1, nothing, nothing, Pxx_pred, 
+    # Get Pxx_smooth = Eₜ[(xₜ - xₜₜ)(xₜ₊₁ - xₜ₊₁ₜ)']
+    #   in the linear case: Pxx_smooth[t,t+1] = Px[t] * transposed(F[t])
+    kf_predict_x!(t+1, nothing, nothing, Pxx_smooth, 
         x, Px, model, user_data...)
-    @kfd_set! kfd t Pxx_pred
+    @kfd_set! kfd t Pxx_smooth
 
-    # Construct J = Pxx_pred[t,t+1] / Px_pred[t+1]
-    # copyto!(J, Pxx_pred)  # no-op since J === Pxx_pred
+    # Construct J = Pxx_smooth[t,t+1] / Px_pred[t+1]
+    # copyto!(J, Pxx_smooth)  # no-op since J === Pxx_smooth
     rdiv!(J, CPx_pred)
 
     # Construct smoothed states

@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -97,7 +97,7 @@ const KFDataInfo = (;
     K=_KFValueInfo((:NS, :NO), "Kalman gain matrix"),
     x_smooth=_KFValueInfo((:NS,), "smoothed state, i.e. E[xₜ | all y]"),
     Px_smooth=_KFValueInfo((:NS, :NS), "covariance of smoothed state"),
-    Pxx_pred=_KFValueInfo((:NS, :NS), "cross-covariance of xₜ and xₜ₊₁"),
+    Pxx_smooth=_KFValueInfo((:NS, :NS), "cross-covariance of xₜ and xₜ₊₁"),
     y_smooth=_KFValueInfo((:NO,), "smoothed observation, i.e. E[yₜ | all y]"),
     Py_smooth=_KFValueInfo((:NO, :NO), "covariance of smoothed observation"),
     J=_KFValueInfo((:NS, :NS), "Kalman smoother matrix"),
@@ -275,7 +275,7 @@ end
     Px_smooth
     y_smooth
     Py_smooth
-    Pxx_pred
+    Pxx_smooth
     J
     res2
     loglik
