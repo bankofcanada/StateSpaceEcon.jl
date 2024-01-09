@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -22,7 +22,7 @@ struct KFilter{KFD<:AbstractKFData,ET<:Real}
     K::Matrix{ET}
     x_smooth::Vector{ET}
     Px_smooth::Matrix{ET}
-    Pxx_pred::Matrix{ET}
+    Pxx_smooth::Matrix{ET}
     y_smooth::Vector{ET}
     Py_smooth::Matrix{ET}
     J::Matrix{ET}
@@ -47,11 +47,11 @@ struct KFilter{KFD<:AbstractKFData,ET<:Real}
         Py_smooth = zeros(ET, NO, NO)
         # Pxx and J occupy the same memory.
         # We can get away with it because Pxx is only used to compute J
-        J = Pxx_pred = zeros(ET, NS, NS)
+        J = Pxx_smooth = zeros(ET, NS, NS)
         new{typeof(kfd),ET}(NS, NO, range,
             x, Px, x_pred, Px_pred,
             error_y, y_pred, Py_pred, Pxy_pred, K,
-            x_smooth, Px_smooth, Pxx_pred, y_smooth, Py_smooth, J, kfd)
+            x_smooth, Px_smooth, Pxx_smooth, y_smooth, Py_smooth, J, kfd)
     end
 end
 
