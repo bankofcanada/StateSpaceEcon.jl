@@ -5,6 +5,7 @@
 # All rights reserved.
 ##################################################################################
 
+# TODO: convert this to the smoothing algorithm in Durbin & Koopman (which is cheaper and correctly computes Pxx_smooth)
 
 function _smoother_iteration(kf::KFilter, t, model, user_data...)
 

@@ -9,6 +9,7 @@
 # DFMModels
 
 struct DFMKalmanWks
+    μ
     Λ
     R
     A
@@ -20,11 +21,12 @@ end
 function DFMKalmanWks(M::DFM)
     NO = Kalman.kf_length_y(M)
     NS = Kalman.kf_length_x(M)
+    μ = copyto!(Vector{Float64}(undef, NO), M.params.observed.mean)
     Λ = DFMModels.fill_loading!(Matrix{Float64}(undef, NO, NS), M.model, M.params)
     A = DFMModels.fill_transition!(Matrix{Float64}(undef, NS, NS), M.model, M.params)
     R = DFMModels.fill_covariance!(Matrix{Float64}(undef, NO, NO), M.model, M.params, Val(:Observed))
     Q = DFMModels.fill_covariance!(Matrix{Float64}(undef, NS, NS), M.model, M.params, Val(:State))
-    return DFMKalmanWks(Λ, R, A, Q, similar(A), similar(Λ))
+    return DFMKalmanWks(μ, Λ, R, A, Q, similar(A), similar(Λ))
 end
 
 Kalman.kf_islinear(M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M)) = true
@@ -38,7 +40,7 @@ function Kalman.kf_linear_stationary(H, F, Q, R, M::DFM, ::SimData, wks::DFMKalm
     return
 end
 
-function Kalman.kf_predict_x!(t, xₜ, Pxₜ, Pxxₜ₋₁ₜ, xₜ₋₁, Pxₜ₋₁, M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M))
+function Kalman.kf_predict_x!(t, xₜ, Pxₜ, Pxxₜ₋₁ₜ, xₜ₋₁, Pxₜ₋₁, M::DFM, ::AbstractMatrix, wks::DFMKalmanWks=DFMKalmanWks(M))
 
     # xₜ = A * xₜ₋₁
     if !isnothing(xₜ)
@@ -68,7 +70,7 @@ function Kalman.kf_predict_x!(t, xₜ, Pxₜ, Pxxₜ₋₁ₜ, xₜ₋₁, Pxₜ
     return
 end
 
-function Kalman.kf_predict_y!(t, yₜ, Pyₜ, Pxyₜ, xₜ, Pxₜ, M::DFM, ::SimData, wks::DFMKalmanWks)
+function Kalman.kf_predict_y!(t, yₜ, Pyₜ, Pxyₜ, xₜ, Pxₜ, M::DFM, ::AbstractMatrix, wks::DFMKalmanWks)
 
     if !isnothing(yₜ)
         # yₜ = mu + Λ xₜ
@@ -92,6 +94,11 @@ function Kalman.kf_predict_y!(t, yₜ, Pyₜ, Pxyₜ, xₜ, Pxₜ, M::DFM, ::Sim
         Pxyₜ .= transpose(wks.Tyx)
     end
     return
+end
+
+function Kalman.kf_true_y!(t, yₜ, M::DFM, data::AbstractMatrix, ::DFMKalmanWks)
+    rng = 1:length(yₜ)
+    copyto!(transpose(yₜ), 1:1, rng, data, t:t, rng)
 end
 
 function Kalman.kf_true_y!(t, yₜ, M::DFM, data::SimData, ::DFMKalmanWks)

@@ -31,10 +31,8 @@ using ..Kalman
 include("dfm/plandata.jl")
 include("dfm/random.jl")
 include("dfm/simulate.jl")
-
-# include("dfm/kalman_old.jl")   ## -- the old stuff
-# include("dfm/kalman_blk.jl")   ## -- the new stuff
-include("dfm/kalman.jl")   ## -- the new new stuff
+include("dfm/kalman.jl")
+include("dfm/em.jl")
 
 end
 
