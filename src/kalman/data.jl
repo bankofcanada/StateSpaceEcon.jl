@@ -260,6 +260,22 @@ KFDataFilterEx
     loglik
 end
 
+@kf_data_struct struct KFDataSmoother
+    x_pred
+    Px_pred
+    y_pred
+    Py_pred
+    Ly_pred
+    K
+    error_y
+    x_smooth
+    Px_smooth
+    y_smooth
+    Py_smooth
+    Pxx_smooth
+    loglik
+end
+
 @kf_data_struct struct KFDataSmootherEx
     x_pred
     Px_pred
