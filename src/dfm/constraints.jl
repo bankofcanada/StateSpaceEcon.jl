@@ -80,14 +80,14 @@ function DFMConstraint(M::DFM, ::Val{:Λ}; kwargs...)
     NO = Kalman.kf_length_y(M)
     NS = Kalman.kf_length_x(M)
     Λ = Matrix{Float64}(undef, NO, NS)
-    DFMModels.fill_loading!(Λ, M.model, M.params)
+    DFMModels.get_loading!(Λ, M.model, M.params)
     return DFMConstraint(Λ; kwargs...)
 end
 
 function DFMConstraint(M::DFM, ::Val{:A}; kwargs...)
     NS = Kalman.kf_length_x(M)
     A = Matrix{Float64}(undef, NS, NS)
-    DFMModels.fill_transition!(A, M.model, M.params)
+    DFMModels.get_transition!(A, M.model, M.params)
     return DFMConstraint(A; kwargs...)
 end
 
@@ -117,17 +117,17 @@ function _apply_constraint!(M::AbstractMatrix, cons::DFMConstraint{T}, cXᵀX::C
     #    ϰ = inv(C) * resid
     #    M = M + B * ϰ
 
-    # construct the inverse if XᵀX from its Cholesky factor
-    # done in-place, so overwriting the Cholesky factor
+    # construct the inverse of XᵀX from its Cholesky factor
+    # done in-place, overwriting the Cholesky factor
     iXᵀX = cXᵀX.factors
     LAPACK.potri!(cXᵀX.uplo, iXᵀX)
     iXᵀX = Symmetric(iXᵀX, Symbol(cXᵀX.uplo))
 
     # BT will actually contain Bᵀ = W * Aᵀ (but A is symmetric, so there)
-    # we compute BT = transpose(W) * A from the components of A, without explicitly constructing A
+    # we compute BT = W * A from the Kronecker factors of A, without explicitly constructing A
     fill!(BT, zero(T))
     BT3 = reshape(BT, ncons, :, numcols)  # BT3 provides a separate view into the part of BT for each column of M
-    W3 = reshape(W, ncons, :, numcols)   # same for W
+    W3 = reshape(W, ncons, :, numcols)   # W3 does the same for W
     for i = 1:numcols
         mul!(Tcr, view(W3, :, :, i), Σ)
         for j = 1:numcols
@@ -135,9 +135,20 @@ function _apply_constraint!(M::AbstractMatrix, cons::DFMConstraint{T}, cXᵀX::C
         end
     end
 
-    mul!(Tcc, W, transpose(BT))     # C = W * B = W * (Bᵀ)ᵀ
-    ldiv!(cholesky!(Symmetric(Tcc, :U)), Tc)       # ϰ = C \ resid  note: since C is SPD, the fastest inverse is via Cholesky
-    mul!(vec(M), transpose(BT), Tc, 1.0, 1.0) # M = M + B * ϰ
+    # C = W * B = W * (Bᵀ)ᵀ  -  Tcc contains C
+    mul!(Tcc, W, transpose(BT))
+    # ϰ = C \ resid  note: since C is SPD, the fastest inverse is via Cholesky
+    #   Tc contains resid before and ϰ after the next line
+    cTcc = cholesky!(Symmetric(Tcc, :U))
+    # cTcc = cholesky!(Symmetric(Tcc, :U), check = false)
+    # if cTcc.info != 0
+    #     mul!(Tcc, W, transpose(BT))
+    #     Tcc += √eps(one(T))*I(ncons)
+    #     cTcc = cholesky!(Symmetric(Tcc, :U))
+    # end
+    ldiv!(cTcc, Tc)
+    # M = M + B * ϰ
+    mul!(vec(M), transpose(BT), Tc, 1.0, 1.0)
 
     return M
 end

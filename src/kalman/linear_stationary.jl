@@ -62,10 +62,10 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
     TP = similar(Pₜ)
 
     aₜ[:] = a₁
-    fwdstate || BLAS.gemv!('N', 1.0, T, a₁, 0.0, aₜ)
-
     Pₜ[:, :] = P₁
-    fwdstate || begin
+
+    if !fwdstate 
+        BLAS.gemv!('N', 1.0, T, a₁, 0.0, aₜ)
         BLAS.gemm!('N', 'N', 1.0, T, Pₜ, 0.0, TP)
         BLAS.gemm!('N', 'T', 1.0, TP, T, 0.0, Pₜ)
         BLAS.axpy!(1.0, _Q, Pₜ)
