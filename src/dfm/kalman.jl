@@ -14,7 +14,11 @@ struct DFMKalmanWks
     R
     A
     Q
+    Tx
     Txx
+    Txx_1
+    Txx_2
+    Ty
     Tyx
 end
 
@@ -31,7 +35,13 @@ function DFMKalmanWks(M::DFM)
     A = DFMModels.fill_transition!(Matrix{T}(undef, NS, NS), model, params)
     R = DFMModels.fill_covariance!(Matrix{T}(undef, NO, NO), model, params, Val(:Observed))
     Q = DFMModels.fill_covariance!(Matrix{T}(undef, NS, NS), model, params, Val(:State))
-    return DFMKalmanWks(μ, Λ, R, A, Q, similar(A), similar(Λ))
+    return DFMKalmanWks(μ, Λ, R, A, Q, 
+        Vector{T}(undef, NS), 
+        Matrix{T}(undef, NS, NS), 
+        Matrix{T}(undef, NS, NS), 
+        Matrix{T}(undef, NS, NS), 
+        Vector{T}(undef, NO), 
+        Matrix{T}(undef, NO, NS))
 end
 
 DFMKalmanWks_update!(wks::DFMKalmanWks, M::DFM) = DFMKalmanWks_update!(wks, M.model, M.params)
@@ -45,6 +55,7 @@ function DFMKalmanWks_update!(wks::DFMKalmanWks, model::DFMModel, params::DFMPar
     return wks
 end
 
+#=
 struct DFMConstraints
     WΛ
     qΛ
@@ -99,6 +110,7 @@ function DFMConstraints(M::DFM, wks::DFMKalmanWks, to_estimate=isnan)
     return cons
 end
 
+=#
 
 Kalman.kf_islinear(M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M)) = true
 Kalman.kf_isstationary(M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M)) = true

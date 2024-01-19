@@ -5,120 +5,86 @@
 # All rights reserved.
 ##################################################################################
 
+include("constraints.jl")
 
-function EMstep(kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y, wks::DFMKalmanWks,
-    cons::Union{DFMConstraints,Nothing}=nothing
+function EMstep!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y,
+    cΛ::Union{DFMConstraint,Nothing}=nothing,
+    cA::Union{DFMConstraint,Nothing}=nothing
 ) where {RANGE,NS,NO,T}
 
     if Y isa MVTSeries
         Y = Y.values
     end
 
+    #=
     ret = deepcopy(wks)
     for p in propertynames(ret)
         fill!(ret.:($p), NaN)
     end
+    =#
 
-    nobs = RANGE isa UnitRange ? length(RANGE) : Int(RANGE)
-    i_nobs = (one(T) / nobs)::T
+    nobs = RANGE isa Number ? Int(RANGE) : length(RANGE)
+    i_nobs = (one(T) / nobs)
     mi_nobs = -i_nobs
 
     have_mu = !isnothing(wks.μ)
 
-    XᵀX = ret.Txx
+    XᵀX = wks.Txx
+    XᵀX_1 = wks.Txx_1
     YᵀX = wks.Tyx
+    sx = wks.Tx
+    sy = wks.Ty
+    Tyx = wks.Tyx
 
-    @unpack μ, Λ, R = ret
-
-    sx = Vector{Float64}(undef, NS)
-    sy = Vector{Float64}(undef, NO)
+    @unpack μ, Λ, R, A, Q = wks
 
     @unpack x_smooth, Px_smooth, Pxx_smooth = kfd
 
+    # XᵀX = Xᵀ * X + sum( Pxx )
     sum!(XᵀX, Px_smooth)
-    BLAS.gemm!('N', 'T', 1.0, x_smooth, x_smooth, 1.0, XᵀX)
-    BLAS.gemm!('T', 'T', 1.0, Y, x_smooth, 0.0, YᵀX)
-
+    mul!(XᵀX, x_smooth, transpose(x_smooth), 1.0, 1.0)
+    # YᵀX = Yᵀ * X = (Xᵀ * Y)ᵀ
+    mul!(transpose(YᵀX), x_smooth, Y)
 
     if have_mu
+        # correction for when mu is unknown and estimated
         sum!(sx, x_smooth)
         BLAS.ger!(mi_nobs, sx, sx, XᵀX)
-        sum!(sy, transpose(Y))
+        sum!(transpose(sy), Y)
         BLAS.ger!(mi_nobs, sy, sx, YᵀX)
     end
 
-    iXᵀX = Symmetric(wks.Txx, :U)
-    iXᵀX.data[:] = XᵀX
-    Λ[:] = YᵀX
-    rdiv!(Λ, cholesky!(iXᵀX))
-    # NOTE: the above, cholesky!(), computes the upper Cholesky factor
-    #   and stores it in place in iXᵀX.data upper triangle
-
-    if !isnothing(cons) && !isempty(cons.WΛ)
-        @unpack WΛ, qΛ = cons
-        # Given constraints on Λ: WΛ * vec(Λ) = qΛ
-
-        nc = size(WΛ, 1)
-        nl = NO * NS
-        # constraint residuals
-        rcons = Vector{Float64}(undef, nc)
-        copyto!(rcons, qΛ)
-        BLAS.gemv!('N', -1.0, WΛ, vec(Λ), 1.0, rcons)
-        maximum(abs, rcons) < 100eps() && @goto done_Λ_constraints
-
-        # @info "Applying Λ-constraints"
-
-        # The formula is 
-        #    A = kron(iXᵀX, wks.R)
-        #    B = A * transpose(W)
-        #    C = W * B
-        #    ϰ = inv(C) * rcons
-        #    Λ += B * ϰ
-
-        # The upper Cholesky factor is in iXᵀX.data. LAPACK.potri! replaces it 
-        # with the inverse
-        LAPACK.potri!('U', iXᵀX.data)
-
-        Bᵀ = zeros(nc, nl) # this will actually contain Bᵀ = W * Aᵀ (but A is symmetric, so there)
-        Bᵀ3 = reshape(Bᵀ, nc, NO, NS)
-        W3 = reshape(WΛ, nc, NO, NS)
-        Tcy = Matrix{Float64}(undef, nc, NO)
-        for i = 1:NS
-            BLAS.gemm!('N', 'N', 1.0, view(W3, :, :, i), wks.R, 0.0, Tcy)
-            for j = 1:NS
-                BLAS.axpy!(iXᵀX[i, j], Tcy, view(Bᵀ3, :, :, j))
-            end
-        end
-
-        C = Symmetric(Matrix{Float64}(undef, nc, nc), :U)
-        BLAS.gemm!('N', 'T', 1.0, WΛ, Bᵀ, 0.0, C.data)
-        ldiv!(cholesky!(C), rcons)  # rcons now contains kappa
-        BLAS.gemv!('T', 1.0, Bᵀ, rcons, 1.0, vec(Λ))
-
-        @label done_Λ_constraints
-        nothing
-    end
+    # In-place Cholesky - overwrites XᵀX with the upper Cholesky factor
+    copyto!(XᵀX_1, XᵀX)
+    cXᵀX = cholesky!(Symmetric(XᵀX_1, :U))
+    copyto!(Λ, YᵀX)
+    rdiv!(Λ, cXᵀX)
+    _apply_constraint!(Λ, cΛ, cXᵀX, wks.R)
 
     if have_mu
         copyto!(μ, sy)
-        BLAS.gemv!('N', mi_nobs, Λ, sx, i_nobs, μ)
+        mul!(μ, Λ, sx, mi_nobs, i_nobs)
     end
 
-    # R = 1/nobs * ( YᵀY - YᵀXΛᵀ - ΛXᵀY + ΛXᵀXΛᵀ + Λ sum(Px_smooth) Λᵀ
+    # R = 1/nobs * ( YᵀY - YᵀXΛᵀ - ΛXᵀY + ΛXᵀXΛᵀ + Λ sum(Px_smooth) Λᵀ )
     # In the case of have_mu = true, the YᵀX and XᵀX matrices have already been 
     #   corrected, but we still need to correct YᵀY.
     # Also, note that our XᵀX matrix already includes sum(Px_smooth)
 
-    BLAS.gemm!('N', 'T', 1.0, YᵀX, Λ, 0.0, R)
+    # start with R = YᵀXΛᵀ
+    mul!(R, YᵀX, transpose(Λ))
+    # double transpose to add ΛXᵀY
     for i = 1:NO
         R[i, i] = 2 * R[i, i]
         for j = i+1:NO
             R[i, j] = R[j, i] = R[i, j] + R[j, i]
         end
     end
-    BLAS.gemm!('T', 'N', 1.0, Y, Y, -1.0, R)
-    BLAS.gemm!('N', 'N', 1.0, Λ, XᵀX, 0.0, ret.Tyx)
-    BLAS.gemm!('N', 'T', i_nobs, ret.Tyx, Λ, i_nobs, R)
+    # negate and add YᵀY
+    mul!(R, transpose(Y), Y, 1.0, -1.0)
+    # add ΛXᵀXΛᵀ
+    mul!(Tyx, Λ, XᵀX)
+    mul!(R, Tyx, transpose(Λ), i_nobs, i_nobs)
 
     if have_mu
         BLAS.ger!(mi_nobs * i_nobs, sy, sy, R)
@@ -126,71 +92,62 @@ function EMstep(kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y, wks::DFMKalmanWks,
 
     # Now let's do A and Q
 
-    PXpp = ret.Q
-    PXmp = Matrix{Float64}(undef, NS, NS)
-    PXmm = Matrix{Float64}(undef, NS, NS)
+    PXpp = Q       #  reuse memory
+    PXmp = wks.Txx
+    PXmm = wks.Txx_1
+    TMP = wks.Txx_2
 
-    @views begin
-        sum!(PXmm, Px_smooth[:, :, begin:end-1])
-        BLAS.gemm!('N', 'T', 1.0, x_smooth[:, begin:end-1], x_smooth[:, begin:end-1], 1.0, PXmm)
-        sum!(PXpp, Px_smooth[:, :, begin+1:end])
-        BLAS.gemm!('N', 'T', 1.0, x_smooth[:, begin+1:end], x_smooth[:, begin+1:end], 1.0, PXpp)
-        sum!(PXmp, Pxx_smooth[:, :, begin:end-1])
-        BLAS.gemm!('N', 'T', 1.0, x_smooth[:, begin:end-1], x_smooth[:, begin+1:end], 1.0, PXmp)
+    begin
+        mul!(PXmm, x_smooth, transpose(x_smooth))
+        copyto!(PXpp, PXmm)
+        v1 = @view x_smooth[:,begin]
+        BLAS.ger!(-1.0, v1, v1, PXpp)
+        v2 = @view x_smooth[:,end]
+        BLAS.ger!(-1.0, v2, v2, PXmm)
+        
+        v3 = @view(x_smooth[:,begin:end-1])
+        v4 = @view(x_smooth[:,begin+1:end])
+        mul!(PXmp, v3, transpose(v4))
+
+        sum!(PXmp, Pxx_smooth, init=false)
+        BLAS.axpy!(-1.0, @view(Pxx_smooth[:,:,end]), PXmp)
+
+        sum!(TMP, Px_smooth, init=true)
+        BLAS.axpy!(1.0, TMP, PXpp)
+        BLAS.axpy!(-1.0, @view(Px_smooth[:,:,begin]), PXpp)
+        BLAS.axpy!(1.0, TMP, PXmm)
+        BLAS.axpy!(-1.0, @view(Px_smooth[:,:,end]), PXmm)
+
+
+        Amm = similar(PXmm)
+        Amp = similar(PXmp)
+        App = similar(PXpp)
+
+        sum!(Amm, Px_smooth[:, :, begin:end-1])
+        BLAS.gemm!('N', 'T', 1.0, x_smooth[:, begin:end-1], x_smooth[:, begin:end-1], 1.0, Amm)
+        sum!(App, Px_smooth[:, :, begin+1:end])
+        BLAS.gemm!('N', 'T', 1.0, x_smooth[:, begin+1:end], x_smooth[:, begin+1:end], 1.0, App)
+        sum!(Amp, Pxx_smooth[:, :, begin:end-1])
+        BLAS.gemm!('N', 'T', 1.0, x_smooth[:, begin:end-1], x_smooth[:, begin+1:end], 1.0, Amp)
+
+        @assert Amm ≈ PXmm
+        @assert Amp ≈ PXmp
+        @assert App ≈ PXpp
+
     end
 
-    copyto!(ret.A, transpose(PXmp))
+    copyto!(A, transpose(PXmp))
+    copyto!(TMP, PXmm)
+    cPXmm = cholesky!(Symmetric(TMP, :U))
+    rdiv!(A, cPXmm)
 
-    iPXmm = Symmetric(copyto!(similar(PXmm), PXmm), :U)
-    rdiv!(ret.A, cholesky!(iPXmm))
+    _apply_constraint!(A, cA, cPXmm, Q)
 
-    if !isnothing(cons) && !isempty(cons.WA)
-        @unpack WA, qA = cons
-
-        nc = size(WA, 1)
-        nl = NS * NS
-        # constraint residuals
-        rcons = Vector{Float64}(undef, nc)
-        copyto!(rcons, qA)
-        BLAS.gemv!('N', -1.0, WA, vec(ret.A), 1.0, rcons)
-        maximum(abs, rcons) < 100eps() && @goto done_A_constraints
-
-        # @info "Applying A-constraints"
-
-        # The formula is 
-        #    A = kron(iPXmm, wks.Q)
-        #    B = A * transpose(W)
-        #    C = W * B
-        #    ϰ = inv(C) * rcons
-        #    Λ += B * ϰ
-
-        LAPACK.potri!('U', iPXmm.data)
-
-        Bᵀ = zeros(nc, nl) # this will actually contain Bᵀ
-        Bᵀ3 = reshape(Bᵀ, nc, NS, NS)
-        W3 = reshape(WA, nc, NS, NS)
-        Tcx = Matrix{Float64}(undef, nc, NS)
-        for i = 1:NS
-            BLAS.gemm!('N', 'T', 1.0, wks.Q, view(W3, :, :, i), 0.0, Tcx)
-            for j = 1:NS
-                BLAS.axpy!(iPXmm[i, j], Tcx, view(Bᵀ3, :, :, j))
-            end
-        end
-
-        C = Symmetric(Matrix{Float64}(undef, nc, nc), :U)
-        BLAS.gemm!('N', 'T', 1.0, WA, Bᵀ, 0.0, C.data)
-        println(C)
-        ldiv!(cholesky!(C), rcons)  # rcons now contains kappa
-        BLAS.gemv!('T', 1.0, Bᵀ, rcons, 1.0, vec(ret.A))
-
-        @label done_A_constraints
-    end
-
-    # copyto!(ret.Q, PXpp)    # no need, they occupy the same memory
+    # copyto!(Q, PXpp)    # no need, they occupy the same memory
     coef = one(T) / (nobs - 1)
-    BLAS.gemm!('N', 'N', -coef, ret.A, PXmp, coef, ret.Q)
+    mul!(Q, A, PXmp, -coef, coef)
 
-    return ret
+    return wks
 end
 
 
