@@ -93,7 +93,8 @@ end
 
 
 _apply_constraint!(M::AbstractMatrix, ::Nothing, args...) = M
-function _apply_constraint!(M::AbstractMatrix, cons::DFMConstraint{T}, cXᵀX::Cholesky, Σ::AbstractMatrix) where {T}
+function _apply_constraint!(M::AbstractMatrix, cons::DFMConstraint{T}, 
+        cXᵀX::Cholesky, Σ::AbstractMatrix) where {T}
     @unpack numcols, W, q, Tc, BT, Tcr, Tcc = cons
     ncons, nels = size(W)
     ncons > 0 || return M
@@ -139,7 +140,9 @@ function _apply_constraint!(M::AbstractMatrix, cons::DFMConstraint{T}, cXᵀX::C
     mul!(Tcc, W, transpose(BT))
     # ϰ = C \ resid  note: since C is SPD, the fastest inverse is via Cholesky
     #   Tc contains resid before and ϰ after the next line
-    cTcc = cholesky!(Symmetric(Tcc, :U))
+    # cTcc = cholesky!(Symmetric(Tcc, :U))
+    # Hmmm, actually cTcc may be S-semi-PD. QR with pivoting seems to work
+    cTcc = qr!(Tcc, ColumnNorm())
     # cTcc = cholesky!(Symmetric(Tcc, :U), check = false)
     # if cTcc.info != 0
     #     mul!(Tcc, W, transpose(BT))

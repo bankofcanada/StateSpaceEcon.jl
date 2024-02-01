@@ -35,12 +35,12 @@ function DFMKalmanWks(M::DFM)
     A = DFMModels.get_transition!(Matrix{T}(undef, NS, NS), model, params)
     R = DFMModels.get_covariance!(Matrix{T}(undef, NO, NO), model, params, Val(:Observed))
     Q = DFMModels.get_covariance!(Matrix{T}(undef, NS, NS), model, params, Val(:State))
-    return DFMKalmanWks{T}(μ, Λ, R, A, Q, 
-        Vector{T}(undef, NS), 
-        Matrix{T}(undef, NS, NS), 
-        Matrix{T}(undef, NS, NS), 
-        Matrix{T}(undef, NS, NS), 
-        Vector{T}(undef, NO), 
+    return DFMKalmanWks{T}(μ, Λ, R, A, Q,
+        Vector{T}(undef, NS),
+        Matrix{T}(undef, NS, NS),
+        Matrix{T}(undef, NS, NS),
+        Matrix{T}(undef, NS, NS),
+        Vector{T}(undef, NO),
         Matrix{T}(undef, NO, NS))
 end
 
@@ -156,4 +156,10 @@ function Kalman.kf_length_x(M::DFM, args...)
 end
 
 Kalman.kf_length_y(M::DFM, args...) = nobserved(M.model)
+
+Kalman.dk_filter!(kf::Kalman.KFilter, Y, wks::DFMKalmanWks, args...) =
+    Kalman.dk_filter!(kf, Y, wks.μ, wks.Λ, wks.A, wks.R, wks.Q, I, args...)
+
+Kalman.dk_smoother!(kf::Kalman.KFilter, Y, wks::DFMKalmanWks) =
+    Kalman.dk_smoother!(kf, Y, wks.μ, wks.Λ, wks.A, wks.R, wks.Q, I)
 

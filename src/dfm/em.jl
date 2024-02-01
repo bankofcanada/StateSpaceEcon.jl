@@ -9,7 +9,8 @@ include("constraints.jl")
 
 function EMstep!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y::AbstractMatrix,
     cΛ::Union{DFMConstraint,Nothing}=nothing,
-    cA::Union{DFMConstraint,Nothing}=nothing
+    cA::Union{DFMConstraint,Nothing}=nothing,
+    have_mu::Bool=true,
 ) where {RANGE,NS,NO,T}
 
     if Y isa MVTSeries
@@ -20,7 +21,7 @@ function EMstep!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y
     i_nobs = (one(T) / nobs)
     mi_nobs = -i_nobs
 
-    have_mu = !isnothing(wks.μ)
+    # have_mu = !isnothing(wks.μ)
 
     XᵀX = wks.Txx
     XᵀX_1 = wks.Txx_1
@@ -58,7 +59,7 @@ function EMstep!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y
     # end
     copyto!(Λ, YᵀX)
     rdiv!(Λ, cXᵀX)
-    _apply_constraint!(Λ, cΛ, cXᵀX, wks.R)
+    _apply_constraint!(Λ, cΛ, cXᵀX, R)
 
     if have_mu
         copyto!(μ, sy)
@@ -91,8 +92,8 @@ function EMstep!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y
 
     # Now let's do A and Q
 
-    PXpp = Q       #  reuse memory
-    PXmp = wks.Txx
+    PXpp = wks.Txx
+    PXmp = transpose(A)  # reuse memory
     PXmm = wks.Txx_1
     TMP = wks.Txx_2
 
@@ -137,7 +138,7 @@ function EMstep!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y
 
     end
 
-    copyto!(A, transpose(PXmp))
+    # copyto!(A, transpose(PXmp))  # no need - they occupy the same memory
     copyto!(TMP, PXmm)
     cPXmm = cholesky!(Symmetric(TMP, :U))
     # cPXmm = cholesky!(Symmetric(TMP, :U), check=false)
@@ -150,7 +151,7 @@ function EMstep!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y
 
     _apply_constraint!(A, cA, cPXmm, Q)
 
-    # copyto!(Q, PXpp)    # no need, they occupy the same memory
+    copyto!(Q, PXpp)
     coef = one(T) / (nobs - 1)
     mul!(Q, A, PXmp, -coef, coef)
 
@@ -159,57 +160,155 @@ end
 
 using Printf
 
+# nanmean(MAT) = nanmean!(similar(MAT, axes(MAT, 1)), MAT)
+function nanmean!(mu, MAT)
+    for i in eachindex(mu)
+        s = 0.0
+        c = 0
+        for j in axes(MAT, 2)
+            v = MAT[i, j]
+            isnan(v) && continue
+            s += v 
+            c += 1
+        end
+        mu[i] = c == 0 ? 0 : (s / c)
+    end
+    return mu
+end
+
 function EMestimate(EM::DFM, Y::AbstractMatrix,
     wks::DFMKalmanWks=DFMKalmanWks(EM),
     x0::AbstractVector=zeros(Kalman.kf_length_x(EM)),
-    Px0::AbstractMatrix=1e-10I(Kalman.kf_length_x(EM));
-    maxiter=100, aftol=1e-4, axtol=1e-4,
-    verbose=false
+    Px0::AbstractMatrix=1e-10 * I(Kalman.kf_length_x(EM));
+    maxiter=100, rftol=1e-4, axtol=1e-4,
+    verbose=false,
+    anymissing::Bool=any(isnan, Y)
 )
+    @unpack μ, Λ, A, R, Q = wks
+    T = eltype(μ)
 
     conΛ = DFMConstraint(EM, Val(:Λ))
     conA = DFMConstraint(EM, Val(:A))
 
+    EP = EM.params
+    P = copy(EP)
+
+    save_mu = similar(μ)
+
+    if all(isnan, μ)
+        have_mu = true  # means "estimate mu"
+        (anymmissing ? nanmean! : mean!)(save_mu, transpose(Y))
+    else
+        have_mu = false  # means "mu is known to be zero"
+        copyto!(save_mu, μ)
+        fill!(P.observed.mean, zero(T))
+    end
+    fill!(μ, zero(T))
+    Y = Y .- transpose(save_mu)
+
     # initial guess
-    EM.params[isnan.(EM.params)] .= 0.1
+    # for i = eachindex(P)
+    #     isnan(P[i]) || continue
+    #     EP[i] = 0.1 + 0.05 * rand()
+    # end
+    # fill!(EP.observed.mean, zero(T))
+    EMinit(EM, Y)
     _update_wks!(wks, EM)
-    @unpack μ, Λ, A, R, Q = wks
 
     kfd = Kalman.KFDataSmoother(size(Y, 1), EM, Y, wks)
     kf = Kalman.KFilter(kfd)
 
     loglik = -Inf
-    params = copy(EM.params)
+    params = copy(EP)
 
     for iter = 1:maxiter
 
-        Kalman.dk_filter!(kf, Y, μ, Λ, A, R, Q, I, x0, Px0, false)
+        Kalman.dk_filter!(kf, Y, μ, Λ, A, R, Q, I, x0, Px0, false, anymissing)
         Kalman.dk_smoother!(kf, Y, μ, Λ, A, R, Q, I)
 
-        EMstep!(wks, kfd, Y, conΛ, conA)
+        EMstep!(wks, kfd, Y, conΛ, conA, have_mu)
 
-        copyto!(params, EM.params)
+        copyto!(params, EP)
         _update_params!(EM, wks)
+        for i = eachindex(P)
+            isnan(P[i]) && continue
+            EP[i] = P[i]
+        end
         _update_wks!(wks, EM)
 
         loglik_new = sum(kfd.loglik)
-        dx = maximum(abs, params - EM.params)
-        df = abs(loglik - loglik_new)
+        dx = maximum(abs, params - EP)
+        df = 2 * abs(loglik - loglik_new) / (abs(loglik) + abs(loglik_new) + eps())
 
-        if verbose == true
+        if verbose == true && mod(iter, 10) == 0
             sl = @sprintf "%.6g" loglik
             sx = @sprintf "%.6g" dx
             sf = @sprintf "%.6g" df
             @info "EM iteration $(lpad(iter, 5)): loglik=$sl, df=$sf, dx=$sx"
         end
 
-        if dx < axtol && df < aftol
-            return kf
+        if df < rftol
+            break
         end
 
         loglik = loglik_new
     end
 
+    Y .+= transpose(save_mu)
+    EP.observed.mean .+= save_mu
+    _update_wks!(wks, EM)
+    Kalman.dk_filter!(kf, Y, μ, Λ, A, R, Q, I, x0, Px0, false)
+    Kalman.dk_smoother!(kf, Y, μ, Λ, A, R, Q, I)
+
     return kf
 end
+
+
+function EMinit(EM::DFM, Y::AbstractMatrix)
+
+    EP = EM.params
+    obs = EM.model.observed_block
+
+    fill!(EP.observed.mean, 0)
+    for i = 1:nobserved(obs)
+        if isnan(EP.observed.covar[i])
+            EP.observed.covar[i] = 1
+        end
+    end
+    for (bname, blk) in obs.components
+        if blk isa IdiosyncraticComponents
+            for i = 1:blk.size
+                if isnan(EP.:($bname).covar[i])
+                    EP.:($bname).covar[i] = 1
+                end
+                for l = 1:lags(blk)
+                    if isnan(EP.:($bname).coefs[i, l])
+                        EP.:($bname).coefs[i, l] = 0.1 * (l == 1)
+                    end
+                end
+            end
+        else
+            for i = 1:blk.size
+                for j = 1:blk.size
+                    if isnan(EP.:($bname).covar[i, j])
+                        EP.:($bname).covar[i, j] = i == j
+                    end
+                    for l = 1:lags(blk)
+                        if isnan(EP.:($bname).coefs[i, j, l])
+                            EP.:($bname).coefs[i, j, l] = 0.1 * (i == j && l == 1)
+                        end
+                    end
+                end
+            end
+            for i = 1:length(obs.comp2vars[bname])
+                if isnan(EP.observed.loadings[bname][i])
+                    EP.observed.loadings.:($bname)[i] = i == 1 ? 0.99 : 0.01
+                end
+            end
+        end
+    end
+
+    return
+end
+
 
