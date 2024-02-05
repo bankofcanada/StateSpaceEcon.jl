@@ -197,7 +197,7 @@ function EMestimate(EM::DFM, Y::AbstractMatrix,
 
     if all(isnan, μ)
         have_mu = true  # means "estimate mu"
-        (anymmissing ? nanmean! : mean!)(save_mu, transpose(Y))
+        (anymissing ? nanmean! : mean!)(save_mu, transpose(Y))
     else
         have_mu = false  # means "mu is known to be zero"
         copyto!(save_mu, μ)
