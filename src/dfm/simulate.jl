@@ -26,7 +26,7 @@ function _simulate!(blk::DFMBlock, params::DFMParams, range::AbstractUnitRange, 
     J2 = J1 \ Matrix(J[:, exogmask])
     for t = range
         point[endomask] = R + J2 * point[exogmask]
-        point.indices[1] .+= 1  # shift view one period forward !!! this is a hack, don't do it !!! 
+        point.indices[1] .+= 1  # shift view one period forward #!!! this is a hack, don't do it !!! 
     end
     return data
 end
@@ -43,6 +43,8 @@ function simulate!(dfm::DFM, plan::Plan, data::AbstractMatrix; verbose = false)
     for (name, blk) in m.components
         _simulate!(blk, getproperty(p, name), simrange, data, Val(:empty_plan))
     end
-    _simulate!(m.observed_block, getproperty(p, :observed), simrange, data, Val(:empty_plan))
+    for (name, blk) in m.observed
+        _simulate!(blk, getproperty(p, name), simrange, data, Val(:empty_plan))
+    end
     return data
 end
