@@ -255,7 +255,9 @@ function EMestimate(EM::DFM, Y::AbstractMatrix,
     end
 
     Y .+= transpose(save_mu)
-    EP.observed.mean .+= save_mu
+    DFMModels.get_mean!(μ, EM.model, EP)
+    μ += save_mu
+    DFMModels.set_mean!(EP, EM.model, μ)
     _update_wks!(wks, EM)
     Kalman.dk_filter!(kf, Y, μ, Λ, A, R, Q, I, x0, Px0, false)
     Kalman.dk_smoother!(kf, Y, μ, Λ, A, R, Q, I)
@@ -267,42 +269,51 @@ end
 function EMinit(EM::DFM, Y::AbstractMatrix)
 
     EP = EM.params
-    obs = EM.model.observed_block
+    m = EM.model
 
-    fill!(EP.observed.mean, 0)
-    for i = 1:nobserved(obs)
-        if isnan(EP.observed.covar[i])
-            EP.observed.covar[i] = 1
-        end
-    end
-    for (bname, blk) in obs.components
+    for (bname, blk) in m.components
+        p = getproperty(EP, bname)
         if blk isa IdiosyncraticComponents
             for i = 1:blk.size
-                if isnan(EP.:($bname).covar[i])
-                    EP.:($bname).covar[i] = 1
+                if isnan(p.covar[i])
+                    p.covar[i] = 1
                 end
                 for l = 1:lags(blk)
-                    if isnan(EP.:($bname).coefs[i, l])
-                        EP.:($bname).coefs[i, l] = 0.1 * (l == 1)
+                    if isnan(p.coefs[i, l])
+                        p.coefs[i, l] = 0.1 * (l == 1)
                     end
                 end
             end
         else
             for i = 1:blk.size
                 for j = 1:blk.size
-                    if isnan(EP.:($bname).covar[i, j])
-                        EP.:($bname).covar[i, j] = i == j
+                    if isnan(p.covar[i, j])
+                        p.covar[i, j] = i == j
                     end
                     for l = 1:lags(blk)
-                        if isnan(EP.:($bname).coefs[i, j, l])
-                            EP.:($bname).coefs[i, j, l] = 0.1 * (i == j && l == 1)
+                        if isnan(p.coefs[i, j, l])
+                            p.coefs[i, j, l] = 0.1 * (i == j && l == 1)
                         end
                     end
                 end
             end
-            for i = 1:length(obs.comp2vars[bname])
-                if isnan(EP.observed.loadings[bname][i])
-                    EP.observed.loadings.:($bname)[i] = i == 1 ? 0.99 : 0.01
+        end
+    end
+
+    for (oname, obs) in m.observed
+        p = getproperty(EP, oname)
+        fill!(p.mean, 0)
+        for i = 1:nobserved(obs)
+            if isnan(p.covar[i])
+                p.covar[i] = 1
+            end
+        end
+        for (bname, blk) in obs.components
+            blk isa IdiosyncraticComponents && continue
+            q = getproperty(p.loadings, bname)
+            for i = 1:length(q)
+                if isnan(q[i])
+                    q[i] = 0.01
                 end
             end
         end
