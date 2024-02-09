@@ -197,13 +197,18 @@ function EMestimate(EM::DFM, Y::AbstractMatrix,
 
     if all(isnan, μ)
         have_mu = true  # means "estimate mu"
-        (anymissing ? nanmean! : mean!)(save_mu, transpose(Y))
+        if anymissing 
+            nanmean!(save_mu, transpose(Y))
+        else 
+            mean!(save_mu, transpose(Y))
+        end
+        fill!(μ, zero(T))
     else
         have_mu = false  # means "mu is known to be zero"
         copyto!(save_mu, μ)
-        fill!(P.observed.mean, zero(T))
+        fill!(μ, zero(T))
+        DFMModels.set_mean!(P, EM.model, μ)
     end
-    fill!(μ, zero(T))
     Y = Y .- transpose(save_mu)
 
     # initial guess
@@ -278,7 +283,7 @@ function EMinit(EM::DFM, Y::AbstractMatrix)
                 if isnan(p.covar[i])
                     p.covar[i] = 1
                 end
-                for l = 1:lags(blk)
+                for l = 1:blk.order
                     if isnan(p.coefs[i, l])
                         p.coefs[i, l] = 0.1 * (l == 1)
                     end
@@ -290,7 +295,7 @@ function EMinit(EM::DFM, Y::AbstractMatrix)
                     if isnan(p.covar[i, j])
                         p.covar[i, j] = i == j
                     end
-                    for l = 1:lags(blk)
+                    for l = 1:blk.order
                         if isnan(p.coefs[i, j, l])
                             p.coefs[i, j, l] = 0.1 * (i == j && l == 1)
                         end
