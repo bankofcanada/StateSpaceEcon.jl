@@ -35,9 +35,11 @@ end
 function steadystatedata(m::DFMModel, p::Plan, params::DFMParams; ref=0)
     data = zerodata(m, p)
     # all means are 0 except possibly observed variables
-    ss = params.observed.mean
-    for (var, val) in zip(keys(ss), values(ss))
-        fill!(data[var], val)
+    for (on, ob) in m.observed
+        ss = params.:($on).mean
+        for (var, val) in zip(keys(ss), values(ss))
+            fill!(data[var], val)
+        end
     end
     return data
 end

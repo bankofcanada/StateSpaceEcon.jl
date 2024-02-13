@@ -76,12 +76,15 @@ function DFMConstraint(A::AbstractMatrix{T};
     return DFMConstraint(size(A, 2), W, q)
 end
 
-function DFMConstraint(M::DFM, ::Val{:Λ}; kwargs...)
+function DFMConstraint(M::DFM, ::Val{:Λ}; add_ncons::Integer=-1, kwargs...)
     NO = Kalman.kf_length_y(M)
     NS = Kalman.kf_length_x(M)
     Λ = Matrix{Float64}(undef, NO, NS)
     DFMModels.get_loading!(Λ, M.model, M.params)
-    return DFMConstraint(Λ; kwargs...)
+    add_ncons < 0 && (add_ncons = DFMModels.get_loading_ncons(M.model, M.params))
+    ret = DFMConstraint(Λ; add_ncons, kwargs...)
+    add_ncons > 0 && DFMModels.get_loading_cons!(ret.W, ret.q, M.model, M.params)
+    return ret
 end
 
 function DFMConstraint(M::DFM, ::Val{:A}; kwargs...)
