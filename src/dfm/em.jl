@@ -11,6 +11,7 @@ function EMstep!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y
     cΛ::Union{DFMConstraint,Nothing}=nothing,
     cA::Union{DFMConstraint,Nothing}=nothing,
     have_mu::Bool=true,
+    anymissing::Bool=any(isnan, Y),
 ) where {RANGE,NS,NO,T}
 
     if Y isa MVTSeries
@@ -38,6 +39,12 @@ function EMstep!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y
     sum!(XᵀX, Px_smooth)
     mul!(XᵀX, x_smooth, transpose(x_smooth), 1.0, 1.0)
     # YᵀX = Yᵀ * X = (Xᵀ * Y)ᵀ
+    if anymissing
+        # impute missing values from the expectation step
+        Y = copy(Y)
+        nanY = isnan.(Y)
+        Y[nanY] .= transpose(kfd.y_smooth)[nanY]
+    end
     mul!(transpose(YᵀX), x_smooth, Y)
 
     if have_mu
@@ -50,13 +57,13 @@ function EMstep!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y
 
     # In-place Cholesky - overwrites XᵀX with the upper Cholesky factor
     copyto!(XᵀX_1, XᵀX)
-    cXᵀX = cholesky!(Symmetric(XᵀX_1, :U))
-    # cXᵀX = cholesky!(Symmetric(XᵀX_1, :U), check=false)
-    # if cXᵀX.info != 0
-    #     copyto!(XᵀX_1, XᵀX)
-    #     XᵀX_1 += √eps(one(T)) * I(NS)
-    #     cXᵀX = cholesky!(Symmetric(XᵀX_1, :U))
-    # end
+    # cXᵀX = cholesky!(Symmetric(XᵀX_1, :U))
+    cXᵀX = cholesky!(Symmetric(XᵀX_1, :U), check=false)
+    if cXᵀX.info != 0
+        copyto!(XᵀX_1, XᵀX)
+        XᵀX_1 += √eps(one(T)) * I(NS)
+        cXᵀX = cholesky!(Symmetric(XᵀX_1, :U))
+    end
     copyto!(Λ, YᵀX)
     rdiv!(Λ, cXᵀX)
     _apply_constraint!(Λ, cΛ, cXᵀX, R)
@@ -82,7 +89,7 @@ function EMstep!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData{RANGE,NS,NO,T}, Y
     end
     # negate and add YᵀY
     mul!(R, transpose(Y), Y, 1.0, -1.0)
-    # add ΛXᵀXΛᵀ
+    # add ΛXᵀXΛᵀ and divide by nobs
     mul!(Tyx, Λ, XᵀX)
     mul!(R, Tyx, transpose(Λ), i_nobs, i_nobs)
 
@@ -231,7 +238,7 @@ function EMestimate(EM::DFM, Y::AbstractMatrix,
         Kalman.dk_filter!(kf, Y, μ, Λ, A, R, Q, I, x0, Px0, false, anymissing)
         Kalman.dk_smoother!(kf, Y, μ, Λ, A, R, Q, I)
 
-        EMstep!(wks, kfd, Y, conΛ, conA, have_mu)
+        EMstep!(wks, kfd, Y, conΛ, conA, have_mu, anymissing)
 
         copyto!(params, EP)
         _update_params!(EM, wks)
@@ -269,6 +276,9 @@ function EMestimate(EM::DFM, Y::AbstractMatrix,
 
     return kf
 end
+
+
+
 
 
 function EMinit(EM::DFM, Y::AbstractMatrix)
