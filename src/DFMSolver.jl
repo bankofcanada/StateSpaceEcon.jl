@@ -11,6 +11,7 @@ module DFMSolver
 using Random
 using LinearAlgebra
 using Statistics
+using SparseArrays
 
 # juliastats.org
 using ComponentArrays
