@@ -9,7 +9,7 @@
 # the loadings matrix and the factors' AR matrix of the factors during the EM algorithm
 
 
-struct DFMConstraint{T,TW<:AbstractMatrix{T},Tq<:AbstractVector{T}}
+struct DFMConstraint{T,TW<:AbstractMatrix{T},Tq<:AbstractVector{T},TBT<:AbstractMatrix{T}}
     # constraint on matrix A is in the form
     #     W * vec(A) = q
     # constraints data  
@@ -18,9 +18,9 @@ struct DFMConstraint{T,TW<:AbstractMatrix{T},Tq<:AbstractVector{T}}
     q::Tq           #   == constraint right-hand-side
     # pre-allocated work arrays used in the algorithms
     Tc::Vector{T}
-    BT::Matrix{T}
     Tcr::Matrix{T}
     Tcc::Matrix{T}
+    BT::TBT
     # inner constructor allocates work arrays in the correct dimensions
     function DFMConstraint(numcols::Integer, W::AbstractMatrix{T}, q::AbstractVector{T}) where {T}
         ncons, nels = size(W)
@@ -33,9 +33,10 @@ struct DFMConstraint{T,TW<:AbstractMatrix{T},Tq<:AbstractVector{T}}
         end
         Tc = Vector{T}(undef, ncons)
         BT = Matrix{T}(undef, ncons, nels)
+        # BT = similar(W)
         Tcr = Matrix{T}(undef, ncons, numrows)
         Tcc = Matrix{T}(undef, ncons, ncons)
-        return new{T,typeof(W),typeof(q)}(numcols, W, q, Tc, BT, Tcr, Tcc)
+        return new{T,typeof(W),typeof(q),typeof(BT)}(numcols, W, q, Tc, Tcr, Tcc, BT)
     end
 end
 
@@ -57,12 +58,12 @@ function DFMConstraint(A::AbstractMatrix{T};
     # number of rows equals the number of fixed entries (ones that will not be estimated)
     ncons = nels - sum(to_estimate, A)
     # allocate matrix W
-    W = Matrix{T}(undef, ncons + add_ncons, nels)
+    # W = zeros(T, ncons + add_ncons, nels)
+    W = spzeros(T, ncons + add_ncons, nels)
     # allocate vector q
-    q = Vector{T}(undef, ncons + add_ncons)
+    # q = zeros(T, ncons + add_ncons)
+    q = spzeros(T, ncons + add_ncons)
     # let's do it
-    fill!(W, zero(T))
-    fill!(q, zero(T))
     r = c = 0
     while r < ncons
         c = c + 1
