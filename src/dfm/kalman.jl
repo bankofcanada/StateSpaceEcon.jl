@@ -8,12 +8,12 @@
 # this file contains implementation of the api of ..Kalman for 
 # DFMModels
 
-struct DFMKalmanWks{T}
-    μ::Vector{T}
-    Λ::Matrix{T}
-    R::Matrix{T}
-    A::Matrix{T}
-    Q::Matrix{T}
+struct DFMKalmanWks{T,Tμ,TΛ,TR,TA,TQ}
+    μ::Tμ
+    Λ::TΛ
+    R::TR
+    A::TA
+    Q::TQ
     Tx::Vector{T}
     Txx::Matrix{T}
     Txx_1::Matrix{T}
@@ -22,20 +22,23 @@ struct DFMKalmanWks{T}
     Tyx::Matrix{T}
 end
 
-function DFMKalmanWks(model::DFMModel, params::DFMParams)
-    return DFMKalmanWks(DFM(model, params))
+function DFMKalmanWks(model::DFMModel, params::DFMParams; sparse=false, sparse_A=sparse, sparse_Q=sparse)
+    return DFMKalmanWks(DFM(model, params); sparse, sparse_A, sparse_Q)
 end
-function DFMKalmanWks(M::DFM)
+function DFMKalmanWks(M::DFM; sparse=false, sparse_A=sparse, sparse_Q=sparse)
     NO = Kalman.kf_length_y(M)
     NS = Kalman.kf_length_x(M)
     @unpack model, params = M
     T = eltype(params)
     μ = DFMModels.get_mean!(Vector{T}(undef, NO), model, params)
     Λ = DFMModels.get_loading!(Matrix{T}(undef, NO, NS), model, params)
-    A = DFMModels.get_transition!(Matrix{T}(undef, NS, NS), model, params)
-    R = DFMModels.get_covariance!(Matrix{T}(undef, NO, NO), model, params, Val(:Observed))
-    Q = DFMModels.get_covariance!(Matrix{T}(undef, NS, NS), model, params, Val(:State))
-    return DFMKalmanWks{T}(μ, Λ, R, A, Q,
+    A = sparse_A ? spzeros(T, NS, NS) : zeros(T, NS, NS)
+    DFMModels.get_transition!(A, model, params)
+    R = DFMModels.get_covariance!(Diagonal(Vector{T}(undef, NO)), model, params, Val(:Observed))
+    Q = sparse_Q ? spzeros(T, NS, NS) : zeros(T, NS, NS)
+    DFMModels.get_covariance!(Q, model, params, Val(:State))
+    return DFMKalmanWks{T,typeof(μ),typeof(Λ),typeof(R),typeof(A),typeof(Q)}(
+        μ, Λ, R, A, Q,
         Vector{T}(undef, NS),
         Matrix{T}(undef, NS, NS),
         Matrix{T}(undef, NS, NS),
