@@ -13,7 +13,7 @@ struct DFMConstraint{T,TW<:AbstractMatrix{T},Tq<:AbstractVector{T},TBT<:Abstract
     # constraint on matrix A is in the form
     #     W * vec(A) = q
     # constraints data  
-    numcols::Int    #   == number of columns of A, the matrix being constrained
+    ncols::Int    #   == number of columns of A, the matrix being constrained
     W::TW           #   == constraint matrix
     q::Tq           #   == constraint right-hand-side
     # pre-allocated work arrays used in the algorithms
@@ -22,88 +22,98 @@ struct DFMConstraint{T,TW<:AbstractMatrix{T},Tq<:AbstractVector{T},TBT<:Abstract
     Tcc::Matrix{T}
     BT::TBT
     # inner constructor allocates work arrays in the correct dimensions
-    function DFMConstraint(numcols::Integer, W::AbstractMatrix{T}, q::AbstractVector{T}) where {T}
+    function DFMConstraint(ncols::Integer, W::AbstractMatrix{T}, q::AbstractVector{T}) where {T}
+        # NOTE: the matrix being constrained has dimensions nrows × ncols, for a total of nels=nrows*ncols elements
+        #   Matrix W has dimension ncons × nels - one row for each constraint and a column for each element of the constrained matrix
+        #   We deduce nrows from ncons (given directly) and nels (from second dimension of W)
         ncons, nels = size(W)
         if length(q) != ncons
             throw(DimensionMismatch("Expected equal number of columns in W and q. Got size(W) = $(size(W)) and size(q) = $(size(q))"))
         end
-        numrows, rem = divrem(nels, numcols)
+        ncons == 0 && return nothing
+        nrows, rem = divrem(nels, ncols)
         if rem != 0
-            throw(ArgumentError("size(W, 2) = $(nels) is incompatible with numcols = $(numcols)"))
+            throw(ArgumentError("size(W, 2) = $(nels) is incompatible with ncols = $(ncols)"))
         end
         Tc = Vector{T}(undef, ncons)
         BT = Matrix{T}(undef, ncons, nels)
         # BT = similar(W)
-        Tcr = Matrix{T}(undef, ncons, numrows)
+        Tcr = Matrix{T}(undef, ncons, nrows)
         Tcc = Matrix{T}(undef, ncons, ncons)
-        return new{T,typeof(W),typeof(q),typeof(BT)}(numcols, W, q, Tc, Tcr, Tcc, BT)
+        return new{T,typeof(W),typeof(q),typeof(BT)}(ncols, W, q, Tc, Tcr, Tcc, BT)
     end
 end
 
-function DFMConstraint(A::AbstractMatrix{T};
-    add_ncons::Integer=0, to_estimate::Function=isnan) where {T}
+# function DFMConstraint(A::AbstractMatrix;
+#     add_ncons::Integer=0, to_estimate::Function=isnan)
 
-    if add_ncons < 0
-        throw(ArgumentError("add_ncons must not be negative."))
-    end
+#     if add_ncons < 0
+#         throw(ArgumentError("add_ncons must not be negative."))
+#     end
 
-    # entries of A are NaN  where they need to be estimated and not NaN where 
-    # they are known.
-    #
-    # We build W and q such that constraints are of the form:
-    #     W * vec(A) = q 
-    #
-    # number of columns equals the total number of entries 
-    nels = length(A)
-    # number of rows equals the number of fixed entries (ones that will not be estimated)
-    ncons = nels - sum(to_estimate, A)
-    # allocate matrix W
-    # W = zeros(T, ncons + add_ncons, nels)
-    W = spzeros(T, ncons + add_ncons, nels)
-    # allocate vector q
-    # q = zeros(T, ncons + add_ncons)
-    q = spzeros(T, ncons + add_ncons)
-    # let's do it
-    r = c = 0
-    while r < ncons
-        c = c + 1
-        while to_estimate(A[c])
-            c = c + 1
-        end
-        r = r + 1
-        W[add_ncons+r, c] = one(T)
-        q[add_ncons+r] = A[c]
-    end
-    return DFMConstraint(size(A, 2), W, q)
-end
+#     if size(A, 2) == 0
+#         return nothing
+#     end
 
-function DFMConstraint(M::DFM, ::Val{:Λ}; add_ncons::Integer=-1, kwargs...)
-    NO = Kalman.kf_length_y(M)
-    NS = Kalman.kf_length_x(M)
-    Λ = Matrix{Float64}(undef, NO, NS)
-    DFMModels.get_loading!(Λ, M.model, M.params)
-    add_ncons < 0 && (add_ncons = DFMModels.get_loading_ncons(M.model, M.params))
-    ret = DFMConstraint(Λ; add_ncons, kwargs...)
-    add_ncons > 0 && DFMModels.get_loading_cons!(ret.W, ret.q, M.model, M.params)
-    return ret
-end
+#     T = promote_type(eltype(A), Float64)
 
-function DFMConstraint(M::DFM, ::Val{:A}; kwargs...)
-    NS = Kalman.kf_length_x(M)
-    A = Matrix{Float64}(undef, NS, NS)
-    DFMModels.get_transition!(A, M.model, M.params)
-    return DFMConstraint(A; kwargs...)
-end
+#     # entries of A are NaN  where they need to be estimated and not NaN where 
+#     # they are known.
+#     #
+#     # We build W and q such that constraints are of the form:
+#     #     W * vec(A) = q 
+#     #
+#     # number of columns equals the total number of entries 
+#     nels = length(A)
+#     # number of rows equals the number of fixed entries (ones that will not be estimated)
+#     ncons = nels - sum(to_estimate, A)
+#     # allocate matrix W
+#     # W = zeros(T, ncons + add_ncons, nels)
+#     W = spzeros(T, ncons + add_ncons, nels)
+#     # allocate vector q
+#     # q = zeros(T, ncons + add_ncons)
+#     q = spzeros(T, ncons + add_ncons)
+#     # let's do it
+#     r = c = 0
+#     while r < ncons
+#         c = c + 1
+#         while to_estimate(A[c])
+#             c = c + 1
+#         end
+#         r = r + 1
+#         W[add_ncons+r, c] = one(T)
+#         q[add_ncons+r] = A[c]
+#     end
+#     return DFMConstraint(size(A, 2), W, q)
+# end
+
+# function DFMConstraint(M::DFM, ::Val{:Λ}; add_ncons::Integer=-1, kwargs...)
+#     NO = Kalman.kf_length_y(M)
+#     NS = Kalman.kf_length_x(M)
+#     Λ = Matrix{Float64}(undef, NO, NS)
+#     DFMModels.get_loading!(Λ, M.model, M.params)
+#     add_ncons < 0 && (add_ncons = DFMModels.get_loading_ncons(M.model, M.params))
+#     ret = DFMConstraint(Λ; add_ncons, kwargs...)
+#     add_ncons > 0 && DFMModels.get_loading_cons!(ret.W, ret.q, M.model, M.params)
+#     return ret
+# end
+
+# function DFMConstraint(M::DFM, ::Val{:A}; kwargs...)
+#     NS = Kalman.kf_length_x(M)
+#     A = Matrix{Float64}(undef, NS, NS)
+#     DFMModels.get_transition!(A, M.model, M.params)
+#     return DFMConstraint(A; kwargs...)
+# end
 
 
 _apply_constraint!(M::AbstractMatrix, ::Nothing, args...) = M
-function _apply_constraint!(M::AbstractMatrix, cons::DFMConstraint{T}, 
-        cXᵀX::Cholesky, Σ::AbstractMatrix) where {T}
-    @unpack numcols, W, q, Tc, BT, Tcr, Tcc = cons
+function _apply_constraint!(M::AbstractMatrix, cons::DFMConstraint{T},
+    cXᵀX::Cholesky, Σ::AbstractMatrix) where {T}
+    @unpack ncols, W, q, Tc, BT, Tcr, Tcc = cons
     ncons, nels = size(W)
     ncons > 0 || return M
 
-    if nels != length(M) || numcols != size(M, 2)
+    if nels != length(M) || ncols != size(M, 2)
         throw(ArgumentError("incompatible dimensions of matrix and constraints"))
     end
 
@@ -131,11 +141,11 @@ function _apply_constraint!(M::AbstractMatrix, cons::DFMConstraint{T},
     # BT will actually contain Bᵀ = W * Aᵀ (but A is symmetric, so there)
     # we compute BT = W * A from the Kronecker factors of A, without explicitly constructing A
     fill!(BT, zero(T))
-    BT3 = reshape(BT, ncons, :, numcols)  # BT3 provides a separate view into the part of BT for each column of M
-    W3 = reshape(W, ncons, :, numcols)   # W3 does the same for W
-    for i = 1:numcols
+    BT3 = reshape(BT, ncons, :, ncols)  # BT3 provides a separate view into the part of BT for each column of M
+    W3 = reshape(W, ncons, :, ncols)   # W3 does the same for W
+    for i = 1:ncols
         mul!(Tcr, view(W3, :, :, i), Σ)
-        for j = 1:numcols
+        for j = 1:ncols
             BLAS.axpy!(iXᵀX[i, j], Tcr, view(BT3, :, :, j))
         end
     end
