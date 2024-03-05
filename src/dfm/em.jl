@@ -39,6 +39,7 @@ struct EM_Observed_Block_Loading_Wks{T}
     XTX_ge::Matrix{T}
     SY::Vector{T}
     SX::Vector{T}
+    inds_cb::Vector{UnitRange{Int}}
 end
 
 
@@ -66,11 +67,13 @@ function em_observed_block_loading_wks(on::Symbol, M::DFM, wks::DFMKalmanWks{T})
     xinds = append!(Int[], indexin(states_b, states_m))
     xinds_estim = Int[]
     xinds_given = Int[]
-    offset = 0
+    inds_cb = UnitRange{Int}[]
+    global_offset = 0
+    local_offset = 0
     W = spzeros(0, 0)
     q = spzeros(0)
     for (cn, cb) in ob.components
-        bcols = offset .+ (1:nstates_with_lags(cb))
+        bcols = global_offset .+ (1:nstates_with_lags(cb))
         if any(isnan, view(Λ, :, xinds[bcols]))
             NS = nstates(cb)
             # we take all columns of the components block;
@@ -96,7 +99,9 @@ function em_observed_block_loading_wks(on::Symbol, M::DFM, wks::DFMKalmanWks{T})
                 end
             end
         end
-        offset = last(bcols)
+        push!(inds_cb, local_offset+1:length(xinds_estim))
+        local_offset = length(xinds_estim)
+        global_offset = last(bcols)
     end
     nest = length(xinds_estim)
     ngiv = length(xinds_given)
@@ -113,6 +118,7 @@ function em_observed_block_loading_wks(on::Symbol, M::DFM, wks::DFMKalmanWks{T})
         Matrix{T}(undef, ngiv, nest),     # XTX_ge
         Vector{T}(undef, nobs),           # SY
         Vector{T}(undef, nest),           # SX
+        inds_cb,
     )
 end
 
@@ -159,12 +165,12 @@ function em_update_observed_block_loading!(wks::DFMKalmanWks{T}, kfd::Kalman.Abs
         BLAS.ger!(-i_NT, SY, SX, YTX)
     else
         # otherwise, subtract from Y
-        copyto!(SY, μb)
+        # copyto!(SY, μb)
         sum!(SX, transpose(Xb_e))
-        BLAS.ger!(-i_NT, SY, SX, YTX)
+        BLAS.ger!(-1.0, μb, SX, YTX)
     end
 
-    # solve the system (using Cholesky, since matrix is SPD)
+    # solve the system (using Cholesky factorization, since matrix is SPD)
     copyto!(new_Λ, YTX)     # keep YTX safe, in case we need it below
     cXTX = cholesky!(Symmetric(XTX))  # overwrites XTX
     rdiv!(new_Λ, cXTX)
@@ -452,8 +458,8 @@ end
 
 
 
-function EMstep!(wks::DFMKalmanWks, x0::AbstractVector, Px0::AbstractMatrix,
-    kfd::Kalman.AbstractKFData, EY::AbstractMatrix, M::DFM, em_wks::EM_Wks)
+function EMstep!(wks::DFMKalmanWks{T}, x0::AbstractVector{T}, Px0::AbstractMatrix{T},
+    kfd::Kalman.AbstractKFData, EY::AbstractMatrix{T}, M::DFM, em_wks::EM_Wks{T}) where {T}
     @unpack observed, transition = em_wks
     for em_w in observed.loadings
         em_update_observed_block_loading!(wks, kfd, EY, em_w)
@@ -462,8 +468,9 @@ function EMstep!(wks::DFMKalmanWks, x0::AbstractVector, Px0::AbstractMatrix,
     for em_w in transition.blocks
         em_update_transition_block!(wks, kfd, EY, em_w)
     end
-    x0 .= kfd.x_smooth[:,begin]
-    for (cb, tr_wks) in zip(values(M.model.components),em_wks.transition.blocks)
+    x0 .= kfd.x_smooth[:, begin]
+    # fill!(x0, zero(T))
+    for (cb, tr_wks) in zip(values(M.model.components), em_wks.transition.blocks)
         xinds_1 = tr_wks.xinds_1
         if cb isa IdiosyncraticComponents
             Px0[xinds_1, xinds_1] = Diagonal(kfd.Px_smooth[xinds_1, xinds_1, 1])
@@ -483,7 +490,8 @@ end
 function EMestimate(M::DFM, Y::AbstractMatrix,
     wks::DFMKalmanWks{T}=DFMKalmanWks(M),
     x0::AbstractVector=zeros(Kalman.kf_length_x(M)),
-    Px0::AbstractMatrix=Matrix{T}(1e-10 * I(Kalman.kf_length_x(M)))
+    Px0::AbstractMatrix=Matrix{T}(1e-10 * I(Kalman.kf_length_x(M))),
+    em_wks::EM_Wks{T}=em_workspace(M, wks)
     ;
     initial_guess::Union{Nothing,AbstractVector}=nothing,
     maxiter=100, rftol=1e-4, axtol=1e-4,
@@ -497,7 +505,6 @@ function EMestimate(M::DFM, Y::AbstractMatrix,
         return
     end
 
-    em_wks = em_workspace(M, wks)
 
     kfd = Kalman.KFDataSmoother(size(Y, 1), M, Y, wks)
     kf = Kalman.KFilter(kfd)
@@ -552,7 +559,19 @@ function EMestimate(M::DFM, Y::AbstractMatrix,
     return
 end
 
-function EMinit!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, M::DFM, em_wks::EM_Wks) where {T}
+function EMinit!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, M::DFM, em_wks::EM_Wks{T}) where {T}
+
+    # use this to overwrite only NaN values (preserving any initial guesses already given)
+    assign_non_nan!(DEST, row_inds, col_inds, SRC) = begin
+        for (sj, dj) in enumerate(col_inds)
+            for (si, di) in enumerate(row_inds)
+                if isnan(DEST[di, dj])
+                    DEST[di, dj] = SRC[si, sj]
+                end
+            end
+        end
+    end
+
     @unpack model, params = M
     @unpack μ, Λ, R, A, Q = wks
     NT, NO = size(EY)
@@ -579,10 +598,12 @@ function EMinit!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractM
     # total number of static factors in the model
     NF = sum(nfvec)
     # TODO: use TSVD in the case of NO >> NF
+    # Initial static factors (no lags) by PCA via SVD
     SY = svd(resY)
     FALL = view(SY.U, :, 1:NF)
     rmul!(FALL, Diagonal(view(SY.S, 1:NF)))
 
+    # build dynamic factor (lags as needed) in kfd.x_smooth
     foffset = 0  # offset to keep track of which static factors belong to which block
     for (nf, tr_wks, (cn, cb)) in zip(nfvec, em_wks.transition.blocks, model.components)
         nf > 0 || continue # skip idiosyncratic
@@ -596,33 +617,78 @@ function EMinit!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractM
             # lag = ind - 1
             FT[end-ind*nf.+(1:nf), :] .= transpose(F[begin+NL-ind:end-ind+1, :])
         end
+        foffset += nf
+    end
+
+    for obs_wks in em_wks.observed.loadings
+        @unpack XTX, YTX = obs_wks
+        fill!(XTX, zero(T))
+        fill!(YTX, zero(T))
+    end
+
+    # Estimate initial loadings
+    foffset = 0  # offset to keep track of which static factors belong to which block
+    for (nf, tr_wks, (cn, cb)) in zip(nfvec, em_wks.transition.blocks, model.components)
+        nf > 0 || continue # skip idiosyncratic
+        xinds_1 = tr_wks.xinds_1
+        NL = lags(cb)
         if any(isnan, view(Λ, :, xinds_1))
             # compute initial loadings
             for (obs_wks, (on, ob)) in zip(em_wks.observed.loadings, model.observed)
                 haskey(ob.components, cn) || continue # skip components that are not loaded by this observed block
-                @unpack yinds, constraint = obs_wks
+                @unpack yinds, constraint, inds_cb, XTX, new_Λ = obs_wks
                 any(isnan, view(Λ, yinds, xinds_1)) || continue # skip if loading is given
+
+                ind = 1
+                for name in keys(ob.components)
+                    name == cn && break
+                    ind = ind + 1
+                end
+                loc_ind = inds_cb[ind]
+
                 NC = DFMModels.mf_ncoefs(ob)
                 xinds_2 = last(xinds_1) .+ (1-nf*NC:0)
-                L = Matrix{T}(undef, length(yinds), nf * NC)
-                FTF = Matrix{T}(undef, nf * NC, nf * NC)
+
+                @assert length(loc_ind) == nf * NC
+
+                L = view(new_Λ, :, loc_ind)
+                FTF = view(XTX, loc_ind, loc_ind)
+
+                # L = Matrix{T}(undef, length(yinds), nf * NC)
+                # FTF = Matrix{T}(undef, nf * NC, nf * NC)
+
                 bY = view(resY, NL:NT, yinds)
-                bFT = view(FT, xinds_2, :)
+                bFT = view(kfd.x_smooth, xinds_2, NL:NT)
+
                 mul!(transpose(L), bFT, bY)
                 mul!(FTF, bFT, transpose(bFT))
-                cFTF = cholesky!(Symmetric(FTF))
+                cFTF = cholesky!(Symmetric(FTF, :U))
                 rdiv!(L, cFTF)
-                _apply_constraint!(L, constraint, cFTF, cov(bY))
-                for (j, x) in enumerate(xinds_2)
-                    for (i, y) in enumerate(yinds)
-                        if isnan(Λ[y, x])
-                            Λ[y, x] = L[i, j]
-                        end
-                    end
-                end
             end
         end
-        # subtract contributions of factors
+        foffset += nf
+    end
+
+    # Apply loadings constraints
+    for obs_wks in em_wks.observed.loadings
+        @unpack yinds, xinds_estim, constraint, XTX, new_Λ = obs_wks
+        cFTF = Cholesky(UpperTriangular(XTX))
+        _apply_constraint!(new_Λ, constraint, cFTF, cov(view(resY, lags(model):NT, yinds)))
+        assign_non_nan!(Λ, yinds, xinds_estim, new_Λ)
+    end
+
+    # Estimate transitions
+    foffset = 0  # offset to keep track of which static factors belong to which block
+    for (nf, tr_wks, (cn, cb)) in zip(nfvec, em_wks.transition.blocks, model.components)
+        nf > 0 || continue # skip idiosyncratic
+        xinds_1 = tr_wks.xinds_1
+        NL = lags(cb)
+        xinds = last(xinds_1) .+ (1-nf*NL:0)
+        FT = view(kfd.x_smooth, xinds, NL:NT)
+
+        F = view(SY.U, :, foffset .+ (1:nf))
+
+        # Btw, also subtract contributions of factors
         # resY[NL:NT,:] -= transpose(FT) * transpose(view(Λ, :,xinds))
         mul!(transpose(view(resY, NL:NT, :)), view(Λ, :, xinds), FT, -1.0, 1.0)
 
@@ -654,13 +720,8 @@ function EMinit!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractM
         rdiv!(FRHS, cFMAT)
         _apply_constraint!(FRHS, tr_wks.constraint, cFMAT, cov(F))
         # assign A
-        for (j, x2) in enumerate(xinds_2)
-            for (i, x1) in enumerate(xinds_1)
-                if isnan(A[x1, x2])
-                    A[x1, x2] = FRHS[i, j]
-                end
-            end
-        end
+        assign_non_nan!(A, xinds_1, xinds_2, FRHS)
+
         # update Q
         if any(isnan, view(Q, xinds_1, xinds_1))
             COV = zeros(nf, nf)
@@ -674,13 +735,7 @@ function EMinit!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractM
                 BLAS.ger!(c, V, V, COV)
             end
             # assign Q
-            for (i, xi) in enumerate(xinds_1)
-                for (j, xj) in enumerate(xinds_1)
-                    if isnan(Q[xi, xj])
-                        Q[xi, xj] = COV[i, j]
-                    end
-                end
-            end
+            assign_non_nan!(Q, xinds_1, xinds_1, COV)
         end
         foffset += nf
     end
@@ -716,9 +771,7 @@ function EMinit!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractM
         end
     end
 
-    nanR = map(isnan, wks.R)
-    wks.R[nanR] .= I(NO)[nanR]
-
+    assign_non_nan!(R, axes(R)..., I(NO))
     return wks
 end
 
