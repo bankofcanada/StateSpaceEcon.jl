@@ -379,7 +379,7 @@ include("misc.jl")
 end
 
 # make sure Pardiso runs deterministic (single thread) for the tests
-if !sys.isapple()
+if !Sys.isapple()
     Pardiso.set_nprocs_mkl!(1)
 end
 
