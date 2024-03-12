@@ -379,7 +379,9 @@ include("misc.jl")
 end
 
 # make sure Pardiso runs deterministic (single thread) for the tests
-# Pardiso.set_nprocs_mkl!(1)
+if !sys.isapple()
+    Pardiso.set_nprocs_mkl!(1)
+end
 
 for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
 
