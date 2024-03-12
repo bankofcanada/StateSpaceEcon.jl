@@ -6,10 +6,10 @@
 ##################################################################################
 
 using LinearAlgebra
-using JLD2
+using TimeSeriesEcon.DataEcon
 @testset "shkdcmp" begin
     m = deepcopy(E7A.model)
-    expected = Workspace(load("data/shkdcmp_E7A.jld2"))
+    expected = readdb("data/shkdecomp_E7A.daec")
 
     empty!(m.sstate.constraints)
     @steadystate m lc = 1

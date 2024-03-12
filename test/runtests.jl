@@ -379,7 +379,9 @@ include("misc.jl")
 end
 
 # make sure Pardiso runs deterministic (single thread) for the tests
-Pardiso.set_nprocs_mkl!(1)
+if !Sys.isapple()
+    Pardiso.set_nprocs_mkl!(1)
+end
 
 for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
 
@@ -387,7 +389,7 @@ for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
     sfdef.value == :none && continue
 
     # Pardiso in macos is giving "Not enough memory".  Disable for now
-    # sfdef.value == :pardiso && Sys.isapple() && continue
+    sfdef.value == :pardiso && Sys.isapple() && continue
 
     @info "Using $(sfdef)"
 
