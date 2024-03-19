@@ -25,12 +25,12 @@ end
 
 
 
-struct EM_Observed_Block_Loading_Wks{T}
-    yinds::Vector{Int}
-    # xinds::Vector{Int}
-    xinds_estim::Vector{Int}
-    xinds_given::Vector{Int}
+struct EM_Observed_Block_Loading_Wks{T,YI<:AbstractVector{Int},XIE<:AbstractVector{Int},XIG<:AbstractVector{Int}}
+    yinds::YI
+    xinds_estim::XIE
+    xinds_given::XIG
     mean_estim::Bool
+    orthogonal_factors_ics::Bool
     constraint::Union{Nothing,DFMConstraint{T}}
     # pre-allocated matrices
     YTX::Matrix{T}
@@ -39,11 +39,25 @@ struct EM_Observed_Block_Loading_Wks{T}
     XTX_ge::Matrix{T}
     SY::Vector{T}
     SX::Vector{T}
+    # indices corresponding to each block
     inds_cb::Vector{UnitRange{Int}}
+
+    function EM_Observed_Block_Loading_Wks{T}(yinds, xinds_estim, xinds_given, args...) where {T}
+        ry = UnitRange(extrema(yinds)...)
+        yinds == ry && (yinds = ry)
+        rxe = UnitRange(extrema(xinds_estim)...)
+        xinds_estim == rxe && (xinds_estim = rxe)
+        rxg = UnitRange(extrema(xinds_given, init=(typemax(Int), typemin(Int)))...)
+        xinds_given == rxg && (xinds_given = rxg)
+        return new{T,typeof(yinds),typeof(xinds_estim),typeof(xinds_given)}(yinds, xinds_estim, xinds_given, args...)
+    end
+
 end
 
 
-function em_observed_block_loading_wks(on::Symbol, M::DFM, wks::DFMKalmanWks{T}) where {T}
+function em_observed_block_loading_wks(on::Symbol, M::DFM, wks::DFMKalmanWks{T};
+    orthogonal_factors_ics=true
+) where {T}
     @unpack model, params = M
     @unpack μ, Λ, R = wks
 
@@ -90,12 +104,16 @@ function em_observed_block_loading_wks(on::Symbol, M::DFM, wks::DFMKalmanWks{T})
                 @assert iszero(view(Λ, yinds, xinds_cb_given))
                 # append!(xinds_given, xinds_cb_given)
             end
+        elseif orthogonal_factors_ics && (cb isa IdiosyncraticComponents)
+            # loadings of idiosyncratic components are identity matrix, 
+            nothing
         else
             # loadings of this block are given. 
             # Record the column indices of columns that are not all zero
             for c in bcols
-                if !iszero(view(Λ, yinds, xinds[c]))
-                    push!(xinds_given, xinds[c])
+                xc = xinds[c]
+                if !iszero(view(Λ, yinds, xc))
+                    push!(xinds_given, xc)
                 end
             end
         end
@@ -110,7 +128,7 @@ function em_observed_block_loading_wks(on::Symbol, M::DFM, wks::DFMKalmanWks{T})
         yinds,
         # xinds, 
         xinds_estim, xinds_given,
-        mean_estim,
+        mean_estim, orthogonal_factors_ics,
         DFMConstraint(nest, W, q),
         Matrix{T}(undef, nobs, nest),     # YTX
         Matrix{T}(undef, nobs, nest),     # new_Λ
@@ -125,7 +143,7 @@ end
 function em_update_observed_block_loading!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, em_wks::EM_Observed_Block_Loading_Wks) where {T}
     # unpack the inputs
     @unpack yinds, xinds_estim, xinds_given, constraint = em_wks
-    @unpack mean_estim = em_wks
+    @unpack mean_estim, orthogonal_factors_ics = em_wks
     @unpack new_Λ, YTX, XTX, XTX_ge, SX, SY = em_wks
     @unpack x_smooth, Px_smooth = kfd
     @unpack μ, Λ, R = wks
@@ -135,12 +153,9 @@ function em_update_observed_block_loading!(wks::DFMKalmanWks{T}, kfd::Kalman.Abs
 
     μb = view(μ, yinds)
     Λb_e = view(Λ, yinds, xinds_estim)
-    Λb_g = view(Λ, yinds, xinds_given)
     Yb = view(EY, :, yinds)
     Xb_e = transpose(view(x_smooth, xinds_estim, :))
     PXb_ee = view(Px_smooth, xinds_estim, xinds_estim, :)
-    Xb_g = transpose(view(x_smooth, xinds_given, :))
-    PXb_ge = view(Px_smooth, xinds_given, xinds_estim, :)
 
     # prep the system matrix
     mul!(XTX, transpose(Xb_e), Xb_e)
@@ -149,12 +164,18 @@ function em_update_observed_block_loading!(wks::DFMKalmanWks{T}, kfd::Kalman.Abs
     # prep the right-hand-side
     mul!(YTX, transpose(Yb), Xb_e)
 
-    # compute the contributions from factors with given loadings
-    mul!(XTX_ge, transpose(Xb_g), Xb_e)
-    sum!(XTX_ge, PXb_ge, init=false)
+    if length(xinds_given) > 0
+        Λb_g = view(Λ, yinds, xinds_given)
+        Xb_g = transpose(view(x_smooth, xinds_given, :))
+        PXb_ge = view(Px_smooth, xinds_given, xinds_estim, :)
 
-    # subtract known contributions from Y
-    mul!(YTX, Λb_g, XTX_ge, -1.0, 1.0)
+        # compute the contributions from factors with given loadings
+        mul!(XTX_ge, transpose(Xb_g), Xb_e)
+        sum!(XTX_ge, PXb_ge, init=false)
+
+        # subtract known contributions from Y
+        mul!(YTX, Λb_g, XTX_ge, -1.0, 1.0)
+    end
 
     # are we estimating the mean? 
     if mean_estim
@@ -165,9 +186,9 @@ function em_update_observed_block_loading!(wks::DFMKalmanWks{T}, kfd::Kalman.Abs
         BLAS.ger!(-i_NT, SY, SX, YTX)
     else
         # otherwise, subtract from Y
-        # copyto!(SY, μb)
+        copyto!(SY, μb)
         sum!(SX, transpose(Xb_e))
-        BLAS.ger!(-1.0, μb, SX, YTX)
+        BLAS.ger!(-1.0, SY, SX, YTX)
     end
 
     # solve the system (using Cholesky factorization, since matrix is SPD)
@@ -178,7 +199,7 @@ function em_update_observed_block_loading!(wks::DFMKalmanWks{T}, kfd::Kalman.Abs
     _apply_constraint!(new_Λ, constraint, cXTX, view(R, yinds, yinds))
 
     if mean_estim
-        # backward substitution
+        # solve for mean using backward substitution
         copyto!(μb, SY)
         mul!(μb, new_Λ, SX, -i_NT, i_NT)
     end
@@ -197,16 +218,18 @@ end
 
 
 struct EM_Observed_Covar_Wks{T}
+    covar_estim::Bool
     V::Vector{T}
     LP::Matrix{T}
 end
 
 function em_observed_covar_wks(M::DFM, wks::DFMKalmanWks{T}) where {T}
+    covar_estim = any(isnan, wks.R)
     NO = Kalman.kf_length_y(M)
     NS = Kalman.kf_length_x(M)
     LP = Matrix{T}(undef, NO, NS)
     V = Vector{T}(undef, NO)
-    EM_Observed_Covar_Wks{T}(V, LP)
+    EM_Observed_Covar_Wks{T}(covar_estim, V, LP)
 end
 
 function _em_update_observed_covar!(R::AbstractMatrix{T}, EY, EX, PX, μ, Λ, V, LP) where {T}
@@ -274,8 +297,9 @@ function _em_update_observed_covar!(R::Diagonal{T}, EY, EX, PX, μ, Λ, V, LP) w
 end
 
 function em_update_observed_covar!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, em_wks::EM_Observed_Covar_Wks) where {T}
+    @unpack covar_estim, V, LP = em_wks
     @unpack μ, Λ, R = wks
-    @unpack V, LP = em_wks
+    covar_estim || return R
     @unpack x_smooth, Px_smooth = kfd
     EX = transpose(x_smooth)
     PX = Px_smooth
@@ -413,43 +437,37 @@ end
 
 
 
-struct EM_Observed_Wks{T}
-    loadings::Vector{EM_Observed_Block_Loading_Wks{T}}
+struct EM_Observed_Wks{T,LT}
+    loadings::LT
     covars::EM_Observed_Covar_Wks
 end
-function em_observed_wks(M::DFM, wks::DFMKalmanWks{T}) where {T}
+function em_observed_wks(M::DFM, wks::DFMKalmanWks{T}; orthogonal_factors_ics=true) where {T}
     @unpack model, params = M
-    loadings = EM_Observed_Block_Loading_Wks{T}[]
-    for on in keys(model.observed)
-        push!(loadings, em_observed_block_loading_wks(on, M, wks))
-    end
+    loadings = (; (nm => em_observed_block_loading_wks(nm, M, wks; orthogonal_factors_ics) for nm in keys(model.observed))...)
     covars = em_observed_covar_wks(M, wks)
-    return EM_Observed_Wks{T}(loadings, covars)
+    return EM_Observed_Wks{T,typeof(loadings)}(loadings, covars)
 end
 
 
-struct EM_Transition_Wks{T}
-    blocks::Vector{EM_Transition_Block_Wks{T}}
+struct EM_Transition_Wks{T,TBLK}
+    blocks::TBLK
 end
 function em_transition_wks(M::DFM, wks::DFMKalmanWks{T}) where {T}
     @unpack model, params = M
-    blocks = EM_Transition_Block_Wks{T}[]
-    for cn in keys(model.components)
-        push!(blocks, em_transition_block_wks(cn, M, wks))
-    end
-    return EM_Transition_Wks{T}(blocks)
+    blocks = (; (nm => em_transition_block_wks(nm, M, wks) for nm in keys(model.components))...)
+    return EM_Transition_Wks{T,typeof(blocks)}(blocks)
 end
 
 
-struct EM_Wks{T}
-    observed::EM_Observed_Wks{T}
-    transition::EM_Transition_Wks{T}
+struct EM_Wks{T,TOBS,TTRS}
+    observed::TOBS
+    transition::TTRS
 end
 
-function em_workspace(M::DFM, wks::DFMKalmanWks{T}) where {T}
-    obs = em_observed_wks(M, wks)
+function em_workspace(M::DFM, wks::DFMKalmanWks{T}; orthogonal_factors_ics=true) where {T}
+    obs = em_observed_wks(M, wks; orthogonal_factors_ics)
     trans = em_transition_wks(M, wks)
-    return EM_Wks{T}(obs, trans)
+    return EM_Wks{T,typeof(obs),typeof(trans)}(obs, trans)
 end
 
 
@@ -486,12 +504,51 @@ end
 ##################################################################################
 
 
+function _scale_model!(wks::DFMKalmanWks{T}, Mx, Wx, model::DFMModel, em_wks::EM_Wks) where {T}
+    # IDEA: factors (CommonComponents) have loadings, so we scale the loadings
+    #       obs noise and idiosyncratic components figure in with fixed loadings, 
+    #       so we scale thier noises covariances instead.
+    # scale the loadings of factors
+    μ, Λ, R, Q = wks.μ, wks.Λ, wks.R, wks.Q
+    for (obs_wks, oblk) in zip(em_wks.observed.loadings, values(model.observed))
+        @unpack yinds, xinds_estim, inds_cb, constraint = obs_wks
+        D = Diagonal(Wx[yinds])
+        for (ind, (bnm, blk)) in zip(inds_cb, oblk.components)
+            if blk isa IdiosyncraticComponents
+                xinds_1 = em_wks.transition.blocks[bnm].xinds_1
+                ldiv!(D, view(Q, xinds_1, xinds_1))
+            else
+                ldiv!(D, view(Λ, yinds, xinds_estim[ind]))
+            end
+        end
+        ldiv!(D, view(R, yinds, yinds))
+        @unpack W, q = constraint
+        nnz(q) == 0 && continue
+        oblk_Λ = vec(view(Λ, yinds, xinds_estim))
+        rows = rowvals(W)
+        vals = nonzeros(W)
+        fill!(q.nzval, zero(T))
+        for col = 1:size(W, 2)
+            for i in nzrange(W, col)
+                row = rows[i]
+                row in q.nzind || continue
+                val = vals[i]
+                q[row] += val * oblk_Λ[col]
+            end
+        end
+    end
+    fill!(μ, zero(T))
+    return wks
+end
+
 
 function EMestimate(M::DFM, Y::AbstractMatrix,
     wks::DFMKalmanWks{T}=DFMKalmanWks(M),
     x0::AbstractVector=zeros(Kalman.kf_length_x(M)),
     Px0::AbstractMatrix=Matrix{T}(1e-10 * I(Kalman.kf_length_x(M))),
-    em_wks::EM_Wks{T}=em_workspace(M, wks)
+    em_wks::EM_Wks{T}=em_workspace(M, wks),
+    kfd=Kalman.KFDataSmoother(size(Y, 1), M, Y, wks),
+    kf=Kalman.KFilter(kfd)
     ;
     initial_guess::Union{Nothing,AbstractVector}=nothing,
     maxiter=100, rftol=1e-4, axtol=1e-4,
@@ -505,27 +562,31 @@ function EMestimate(M::DFM, Y::AbstractMatrix,
         return
     end
 
-
-    kfd = Kalman.KFDataSmoother(size(Y, 1), M, Y, wks)
-    kf = Kalman.KFilter(kfd)
-
     old_params = copy(params)
+
+    # scale data
+    Mx = mean(Y, dims=1)
+    Wx = std(Y, dims=1)
+    Y .= (Y .- Mx) ./ Wx
 
     EY = copy(Y)
 
-    if any(isnan, EY)
+    if any(isnan, Y)
         error("I can't do this!")
         # _impute_using_splines(EY, Y)
     end
 
     if isnothing(initial_guess)
-        EMinit!(wks, kfd, Y, M, em_wks)
-        _update_params!(params, model, wks)
+        _scale_model!(wks, Mx, Wx, model, em_wks)
+        EMinit!(wks, kfd, EY, M, em_wks)
     else
-        copyto!(params, initial_guess)
+        _update_wks!(wks, model, initial_guess)
+        _scale_model!(wks, Mx, Wx, model, em_wks)
+        if any(isnan, initial_guess)
+            EMinit!(wks, kfd, EY, M, em_wks)
+        end
     end
-    _update_wks!(wks, model, params)
-
+    _update_params!(params, model, wks)
 
     loglik = -Inf
     for iter = 1:maxiter
@@ -556,6 +617,12 @@ function EMestimate(M::DFM, Y::AbstractMatrix,
             break
         end
     end
+
+    _scale_model!(wks, Mx, map(inv, Wx), model, em_wks)
+    _update_params!(params, model, wks)
+
+    Y .= Y .* Wx .+ Mx
+
     return
 end
 
