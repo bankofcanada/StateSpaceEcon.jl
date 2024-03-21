@@ -20,6 +20,8 @@ using Distributions
 
 # misc 
 using UnPack
+using Interpolations
+using NaNStatistics
 
 # github.com/bankofcanada
 using TimeSeriesEcon
