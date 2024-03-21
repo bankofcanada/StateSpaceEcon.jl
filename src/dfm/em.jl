@@ -717,8 +717,10 @@ function _scale_model!(wks::DFMKalmanWks{T}, Mx, Wx, model::DFMModel, em_wks::EM
         D = Diagonal(Wx[yinds])
         for (ind, (bnm, blk)) in zip(inds_cb, oblk.components)
             if blk isa IdiosyncraticComponents
+                tmp = oblk.comp2vars[bnm]
+                byinds = [!isa(tmp[x], DFMModels._NoCompRef) for x in observed(oblk)]
                 xinds_1 = em_wks.transition.blocks[bnm].xinds_1
-                ldiv!(D, view(Q, xinds_1, xinds_1))
+                ldiv!(Diagonal(Wx[yinds[byinds]]), view(Q, xinds_1, xinds_1))
             else
                 ldiv!(D, view(Λ, yinds, xinds_estim[ind]))
             end
@@ -744,7 +746,7 @@ function _scale_model!(wks::DFMKalmanWks{T}, Mx, Wx, model::DFMModel, em_wks::EM
 end
 
 
-function EMestimate(M::DFM, Y::AbstractMatrix,
+function EMestimate!(M::DFM, Y::AbstractMatrix,
     wks::DFMKalmanWks{T}=DFMKalmanWks(M),
     x0::AbstractVector=zeros(Kalman.kf_length_x(M)),
     Px0::AbstractMatrix=Matrix{T}(1e-10 * I(Kalman.kf_length_x(M))),
@@ -765,6 +767,7 @@ function EMestimate(M::DFM, Y::AbstractMatrix,
         return
     end
 
+    org_params = copy(params)
     old_params = copy(params)
 
     # scale data
@@ -810,7 +813,7 @@ function EMestimate(M::DFM, Y::AbstractMatrix,
         # which possibly contains NaN values where data is missing
         Kalman.dk_filter!(kf, Y, wks, x0, Px0, false, anymissing)
         Kalman.dk_smoother!(kf, Y, wks)
-        
+
         #############
         # M-step
 
@@ -865,6 +868,17 @@ function EMestimate(M::DFM, Y::AbstractMatrix,
 
     _scale_model!(wks, Mx, map(inv, Wx), model, em_wks)
     _update_params!(params, model, wks)
+
+    # bring back the original means, if they were given
+    for (em_w, onm) in zip(em_wks.observed.loadings, keys(model.observed))
+        org_means = getproperty(org_params, onm).mean
+        ret_means = getproperty(params, onm).mean
+        for (i, v) in enumerate(org_means)
+            ret_means[i] = isnan(v) ? Mx[em_w.yinds[i]] : v
+        end
+    end
+
+    _update_wks!(wks, model, params)
 
     Y .= Y .* Wx .+ Mx
 
