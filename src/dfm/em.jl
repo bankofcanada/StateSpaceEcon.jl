@@ -5,24 +5,73 @@
 # All rights reserved.
 ##################################################################################
 
-function em_impute_observed!(EY::AbstractMatrix, kfd::Kalman.AbstractKFData, Y::AbstractMatrix)
-    EY === Y && return
-    @assert EY[.!isnan.(Y)] == Y[.!isnan.(Y)]
+"""
+    em_impute_kalman!(EY, Y, kfd)
+
+Fill in any missing values with their expected values according to the 
+Kalman smoother.
+
+* `Y` is the original data with `NaN` values where data is missing.
+* `kfd` is the KalmanFilterData instance containing the output from Kalman
+  filter and Kalman smoother.
+* `EY` is modified in place. Where `Y` contains a `NaN`, the corresponding 
+  entries in `EY` are imputed. The rest of `EY` is not modified.
+
+NOTE: It is assumed that `EY` equals `Y` everywhere where `Y` is not `NaN`, 
+however, this is neither checked nor enforced.
+"""
+function em_impute_kalman!(EY::AbstractMatrix{T}, Y::AbstractMatrix{T}, kfd::Kalman.AbstractKFData) where {T<:AbstractFloat}
+    EY === Y && return EY
+    # @assert EY[.!isnan.(Y)] == Y[.!isnan.(Y)]
     YS = kfd.y_smooth  # this one is transposed (NO × NT)
     for i = axes(Y, 1)
         for j = axes(Y, 2)
             @inbounds yij = Y[i, j]
-            yij == yij && continue  # EY is a copy of Y. The non-NaN values never change
-            @inbounds EY[i, j] = YS[j, i] # update NaN value
+            isnan(yij) || continue  # EY is a copy of Y. The non-NaN values never change
+            EY[i, j] = YS[j, i] # update NaN value
         end
     end
     return EY
 end
 
+"""
+    em_impute_interp!(EY, Y, IT)
 
+Fill in any missing values using interpolation.
+
+* `Y` is the original data with `NaN` values where data is missing.
+* `IT` is an instance of `Interpolations.InterpolationType`. Default is
+  `AkimaMonotonicInterpolation`. See documentation of `Interpolations.jl`
+  package for details and other interpolation choices.
+* `EY` is modified in place. Where `Y` contains a `NaN`, the corresponding 
+  entries in `EY` are imputed. The rest of `EY` is not modified.
+
+NOTE: It is assumed that `EY` equals `Y` everywhere where `Y` is not `NaN`, 
+however, this is neither checked nor enforced.
+"""
+function em_impute_interpolation!(EY::AbstractMatrix{T}, Y::AbstractMatrix{T},
+    IT::Interpolations.InterpolationType=Interpolations.AkimaMonotonicInterpolation()
+) where {T<:AbstractFloat}
+    EY === Y && return EY
+    rows, cols = axes(EY)
+    valid_number = similar(Y, Bool, rows) # `true` where Y is not NaN
+    for j in cols
+        for i in rows
+            @inbounds valid_number[i] = !isnan(Y[i, j])
+        end
+        !all(valid_number) || continue
+        interp = interpolate(view(rows, valid_number), view(Y, valid_number, j), IT)
+        for i in rows
+            if @inbounds !valid_number[i]
+                val = interp(i)
+                @inbounds EY[i, j] = val
+            end
+        end
+    end
+    return EY
+end
 
 ##################################################################################
-
 
 
 struct EM_Observed_Block_Loading_Wks{T,YI<:AbstractVector{Int},XIE<:AbstractVector{Int},XIG<:AbstractVector{Int}}
@@ -140,7 +189,124 @@ function em_observed_block_loading_wks(on::Symbol, M::DFM, wks::DFMKalmanWks{T};
     )
 end
 
-function em_update_observed_block_loading!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, em_wks::EM_Observed_Block_Loading_Wks) where {T}
+@generated function em_update_observed_block_loading!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, em_wks::EM_Observed_Block_Loading_Wks, ::Val{anymissing}) where {anymissing}
+    if anymissing
+        return quote
+            have_nans = any(isnan, view(EY, :, em_wks.yinds))
+            _em_update_observed_block_loading!(Val(have_nans), wks, kfd, EY, em_wks)
+        end
+    else
+        return quote
+            _em_update_observed_block_loading!(Val(false), wks, kfd, EY, em_wks)
+        end
+    end
+end
+
+# methods for missing values (one observed at a time, no Kronecker!)
+function _em_update_observed_block_loading!(::Val{true}, wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, em_wks::EM_Observed_Block_Loading_Wks) where {T}
+    # unpack the inputs
+    @unpack yinds, xinds_estim, xinds_given, constraint = em_wks
+    @unpack mean_estim, orthogonal_factors_ics = em_wks
+    @unpack new_Λ, YTX, XTX, XTX_ge, SX, SY = em_wks
+    @unpack x_smooth, Px_smooth = kfd
+    @unpack μ, Λ, R = wks
+
+    NT = size(EY, 1)
+    NY = length(yinds)
+
+    μb = view(μ, yinds)
+    Λb_e = view(Λ, yinds, xinds_estim)
+    Λb_g = view(Λ, yinds, xinds_given)
+
+    mask = falses(NT)
+    for i in 1:NY
+        yi = yinds[i]
+        μi = μ[yi]
+        map!(!isnan, mask, view(EY, :, yi))
+        Yi = view(EY, mask, yi)
+        Xi = transpose(view(x_smooth, xinds_estim, mask))
+        PXi = view(Px_smooth, xinds_estim, xinds_estim, mask)
+
+        i_NT = one(T) / sum(mask)
+
+        YiTX = view(YTX, i:i, :)
+
+        # prep the system matrix
+        mul!(XTX, transpose(Xi), Xi)
+        sum!(XTX, PXi, init=false)
+        # prep the right-hand-side
+        mul!(YiTX, transpose(Yi), Xi)
+
+        # are there any components whose loadings are known?
+        if length(xinds_given) > 0
+            # if there are, subtract their contributions from the right hand side
+            Xi_g = transpose(view(x_smooth, xinds_given, mask))
+            PXi_g = view(Px_smooth, xinds_given, xinds_estim, mask)
+
+            # compute the contributions from factors with given loadings
+            mul!(XTX_ge, transpose(Xi_g), Xi)
+            sum!(XTX_ge, PXi_g, init=false)
+
+            # subtract known contributions from Y
+            mul!(YiTX, Λb_g, XTX_ge, -1.0, 1.0)
+        end
+
+        # are we estimating the mean? 
+        if mean_estim
+            # if we are, use its Schur complement to eliminate it from the system
+            sum!(SX, transpose(Xi))
+            BLAS.ger!(-i_NT, SX, SX, XTX)
+            SY[i] = sum(Yi)
+            YiTX[:] -= i_NT * SY[i] * SX
+        else
+            # otherwise, subtract known mean from Y
+            SY[i] = μi
+            if !iszero(μi)
+                sum!(SX, transpose(Xi))
+                YiTX[:] -= μi * SX
+            end
+        end
+
+        # solve the system (using Cholesky factorization, since matrix is SPD)
+        new_Λ[i, :] = YiTX
+        cXTX = cholesky!(Symmetric(XTX))  # overwrites XTX
+        rdiv!(view(new_Λ, i:i, :), cXTX)
+    end
+
+    # apply constraints, if any
+    if !isnothing(constraint)
+        Xi = transpose(view(x_smooth, xinds_estim, mask))
+        PXi = view(Px_smooth, xinds_estim, xinds_estim, mask)
+        mul!(XTX, transpose(Xi), Xi)
+        sum!(XTX, PXi, init=false)
+        if mean_estim
+            # if we are, use its Schur complement to eliminate it from the system
+            sum!(SX, transpose(Xi))
+            BLAS.ger!(-one(T) / NT, SX, SX, XTX)
+        end
+        cXTX = cholesky!(Symmetric(XTX))
+        _apply_constraint!(new_Λ, constraint, cXTX, view(R, yinds, yinds))
+    end
+
+    if mean_estim
+        # solve for mean using backward substitution
+        for i = 1:NY
+            map!(!isnan, mask, view(EY, :, yi))
+            Xi = transpose(view(x_smooth, xinds_estim, mask))
+            i_NT = one(T) / sum(mask)
+            sum!(SX, transpose(Xi))
+            μb[i] = (SY[i] - new_Λ * SX) * i_NT
+        end
+    end
+
+    copyto!(Λb_e, new_Λ)
+
+    return Λb_e
+
+end
+
+# methods when there are no missing values (faster linalg)
+function _em_update_observed_block_loading!(::Val{false}, wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, em_wks::EM_Observed_Block_Loading_Wks) where {T}
     # unpack the inputs
     @unpack yinds, xinds_estim, xinds_given, constraint = em_wks
     @unpack mean_estim, orthogonal_factors_ics = em_wks
@@ -232,7 +398,41 @@ function em_observed_covar_wks(M::DFM, wks::DFMKalmanWks{T}) where {T}
     EM_Observed_Covar_Wks{T}(covar_estim, V, LP)
 end
 
-function _em_update_observed_covar!(R::AbstractMatrix{T}, EY, EX, PX, μ, Λ, V, LP) where {T}
+function _em_update_observed_covar!(R::AbstractMatrix{T}, EY, EX, PX, μ, Λ, V, LP, anymissing::Val{true}) where {T}
+    NT, NO = size(EY)
+    NS = size(EX, 2)
+
+    old_R = copy(R)
+    fill!(R, zero(T))
+    R1 = zeros(size(R))
+    for n = 1:NT
+        Yn = view(EY, n, :)
+        all(isnan, Yn) && continue
+        mul!(LP, Λ, @view(PX[:, :, n]))
+        mul!(R1, LP, transpose(Λ))
+        V .= Yn
+        V .-= μ
+        mul!(V, Λ, view(EX, n, :), -1.0, 1.0)
+        BLAS.ger!(1.0, V, V, R1)
+        for i = 1:NO
+            for j = i:NO
+                R[i, j] += isnan(R1[i, j]) ? old_R[i, j] : R1[i, j]
+                R isa Diagonal && break
+            end
+        end
+    end
+    ldiv!(NT, R)
+    if !(R isa Diagonal)
+        for i = 1:NO
+            for j = 1:i-1
+                R[i, j] = R[j, i]
+            end
+        end
+    end
+    return R
+end
+
+function _em_update_observed_covar!(R::AbstractMatrix{T}, EY, EX, PX, μ, Λ, V, LP, anymissing::Val{false}) where {T}
     # new_R = 1/NT * (EY - 1*μᵀ - EX*Λᵀ)ᵀ(EY - 1*μᵀ - EX*Λᵀ)
     #    = 1/NT * 
 
@@ -262,7 +462,7 @@ function _em_update_observed_covar!(R::AbstractMatrix{T}, EY, EX, PX, μ, Λ, V,
     return R
 end
 
-function _em_update_observed_covar!(R::Diagonal{T}, EY, EX, PX, μ, Λ, V, LP) where {T}
+function _em_update_observed_covar!(R::Diagonal{T}, EY, EX, PX, μ, Λ, V, LP, anymissing::Val{false}) where {T}
     # new_R = 1/NT * (EY - 1*μᵀ - EX*Λᵀ)ᵀ(EY - 1*μᵀ - EX*Λᵀ)
     #    = 1/NT * 
 
@@ -296,14 +496,14 @@ function _em_update_observed_covar!(R::Diagonal{T}, EY, EX, PX, μ, Λ, V, LP) w
     return R
 end
 
-function em_update_observed_covar!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, em_wks::EM_Observed_Covar_Wks) where {T}
+function em_update_observed_covar!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, em_wks::EM_Observed_Covar_Wks, anymissing::Val) where {T}
     @unpack covar_estim, V, LP = em_wks
     @unpack μ, Λ, R = wks
     covar_estim || return R
     @unpack x_smooth, Px_smooth = kfd
     EX = transpose(x_smooth)
     PX = Px_smooth
-    return _em_update_observed_covar!(R, EY, EX, PX, μ, Λ, V, LP)
+    return _em_update_observed_covar!(R, EY, EX, PX, μ, Λ, V, LP, anymissing)
 end
 
 
@@ -477,12 +677,14 @@ end
 
 
 function EMstep!(wks::DFMKalmanWks{T}, x0::AbstractVector{T}, Px0::AbstractMatrix{T},
-    kfd::Kalman.AbstractKFData, EY::AbstractMatrix{T}, M::DFM, em_wks::EM_Wks{T}) where {T}
+    kfd::Kalman.AbstractKFData, EY::AbstractMatrix{T}, M::DFM, em_wks::EM_Wks{T},
+    anymissing::Bool # =any(isnan, EY)
+) where {T}
     @unpack observed, transition = em_wks
     for em_w in observed.loadings
-        em_update_observed_block_loading!(wks, kfd, EY, em_w)
+        em_update_observed_block_loading!(wks, kfd, EY, em_w, Val(anymissing))
     end
-    em_update_observed_covar!(wks, kfd, EY, observed.covars)
+    em_update_observed_covar!(wks, kfd, EY, observed.covars, Val(anymissing))
     for em_w in transition.blocks
         em_update_transition_block!(wks, kfd, EY, em_w)
     end
@@ -553,6 +755,7 @@ function EMestimate(M::DFM, Y::AbstractMatrix,
     initial_guess::Union{Nothing,AbstractVector}=nothing,
     maxiter=100, rftol=1e-4, axtol=1e-4,
     verbose=false,
+    impute_missing::Bool=false,  # true - use Kalman smoother to impute missing data, false - treat missing data as in Banbura & Modugno 2014
     anymissing::Bool=any(isnan, Y)
 ) where {T}
     @unpack model, params = M
@@ -565,15 +768,17 @@ function EMestimate(M::DFM, Y::AbstractMatrix,
     old_params = copy(params)
 
     # scale data
-    Mx = mean(Y, dims=1)
-    Wx = std(Y, dims=1)
+    Mx = nanmean(Y, dims=1)
+    Wx = nanstd(Y, dims=1)
     Y .= (Y .- Mx) ./ Wx
 
-    EY = copy(Y)
 
-    if any(isnan, Y)
-        error("I can't do this!")
-        # _impute_using_splines(EY, Y)
+    if anymissing
+        # make a copy of Y and impute using cubic splines
+        # these imputed values are only used in EMinit! immediately below.
+        EY = em_impute_interpolation!(copy(Y), Y, FritschCarlsonMonotonicInterpolation())
+    else
+        EY = Y # no copy, just reference
     end
 
     if isnothing(initial_guess)
@@ -588,24 +793,50 @@ function EMestimate(M::DFM, Y::AbstractMatrix,
     end
     _update_params!(params, model, wks)
 
+    if anymissing && !impute_missing
+        copyto!(EY, Y)
+    end
+
     loglik = -Inf
+    loglik_best = -Inf
+    iter_best = 0
+    params_best = copy(params)
     for iter = 1:maxiter
 
+        ##############
+        # E-step
+
+        # run the Kalman filter and smoother using the original data 
+        # which possibly contains NaN values where data is missing
         Kalman.dk_filter!(kf, Y, wks, x0, Px0, false, anymissing)
         Kalman.dk_smoother!(kf, Y, wks)
-        em_impute_observed!(EY, kfd, Y)
-        EMstep!(wks, x0, Px0, kfd, EY, M, em_wks)
+        
+        #############
+        # M-step
 
+        if anymissing && impute_missing
+            # impute missing values in EY using the smoother output
+            em_impute_kalman!(EY, Y, kfd)
+        end
+
+        # update model matrices (wks) by maximizing the expected
+        # likelihood
+        EMstep!(wks, x0, Px0, kfd, EY, M, em_wks, anymissing)
+
+        #############
+        # extract new parameters from wks into params vector
         copyto!(old_params, params)
         _update_params!(params, model, wks)
         _update_wks!(wks, model, params)
 
+        #############
+        # check for convergence and print progress info
         loglik_new = sum(kfd.loglik)
-        dx = maximum(abs, params - old_params)
+        dx = mean(abs2, (n - o for (n, o) in zip(params, old_params)))
         df = 2 * abs(loglik - loglik_new) / (abs(loglik) + abs(loglik_new) + eps())
 
-        if verbose == true && mod(iter, 10) == 0
-            sl = @sprintf "%.6g" loglik
+        if verbose == true && mod(iter, 1) == 0
+            sl = @sprintf "%.6g" loglik_new
             sx = @sprintf "%.6g" dx
             sf = @sprintf "%.6g" df
             @info "EM iteration $(lpad(iter, 5)): loglik=$sl, df=$sf, dx=$sx"
@@ -614,6 +845,20 @@ function EMestimate(M::DFM, Y::AbstractMatrix,
         loglik = loglik_new
 
         if df < rftol || dx < axtol
+            break
+        end
+
+        if loglik_best < loglik
+            loglik_best = loglik
+            iter_best = iter
+            params_best[:] = params
+        elseif iter_best + 5 < iter
+            # loglik has not improved for 5 iterations.
+            if verbose
+                @warn "Loglikelihood has not improved for more than 5 interations. Best parameters found at iteration $iter_best"
+            end
+            params[:] = params_best
+            _update_wks!(wks, model, params)
             break
         end
     end
