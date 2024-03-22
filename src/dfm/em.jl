@@ -50,22 +50,46 @@ NOTE: It is assumed that `EY` equals `Y` everywhere where `Y` is not `NaN`,
 however, this is neither checked nor enforced.
 """
 function em_impute_interpolation!(EY::AbstractMatrix{T}, Y::AbstractMatrix{T},
-    IT::Interpolations.InterpolationType=Interpolations.AkimaMonotonicInterpolation()
+    IT::Interpolations.InterpolationType=Interpolations.FritschCarlsonMonotonicInterpolation(),
+    k::Int=3
 ) where {T<:AbstractFloat}
     EY === Y && return EY
     rows, cols = axes(EY)
     valid_number = similar(Y, Bool, rows) # `true` where Y is not NaN
+    tmp = zeros(T, rows)
     for j in cols
+        tmp .= Y[:, j]
+        EYj = view(EY, :, j)
         for i in rows
-            @inbounds valid_number[i] = !isnan(Y[i, j])
+            @inbounds valid_number[i] = !isnan(tmp[i])
         end
-        !all(valid_number) || continue
+        all(valid_number) && continue
+        # use cubic interpolation between the first and last non-NaN
+        i1 = findfirst(valid_number)
+        i2 = findlast(valid_number)
         interp = interpolate(view(rows, valid_number), view(Y, valid_number, j), IT)
-        for i in rows
+        for i in i1:i2
             if @inbounds !valid_number[i]
                 val = interp(i)
-                @inbounds EY[i, j] = val
+                @inbounds EYj[i] = tmp[i] = val
             end
+        end
+        # use centered 2k+1 moving average for leading and trailing NaNs
+        # where NaNs remain, use median to compute the moving average
+        ym = nanmedian(tmp)
+        for i = first(rows):i1-1
+            tmp[i] = ym
+        end
+        for i = i2+1:last(rows)
+            tmp[i] = ym
+        end
+        for i = Iterators.flatten((first(rows):i1-1, i2+1:last(rows)))
+            i1 = max(first(rows), i - k)
+            a1 = max(0, k - i + 1)
+            i2 = min(last(rows), i + k)
+            a2 = max(0, i + k - last(rows))
+            val = (sum(i -> tmp[i], i1:i2) + a1 * tmp[begin] + a2 * tmp[end]) / (2k + 1)
+            @inbounds EYj[i] = val
         end
     end
     return EY
@@ -291,11 +315,12 @@ function _em_update_observed_block_loading!(::Val{true}, wks::DFMKalmanWks{T}, k
     if mean_estim
         # solve for mean using backward substitution
         for i = 1:NY
+            yi = yinds[i]
             map!(!isnan, mask, view(EY, :, yi))
             Xi = transpose(view(x_smooth, xinds_estim, mask))
             i_NT = one(T) / sum(mask)
             sum!(SX, transpose(Xi))
-            μb[i] = (SY[i] - new_Λ * SX) * i_NT
+            μb[i] = (SY[i] - transpose(view(new_Λ,i,:)) * SX) * i_NT
         end
     end
 
