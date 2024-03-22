@@ -320,7 +320,7 @@ function _em_update_observed_block_loading!(::Val{true}, wks::DFMKalmanWks{T}, k
             Xi = transpose(view(x_smooth, xinds_estim, mask))
             i_NT = one(T) / sum(mask)
             sum!(SX, transpose(Xi))
-            μb[i] = (SY[i] - transpose(view(new_Λ,i,:)) * SX) * i_NT
+            μb[i] = (SY[i] - dot(view(new_Λ, i, :), SX)) * i_NT
         end
     end
 
@@ -797,7 +797,11 @@ function EMestimate!(M::DFM, Y::AbstractMatrix,
 
     # scale data
     Mx = nanmean(Y, dims=1)
-    Wx = nanstd(Y, dims=1)
+    for i = eachindex(Mx)
+        v = wks.μ[i]
+        isnan(v) || (Mx[i] = v)
+    end
+    Wx = nanstd(Y, dims=1, mean=Mx)
     Y .= (Y .- Mx) ./ Wx
 
 
@@ -899,7 +903,7 @@ function EMestimate!(M::DFM, Y::AbstractMatrix,
         org_means = getproperty(org_params, onm).mean
         ret_means = getproperty(params, onm).mean
         for (i, v) in enumerate(org_means)
-            ret_means[i] = isnan(v) ? Mx[em_w.yinds[i]] : v
+            ret_means[i] += isnan(v) ? Mx[em_w.yinds[i]] : v
         end
     end
 
