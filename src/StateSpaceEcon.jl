@@ -17,6 +17,7 @@ using TimeSeriesEcon
 using ModelBaseEcon
 using ModelBaseEcon.OrderedCollections
 
+include("Kalman.jl")
 include("misc.jl")
 include("SteadyStateSolver.jl")
 include("Plans.jl")
@@ -39,5 +40,6 @@ function getsolvermodule(solvername::Symbol)
 end
 
 include("simulate.jl")
+include("DFMSolver.jl")
 
 end # module
