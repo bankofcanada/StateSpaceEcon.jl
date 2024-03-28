@@ -29,6 +29,19 @@
 #   aₜ₊₁ = E(αₜ₊₁ | Yₜ)
 #   Pₜ₊₁ = Var(αₜ₊₁ | Yₜ)
 
+function _symm!(A::AbstractMatrix)
+    m, n = size(A)
+    for i = 1:m
+        for j = i:n
+            v = 0.5 * (A[i,j] + A[j,i])
+            A[i,j] = v
+            A[j,i] = v
+        end
+    end
+    return A
+end
+
+
 function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
     fwdstate::Bool=true,
     anymissing::Bool=any(isnan, Y)
@@ -68,10 +81,11 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
     Pₜ[:, :] = P₁
 
     if !fwdstate
-        BLAS.gemv!('N', 1.0, T, a₁, 0.0, aₜ)
-        BLAS.gemm!('N', 'N', 1.0, T, Pₜ, 0.0, TP)
-        BLAS.gemm!('N', 'T', 1.0, TP, T, 0.0, Pₜ)
-        BLAS.axpy!(1.0, _Q, Pₜ)
+        mul!(aₜ, T, a₁)
+        mul!(TP, T, Pₜ)
+        mul!(Pₜ, TP, transpose(T))
+        Pₜ .+= _Q
+        _symm!(Pₜ)
     end
 
     tstart, tstop = extrema(kf.range)
@@ -79,13 +93,13 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
     t = tstart
     while true
 
-        # y_pred[:] = Z * aₜ
-        BLAS.gemv!('N', 1.0, Z, aₜ, 0.0, y_pred)
-        have_mu && BLAS.axpy!(1.0, mu, y_pred)
+        # y_pred[:] = μ + Z * aₜ
+        mul!(y_pred, Z, aₜ)
+        have_mu && (y_pred .+= mu)
 
         # vₜ[:] = Y[t, :] - y_pred
         copyto!(vₜ, Y[t, :])
-        BLAS.axpy!(-1.0, y_pred, vₜ)
+        vₜ .-= y_pred
         if anymissing
             map!(!isnan, have_y, vₜ)
             all_y = all(have_y)
@@ -95,16 +109,11 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
             vₜ .*= have_y
         end
 
-        # Either:  PZᵀ[:, :] = Pₜ * transpose(Z)
-        # BLAS.gemm!('N', 'T', 1.0, Pₜ, Z, 0.0, PZᵀ)
-        # Or: ZP[:, :] = Z * Pₜ
-        # BLAS.symm!('R', 'U', 1.0, Pₜ, Z, 0.0, ZP)
-        BLAS.gemm!('N', 'N', 1.0, Z, Pₜ, 0.0, ZP)
-
-        # Fₜ[:, :] = Z * PZᵀ + H
-        # BLAS.gemm!('N', 'N', 1.0, Z, PZᵀ, 1.0, Fₜ)
-        BLAS.gemm!('N', 'T', 1.0, ZP, Z, 0.0, Fₜ)
-        BLAS.axpy!(1.0, H, Fₜ)
+        # Fₜ[:, :] = Z P Zᵀ + H
+        mul!(ZP, Z, Pₜ)
+        mul!(Fₜ, ZP, transpose(Z))
+        Fₜ .+= H
+        _symm!(Fₜ)
 
         @kfd_set! kfd t y_pred Py_pred error_y
 
@@ -128,6 +137,7 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
                 TMP = view(ZP, 1:ny, :)
                 mul!(F⁺, mul!(TMP, Z⁺, Pₜ), transpose(Z⁺))
                 F⁺[:,:] += view(H, have_y, have_y)
+                _symm!(F⁺)
                 cFₜ = cholesky!(Symmetric(F⁺))
                 TMP[:,:] = Z⁺
                 ldiv!(cFₜ, TMP)
@@ -145,15 +155,13 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
         end
 
         # auₜ[:] = aₜ + Kₜ * vₜ
-        BLAS.gemv!('N', 1.0, Kₜ, vₜ, 0.0, auₜ)
-        BLAS.axpy!(1.0, aₜ, auₜ)
+        mul!(auₜ, Kₜ, vₜ)
+        auₜ .+= aₜ
 
         # Puₜ[:, :] = Pₜ - Kₜ * Z * Pₜ = (I-KₜZ)Pₜ
-        # BLAS.gemm!('N', 'T', -1.0, Kₜ, PZᵀ, 1.0, Puₜ)
-        # BLAS.gemm!('N', 'N', -1.0, Kₜ, ZP, 0.0, Puₜ)
-        # BLAS.axpy!(1.0, Pₜ, Puₜ)
         mul!(copyto!(TP, I), Kₜ, Z, -1.0, 1.0)  # TP =  I - KₜZ
         mul!(Puₜ, TP, Pₜ) # Puₜ = TP * Pₜ
+        _symm!(Puₜ)
 
         @kfd_set! kfd t x_pred Px_pred K x Px
 
@@ -170,13 +178,13 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
 
         # aₜ₊₁ .= T * (aₜ + Kₜ * vₜ)
         # aₜ₊₁[:] = T * auₜ
-        BLAS.gemv!('N', 1.0, T, auₜ, 0.0, aₜ₊₁)
+        mul!(aₜ₊₁, T, auₜ)
 
         # Pₜ₊₁ .= T * Pₜ * transpose(T) * transpose(I - Kₜ * Z) + _Q
         # Pₜ₊₁[:, :] = T * Puₜ * transpose(T) + _Q
-        copyto!(Pₜ₊₁, _Q)
-        BLAS.gemm!('N', 'N', 1.0, T, Puₜ, 0.0, TP)
-        BLAS.gemm!('N', 'T', 1.0, TP, T, 1.0, Pₜ₊₁)
+        mul!(TP, T, Puₜ)
+        mul!(Pₜ₊₁, TP, transpose(T))
+        Pₜ₊₁ .+= _Q
 
     end
 
