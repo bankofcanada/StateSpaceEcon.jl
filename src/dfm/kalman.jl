@@ -163,6 +163,6 @@ Kalman.kf_length_y(M::DFM, args...) = nobserved(M.model)
 Kalman.dk_filter!(kf::Kalman.KFilter, Y, wks::DFMKalmanWks, args...) =
     Kalman.dk_filter!(kf, Y, wks.μ, wks.Λ, wks.A, wks.R, wks.Q, I, args...)
 
-Kalman.dk_smoother!(kf::Kalman.KFilter, Y, wks::DFMKalmanWks) =
-    Kalman.dk_smoother!(kf, Y, wks.μ, wks.Λ, wks.A, wks.R, wks.Q, I)
+Kalman.dk_smoother!(kf::Kalman.KFilter, Y, wks::DFMKalmanWks, args...) =
+    Kalman.dk_smoother!(kf, Y, wks.μ, wks.Λ, wks.A, wks.R, wks.Q, I, args...)
 

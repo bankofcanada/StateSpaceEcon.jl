@@ -103,7 +103,8 @@ const KFDataInfo = (;
     J=_KFValueInfo((:NS, :NS), "Kalman smoother matrix"),
     loglik=_KFValueInfo((), "log likelihood based on Kalman filter "),
     res2=_KFValueInfo((), "sum of squared observation residuals (error_y' * error_y)"),
-    Ly_pred=_KFValueInfo((:NO, :NO), "Cholesky lower triangular factor of Py_pred")
+    Ly_pred=_KFValueInfo((:NO, :NO), "Cholesky lower triangular factor of Py_pred"),
+    aux_ZᵀPy⁻¹=_KFValueInfo((:NS, :NO), "Auxiliary matrix Zᵀ⋅Py⁻¹")
 )
 
 _offset_expr(::Integer) = :t
@@ -265,7 +266,8 @@ end
     Px_pred
     y_pred
     Py_pred
-    Ly_pred
+    # Ly_pred
+    aux_ZᵀPy⁻¹
     K
     error_y
     x_smooth
@@ -281,7 +283,8 @@ end
     Px_pred
     y_pred
     Py_pred
-    Ly_pred
+    # Ly_pred
+    aux_ZᵀPy⁻¹
     Pxy_pred
     x
     Px
