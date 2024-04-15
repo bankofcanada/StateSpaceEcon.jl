@@ -121,7 +121,7 @@ Solve the simulation problem using the Levenberg–Marquardt method.
   * `verbose` - whether or not to print progress information.
 """
 function sim_lm!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
-    maxiter::Int64, tol::Float64, verbose::Bool, linesearch::Bool=false
+    maxiter::Int64, tol::Float64, verbose::Bool, linesearch::Bool=false, kwargs...
 )
 
     @warn "Levenberg–Marquardt method is experimental."

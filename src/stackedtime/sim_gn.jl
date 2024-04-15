@@ -18,7 +18,7 @@ Solve the simulation problem using the Gauss-Newton method.
   * `verbose` - whether or not to print progress information.
 """
 function sim_gn!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
-    maxiter::Int64, tol::Float64, verbose::Bool, linesearch::Bool=false
+    maxiter::Int64, tol::Float64, verbose::Bool, linesearch::Bool=false, kwargs...
 )
 
     @warn "Gauss-Newton method is experimental."
