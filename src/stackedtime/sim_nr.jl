@@ -6,7 +6,7 @@
 ##################################################################################
 
 """
-    sim_nr!(x, sd, maxiter, tol, verbose [, linesearch])
+    sim_nr!(x, sd, maxiter, tol, verbose [, linesearch, schedule_λ])
 
 Solve the simulation problem.
   * `x` - the array of data for the simulation. All initial, final and exogenous
@@ -19,6 +19,15 @@ Solve the simulation problem.
   * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a 
     search along the descent direction for a sufficient decrease in f. It will 
     do this at each iteration. Default is `false`.
+  * `schedule_λ::Union{Bool,Function}` - When `true`, the "damping factor" (or λ) will change according 
+    to the default function `StateSpaceEcon.StackedTimeSolver.schedule_λ_default`.
+    When schedule_λ is a function, it will take precedence and determine how λ evolves over the course of the algorithm.
+    Default is `false`.
+    When provided as a function, it must have the signature `schedule_λ(λ::Float64, it::Int, nFx::Float64, Δx::AbstractArray{Float64})` where:
+    * `λ` - the "damping factor";
+    * `it` - a scalar representing the iteration number;
+    * `nFx` - a scalar representing the maximum absolute value of the residuals or function values;
+    * `Δx` - vector representing the step computed by the Newton-Raphson method to update the solution vector `x`.
 
 """
 @timeit_debug timer function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
@@ -98,7 +107,9 @@ Solve the simulation problem.
     return false
 end
 
+"""
 
+"""
 function schedule_λ_default(λ::Float64, it::Int, nFx::Float64, Δx::AbstractArray{Float64})
     nΔx = λ * norm(vec(Δx), Inf)
     # Initialize λ
