@@ -370,7 +370,7 @@ end
     let m = getE3()
         p = Plan(m, 3:177)
         ed = zerodata(m, p)
-        ed[3U, m.shocks] .= 0.2 * rand(1, 3)
+        ed[3U, m.shocks] .= 0.2 * rand(3)
         ed[3U:end, m.variables] .= rand(178, 3)
         empty!(m.sstate.constraints)
         clear_sstate!(m)
