@@ -538,6 +538,7 @@ end
 
 
 struct EM_Transition_Block_Wks{T,TA,TQ}
+    xinds::Vector{Int}
     xinds_1::Vector{Int}
     xinds_2::Vector{Int}
     covar_estim::Bool
@@ -584,12 +585,15 @@ function em_transition_block_wks(cn::Symbol, M::DFM, wks::DFMKalmanWks{T}) where
     covar_estim = any(isnan, view(Q, xinds_1, xinds_1))
     constraint = DFMSolver.DFMConstraint(length(xinds_2), W, q)
     return EM_Transition_Block_Wks{T,typeof(new_A),typeof(new_Q)}(
-        xinds_1, xinds_2, covar_estim,
+        xinds, xinds_1, xinds_2, covar_estim,
         constraint, new_A, new_Q, XTX_22, XTX_12
     )
 end
 
-function em_update_transition_block!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractMatrix{T}, em_wks::EM_Transition_Block_Wks{T}) where {T}
+function em_update_transition_block!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData,
+    EY::AbstractMatrix{T}, em_wks::EM_Transition_Block_Wks{T},
+    ::Val{use_x0_smooth}
+) where {T,use_x0_smooth}
     # unpack the inputs
     @unpack xinds_1, xinds_2, covar_estim, constraint = em_wks
     @unpack new_A, new_Q, XTX_22, XTX_12 = em_wks
@@ -611,6 +615,14 @@ function em_update_transition_block!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractK
     # construct XpᵀXm
     mul!(XTX_12, transpose(EXp_1), EXm_2)
     sum!(transpose(XTX_12), @view(Pxx_smooth[xinds_2, xinds_1, begin:end-1]), init=false)
+
+    if use_x0_smooth
+        x0s = kfd.x0_smooth[xinds_2]
+        BLAS.ger!(1.0, x0s, x0s, XTX_22)
+        XTX_22 .+= kfd.Px0_smooth[xinds_2, xinds_2, 1]
+        BLAS.ger!(1.0, kfd.x_smooth[xinds_1, 1], x0s, XTX_12)
+        XTX_12 .+= transpose(kfd.Pxx0_smooth[xinds_2, xinds_1])
+    end
 
     # solve for new_A
     cXTX = cholesky!(Symmetric(XTX_22))
@@ -703,7 +715,8 @@ end
 
 function EMstep!(wks::DFMKalmanWks{T}, x0::AbstractVector{T}, Px0::AbstractMatrix{T},
     kfd::Kalman.AbstractKFData, EY::AbstractMatrix{T}, M::DFM, em_wks::EM_Wks{T},
-    anymissing::Bool # =any(isnan, EY)
+    anymissing::Bool, # =any(isnan, EY)
+    use_x0_smooth::Bool=false
 ) where {T}
     @unpack observed, transition = em_wks
     for em_w in observed.loadings
@@ -711,16 +724,24 @@ function EMstep!(wks::DFMKalmanWks{T}, x0::AbstractVector{T}, Px0::AbstractMatri
     end
     em_update_observed_covar!(wks, kfd, EY, observed.covars, Val(anymissing))
     for em_w in transition.blocks
-        em_update_transition_block!(wks, kfd, EY, em_w)
+        em_update_transition_block!(wks, kfd, EY, em_w, Val(use_x0_smooth))
     end
-    x0 .= kfd.x_smooth[:, begin]
+    x0[:] = kfd.x0_smooth
     # fill!(x0, zero(T))
     for (cb, tr_wks) in zip(values(M.model.components), em_wks.transition.blocks)
-        xinds_1 = tr_wks.xinds_1
+        xinds = tr_wks.xinds
         if cb isa IdiosyncraticComponents
-            Px0[xinds_1, xinds_1] = Diagonal(kfd.Px_smooth[xinds_1, xinds_1, 1])
+            # each idiosyncratic component may be autocorrelated with its lags, 
+            # but they are independent of each other. 
+            # So, copy the blocks for the individual components only
+            NS = nstates(cb)
+            xinds = xinds[1:NS:end]
+            for _ = 1:NS
+                Px0[xinds, xinds] = kfd.Px0_smooth[xinds, xinds]
+                xinds .+= 1
+            end
         else
-            Px0[xinds_1, xinds_1] = kfd.Px_smooth[xinds_1, xinds_1, 1]
+            Px0[xinds, xinds] = kfd.Px0_smooth[xinds, xinds]
         end
     end
     return wks
@@ -779,10 +800,12 @@ function EMestimate!(M::DFM, Y::AbstractMatrix,
     kfd=Kalman.KFDataSmoother(size(Y, 1), M, Y, wks),
     kf=Kalman.KFilter(kfd)
     ;
+    fwdstate::Bool=false,
     initial_guess::Union{Nothing,AbstractVector}=nothing,
     maxiter=100, rftol=1e-4, axtol=1e-4,
     verbose=false,
     impute_missing::Bool=false,  # true - use Kalman smoother to impute missing data, false - treat missing data as in Banbura & Modugno 2014
+    use_x0_smooth::Bool=false, # true - use x0_smooth in the EMstep update (experimental). Set to `false` for normal operation.
     anymissing::Bool=any(isnan, Y)
 ) where {T}
     @unpack model, params = M
@@ -840,8 +863,8 @@ function EMestimate!(M::DFM, Y::AbstractMatrix,
 
         # run the Kalman filter and smoother using the original data 
         # which possibly contains NaN values where data is missing
-        Kalman.dk_filter!(kf, Y, wks, x0, Px0, false, anymissing)
-        Kalman.dk_smoother!(kf, Y, wks)
+        Kalman.dk_filter!(kf, Y, wks, x0, Px0, fwdstate, anymissing)
+        Kalman.dk_smoother!(kf, Y, wks, fwdstate)
 
         #############
         # M-step
@@ -853,7 +876,7 @@ function EMestimate!(M::DFM, Y::AbstractMatrix,
 
         # update model matrices (wks) by maximizing the expected
         # likelihood
-        EMstep!(wks, x0, Px0, kfd, EY, M, em_wks, anymissing)
+        EMstep!(wks, x0, Px0, kfd, EY, M, em_wks, anymissing, use_x0_smooth)
 
         #############
         # extract new parameters from wks into params vector
