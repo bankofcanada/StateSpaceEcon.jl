@@ -51,7 +51,7 @@ end
 
 
 function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a_init, P_init,
-    fwdstate::Bool=true,
+    fwdstate::Bool,
     anymissing::Bool=any(isnan, Y)
 )
 
@@ -201,7 +201,7 @@ end
 
 
 
-function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R, fwdstate::Bool=true)
+function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R, fwdstate::Bool)
 
     #  note - in the book we have
     #     Kₜ = T Pₜ Zᵀ Fₜ⁻¹
@@ -308,6 +308,7 @@ function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R, fwdstate::Bool=true)
         # in this case the initial condition is states at t=1, so let's just copy
         kfd[0, :x0_smooth] = @kfd_get kfd tstart x_smooth
         kfd[0, :Px0_smooth] = @kfd_get kfd tstart Px_smooth
+        kfd[0, :Pxx0_smooth] = @kfd_get kfd tstart Pxx_smooth
     else
         # in this case the initial condition is states at t=0, so we need another half iteration
         # (we use a different formula because the formula in the loop above uses K and we don't have K₀)
@@ -319,6 +320,20 @@ function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R, fwdstate::Bool=true)
         J_1 = Px0 * transpose(T) / Pₜ
         kfd[0, :x0_smooth] = x0 + J_1 * (x_smooth - T * x0)
         kfd[0, :Px0_smooth] = Px0 + J_1 * (Px_smooth - Pₜ) * transpose(J_1)
+        if hasproperty(kfd, :Pxx0_smooth)
+            Pxx0_smooth = kfd.Pxx0_smooth
+            local Pₜ = @kfd_get kfd tstart + 1 Px_pred
+            local Puₜ = @kfd_get kfd tstart Px
+            local Ps1ₜ = @kfd_get kfd tstart Pxx_smooth
+            J_2 = J_1
+            J_1 = Puₜ * transpose(T) / Pₜ
+            kfd[0, :Pxx0_smooth] = J_2 * (Puₜ + (Ps1ₜ - Puₜ * transpose(T)) * transpose(J_1))
+            # copyto!(Pxx0_smooth, @kfd_get kfd tstart Pxx_smooth)
+            # mul!(Pxx0_smooth, Puₜ, transpose(T), 1.0, -1.0)
+            # mul!(TMPxx, Pxx0_smooth, transpose(J_1))
+            # TMPxx .+= Puₜ
+            # mul!(Pxx0_smooth, J_2, TMPxx)            
+        end
     end
 
     return
