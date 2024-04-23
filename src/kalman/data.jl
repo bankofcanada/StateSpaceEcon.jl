@@ -56,18 +56,20 @@ function TimeSeriesEcon.compare_equal(x::T, y::T; kwargs...) where {T<:AbstractK
     for prop in propertynames(x)
         if !compare(getproperty(x, prop), getproperty(y, prop), prop; kwargs...)
             equal = false
+            break
         end
     end
     return equal
 end
 
-function TimeSeriesEcon.compare_equal(x::T1, y::T2; kwargs...) where {T1<:AbstractKFData, T2<:AbstractKFData}
+function TimeSeriesEcon.compare_equal(x::T1, y::T2; kwargs...) where {T1<:AbstractKFData,T2<:AbstractKFData}
     equal = true
     for prop in union(propertynames(x), propertynames(y))
         propx = hasproperty(x, prop) ? getproperty(x, prop) : missing
         propy = hasproperty(y, prop) ? getproperty(y, prop) : missing
         if !compare(propx, propy, prop; kwargs...)
             equal = false
+            break
         end
     end
     return equal
@@ -80,8 +82,11 @@ Internal struct - holds information about a given filed, such as dimensions and
 description.
 """
 struct _KFValueInfo
+    _t::Bool   # true means that the value is time-dependent, false that it isn't, e.g. x0
     dims::Tuple
     description::String
+    _KFValueInfo(_t::Bool, dims::Tuple, descr::AbstractString) = new(_t, dims, string(descr))
+    _KFValueInfo(dims::Tuple, descr::AbstractString) = new(true, dims, string(descr))
 end
 
 const KFDataInfo = (;
@@ -97,14 +102,19 @@ const KFDataInfo = (;
     K=_KFValueInfo((:NS, :NO), "Kalman gain matrix"),
     x_smooth=_KFValueInfo((:NS,), "smoothed state, i.e. E[xₜ | all y]"),
     Px_smooth=_KFValueInfo((:NS, :NS), "covariance of smoothed state"),
-    Pxx_smooth=_KFValueInfo((:NS, :NS), "cross-covariance of xₜ and xₜ₊₁"),
+    Pxx_smooth=_KFValueInfo((:NS, :NS), "smoothed state auto-covariance (xₜ and xₜ₊₁)"),
     y_smooth=_KFValueInfo((:NO,), "smoothed observation, i.e. E[yₜ | all y]"),
     Py_smooth=_KFValueInfo((:NO, :NO), "covariance of smoothed observation"),
     J=_KFValueInfo((:NS, :NS), "Kalman smoother matrix"),
     loglik=_KFValueInfo((), "log likelihood based on Kalman filter "),
     res2=_KFValueInfo((), "sum of squared observation residuals (error_y' * error_y)"),
     Ly_pred=_KFValueInfo((:NO, :NO), "Cholesky lower triangular factor of Py_pred"),
-    aux_ZᵀPy⁻¹=_KFValueInfo((:NS, :NO), "Auxiliary matrix Zᵀ⋅Py⁻¹")
+    aux_ZᵀPy⁻¹=_KFValueInfo((:NS, :NO), "Auxiliary matrix Zᵀ⋅Py⁻¹"),
+    x0=_KFValueInfo(false, (:NS,), "initial state"),
+    Px0=_KFValueInfo(false, (:NS, :NS), "initial state covariance"),
+    x0_smooth=_KFValueInfo(false, (:NS,), "smoothed initial state"),
+    Px0_smooth=_KFValueInfo(false, (:NS, :NS), "smoothed initial state covariance"),
+    Pxx0_smooth=_KFValueInfo(false, (:NS, :NS), "smoothed initial state auto-covariance (x₀ and x₁)")
 )
 
 _offset_expr(::Integer) = :t
@@ -124,18 +134,11 @@ Base.getindex(kfd::AbstractKFData, t::Integer, v::Val) = kfd_getvalue(getindex, 
     if !hasfield(kfd, NAME)
         return nothing
     end
-    tt = _offset_expr(RANGE)
     # figure out the number of dimensions in this field
     ndims = length(vinfo.dims)
-    if ndims == 0
-        return :(access(kfd.$NAME, $tt))
-    elseif ndims == 1
-        return :(access(kfd.$NAME, :, $tt))
-    elseif ndims == 2
-        return :(access(kfd.$NAME, :, :, $tt))
-    else
-        return :(error("Unexpected value with ndims = $ndims"))
-    end
+    tt = _offset_expr(RANGE)
+    inds = vinfo._t ? ((Colon() for _ = 1:ndims)..., tt) : ((Colon() for _ = 1:ndims)...,) 
+    return :(access(kfd.$NAME, $(inds...)))
 end
 
 
@@ -161,18 +164,10 @@ Base.setindex!(kfd::AbstractKFData, value, t::Integer, name::Symbol) = kfd_setva
     end
     tt = _offset_expr(RANGE)
     ndims = length(vinfo.dims)
-    if ndims == 0
-        return :(kfd.$NAME[$tt] = value)
-    elseif ndims == 1
-        # return :(copyto!(view(kfd.$NAME, :, $tt), value))
-        return :(kfd.$NAME[:, $tt] = value)
-    elseif ndims == 2
-        # return :(copyto!(view(kfd.$NAME, :, :, $tt), value))
-        return :(kfd.$NAME[:, :, $tt] = value)
-    else
-        return :(error("Unexpected value with ndims = $ndims"))
-    end
+    inds = vinfo._t ? ((Colon() for _ = 1:ndims)..., tt) : ((Colon() for _ = 1:ndims)...,) 
+    return :(kfd.$NAME[$(inds...)] = value)
 end
+
 
 #############################################################################
 # the following macro can be used to create a custom data struct
@@ -194,9 +189,14 @@ function _new_kf_data(expr)
         x === Name && return :($Name{RANGE,NS,NO,T} <: $(@__MODULE__).AbstractKFData{RANGE,NS,NO,T})
         x isa Symbol && begin
             haskey(KFDataInfo, x) || error("$x is not a valid field name for Kalman filter data")
-            xdims = KFDataInfo[x].dims
-            ndims = 1 + length(xdims)
-            push!(alloc_exprs, :(Array{T}(undef, $(xdims...), nperiods)))
+            vinfo = KFDataInfo[x]
+            xdims = vinfo.dims
+            ndims = vinfo._t + length(xdims)
+            if vinfo._t
+                push!(alloc_exprs, :(Array{T}(undef, $(xdims...), nperiods)))
+            else
+                push!(alloc_exprs, :(Array{T}(undef, $(xdims...),)))
+            end
             return :($x::Array{T,$ndims})
         end
         x isa Expr && return x
@@ -207,6 +207,7 @@ function _new_kf_data(expr)
         function $Name(T::Type{<:Real}, rng::Union{Integer,UnitRange{<:Integer}}, model, user_data...)
             NS = kf_length_x(model, user_data...)
             NO = kf_length_y(model, user_data...)
+            # `nperiods` is used in alloc_exprs
             nperiods = rng isa UnitRange ? length(rng) : rng
             return $Name{rng,NS,NO,T}($(alloc_exprs...))
         end
@@ -238,6 +239,8 @@ KFDataFilter
     x
     Px
     loglik
+    x0
+    Px0
 end
 
 """
@@ -259,6 +262,8 @@ KFDataFilterEx
     error_y
     res2
     loglik
+    x0
+    Px0
 end
 
 @kf_data_struct struct KFDataSmoother
@@ -276,6 +281,11 @@ end
     Py_smooth
     Pxx_smooth
     loglik
+    x0
+    Px0
+    x0_smooth
+    Px0_smooth
+    Pxx0_smooth
 end
 
 @kf_data_struct struct KFDataSmootherEx
@@ -298,6 +308,11 @@ end
     J
     res2
     loglik
+    x0
+    Px0
+    x0_smooth
+    Px0_smooth
+    Pxx0_smooth
 end
 
 macro kfd_set!(kfd, t, values::Symbol...)
