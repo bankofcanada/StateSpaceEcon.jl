@@ -29,29 +29,33 @@
 #   aₜ₊₁ = E(αₜ₊₁ | Yₜ)
 #   Pₜ₊₁ = Var(αₜ₊₁ | Yₜ)
 
+"""
+    _symm!(A::AbstractMatrix)
+
+Force matrix `A` to be symmetric by overwriting it with `0.5 (A + Aᵀ)`.
+This is useful to stabilize the algorithm when a matrix is known to be
+symmetric, but may lose this property due accumulation of round off and
+truncation errors.
+"""
 function _symm!(A::AbstractMatrix)
     m, n = size(A)
     for i = 1:m
-        for j = i:n
-            v = 0.5 * (A[i,j] + A[j,i])
-            A[i,j] = v
-            A[j,i] = v
+        for j = i+1:n
+            v = 0.5 * (A[i, j] + A[j, i])
+            A[i, j] = v
+            A[j, i] = v
         end
     end
     return A
 end
 
 
-function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
+function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a_init, P_init,
     fwdstate::Bool=true,
     anymissing::Bool=any(isnan, Y)
 )
 
-    _Q = if R isa UniformScaling
-        Q
-    else
-        R * Q * transpose(R)
-    end
+    _Q = (R isa UniformScaling) ? Q : (R * Q * transpose(R))
 
     have_mu = dot(mu, mu) > 0
 
@@ -77,12 +81,16 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
         have_y = trues(kf.ny)
     end
 
-    aₜ[:] = a₁
-    Pₜ[:, :] = P₁
-
-    if !fwdstate
-        mul!(aₜ, T, a₁)
-        mul!(TP, T, Pₜ)
+    kfd[0, :x0] = a_init
+    kfd[0, :Px0] = P_init
+    if fwdstate
+        # the given initial state is at t=1
+        aₜ[:] = a_init
+        Pₜ[:, :] = P_init
+    else
+        # the given initial state is at t=0
+        mul!(aₜ, T, a_init)
+        mul!(TP, T, P_init)
         mul!(Pₜ, TP, transpose(T))
         Pₜ .+= _Q
         _symm!(Pₜ)
@@ -127,7 +135,7 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
                 # if observations are missing, we cannot update the prediction
                 # we set the Kalman gain, K, to zero, effectively 
                 # giving auₜ = aₜ and Puₜ = Pₜ
-                cFₜ = Cholesky(zeros(0,0), :U, 0)
+                cFₜ = Cholesky(zeros(0, 0), :U, 0)
                 nothing
             else
                 # delete rows of Z and rows and columns of F where observations are missing
@@ -136,10 +144,10 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
                 Z⁺ = view(Z, have_y, :)
                 TMP = view(ZP, 1:ny, :)
                 mul!(F⁺, mul!(TMP, Z⁺, Pₜ), transpose(Z⁺))
-                F⁺[:,:] += view(H, have_y, have_y)
+                F⁺[:, :] += view(H, have_y, have_y)
                 _symm!(F⁺)
                 cFₜ = cholesky!(Symmetric(F⁺))
-                TMP[:,:] = Z⁺
+                TMP[:, :] = Z⁺
                 ldiv!(cFₜ, TMP)
                 ZTIF[:, have_y] = transpose(TMP)
                 mul!(view(Kₜ, :, have_y), Pₜ, transpose(TMP))
@@ -193,7 +201,7 @@ end
 
 
 
-function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R)
+function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R, fwdstate::Bool=true)
 
     #  note - in the book we have
     #     Kₜ = T Pₜ Zᵀ Fₜ⁻¹
@@ -293,6 +301,24 @@ function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R)
         BLAS.gemm!('N', 'T', 1.0, Vₜ, Z, 0.0, TMPxy)
         BLAS.gemm!('N', 'N', 1.0, Z, TMPxy, 1.0, Py_smooth)
 
+    end
+
+    if fwdstate
+        # What to do here? Nothing?
+        # in this case the initial condition is states at t=1, so let's just copy
+        kfd[0, :x0_smooth] = @kfd_get kfd tstart x_smooth
+        kfd[0, :Px0_smooth] = @kfd_get kfd tstart Px_smooth
+    else
+        # in this case the initial condition is states at t=0, so we need another half iteration
+        # (we use a different formula because the formula in the loop above uses K and we don't have K₀)
+        local x0 = @kfd_get kfd 0 x0
+        local Px0 = @kfd_get kfd 0 Px0
+        local Pₜ = @kfd_get kfd tstart Px_pred
+        local x_smooth = @kfd_get kfd tstart x_smooth
+        local Px_smooth = @kfd_get kfd tstart Px_smooth
+        J_1 = Px0 * transpose(T) / Pₜ
+        kfd[0, :x0_smooth] = x0 + J_1 * (x_smooth - T * x0)
+        kfd[0, :Px0_smooth] = Px0 + J_1 * (Px_smooth - Pₜ) * transpose(J_1)
     end
 
     return
