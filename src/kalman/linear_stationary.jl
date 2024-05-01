@@ -321,10 +321,16 @@ function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R, fwdstate::Bool)
         kfd[0, :x0_smooth] = x0 + J_1 * (x_smooth - T * x0)
         kfd[0, :Px0_smooth] = Px0 + J_1 * (Px_smooth - Pₜ) * transpose(J_1)
         if hasproperty(kfd, :Pxx0_smooth)
-            Pxx0_smooth = kfd.Pxx0_smooth
+            # Pxx0_smooth = kfd.Pxx0_smooth
             local Pₜ = @kfd_get kfd tstart + 1 Px_pred
-            local Puₜ = @kfd_get kfd tstart Px
             local Ps1ₜ = @kfd_get kfd tstart Pxx_smooth
+            if hasproperty(kfd, :Px)
+                Puₜ = @kfd_get kfd tstart Px
+            else
+                Kₜ = @kfd_view kfd t K
+                TMPxx[:,:] = (I - Kₜ * Z) * (@kfd_get kfd tstart Px_pred)
+                Puₜ = TMPxx
+            end
             J_2 = J_1
             J_1 = Puₜ * transpose(T) / Pₜ
             kfd[0, :Pxx0_smooth] = J_2 * (Puₜ + (Ps1ₜ - Puₜ * transpose(T)) * transpose(J_1))
