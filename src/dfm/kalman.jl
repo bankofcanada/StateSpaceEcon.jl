@@ -47,6 +47,15 @@ function DFMKalmanWks(M::DFM; sparse=false, sparse_A=sparse, sparse_Q=sparse)
         Matrix{T}(undef, NO, NS))
 end
 
+function TimeSeriesEcon.compare_equal(x::T, y::T; kwargs...) where {T<:DFMKalmanWks}
+    for prop in (:μ, :Λ, :R, :A, :Q)
+        if !compare(getproperty(x, prop), getproperty(y, prop), prop; kwargs...)
+            return false
+        end
+    end
+    return true
+end
+
 _update_wks!(wks::DFMKalmanWks, M::DFM) = _update_wks!(wks, M.model, M.params)
 function _update_wks!(wks::DFMKalmanWks, model::DFMModel, params::DFMParams)
     @unpack μ, Λ, R, A, Q = wks
