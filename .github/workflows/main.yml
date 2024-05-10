@@ -67,6 +67,6 @@ jobs:
       - uses: codecov/codecov-action@v4
         with:
           file: lcov.info
-          token: 277b5b8d-cee9-4dc1-8aab-2a33d659a3b9
+          token: e9844f2a-a8b6-4c59-9f20-1c5a33ad9dbf
           verbose: true # optional (default = false)
           
