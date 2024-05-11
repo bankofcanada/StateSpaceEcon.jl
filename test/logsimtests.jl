@@ -119,7 +119,7 @@
 
         # update exogenous data accordingly
         ed[firstdate(p)] = k[firstdate(p)]
-        ed[lastdate(p), 1:2] .= rand(2)
+        ed[lastdate(p), m.variables] .= rand(2)
 
         @test simulate(m, p, ed, fctype=fcslope) ≈ k
         @test simulate(m, p, ed, fctype=fcnatural) ≈ k
