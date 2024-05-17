@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -343,4 +343,69 @@ end
     end
 end
 
+@testset "initdcmp.mx" begin
+    # test if we're able to mix and match, i.e., can we stitch together shockdecomps ran with different solvers.
+
+    atol = 1e-13
+    rtol = 1e-10
+    ignoremissing = true
+    quiet = true
+
+    m = E6.newmodel()
+    m.p_dly = 0
+    m.p_dlp = 0
+    empty!(m.sstate.constraints)
+    @steadystate m lp = 1.5
+    @steadystate m ly = 1.1
+    @steadystate m lyn = 1.1
+
+    clear_sstate!(m)
+    sssolve!(m)
+    linearize!(m)
+    solve!(m; solver=:stackedtime)
+    solve!(m; solver=:firstorder)
+
+    rng = 2001Q1:2024Q4
+    fctype = fcnatural
+    shks = filter(v -> isshock(v) || isexog(v), m.allvars)
+    vars = filter(v -> !isshock(v) && !isexog(v), m.allvars)
+
+    p = Plan(m, rng)
+    exog = steadystatedata(m, p)
+    exog[begin:first(rng)-1, vars] = rand(m.maxlag, m.nvars)
+    ref_s = shockdecomp(m, p, exog; solver=:stackedtime, fctype)
+    ref_f = shockdecomp(m, p, exog; solver=:firstorder)
+
+    # we've called linearize!, so stacked time and first order must be identical
+    @test compare(ref_f, ref_s; atol, rtol, ignoremissing, quiet)
+    for v in vars, s in shks
+        @test norm(ref_s.sd[v][:, s], Inf) < 1e-14
+    end
+
+    # stitch with the other solver
+    rng1 = rng[5:end]
+    p1 = Plan(m, rng1)
+    exog1 = zerodata(m, p1)
+    exog1[begin:first(rng1)-1, vars] = ref_f.s
+    exog1[rng1, shks] = ref_f.s[rng1, shks]
+    if fctype === fclevel
+        exog1[last(rng1)+1:end, vars] = ref_f.s
+    end
+
+    res_fs = shockdecomp(m, p1, exog1; solver=:stackedtime, fctype, initdecomp=ref_f)
+    res_ss = shockdecomp(m, p1, exog1; solver=:stackedtime, fctype, initdecomp=ref_s)
+    res_sf = shockdecomp(m, p1, exog1; solver=:firstorder, initdecomp=ref_s)
+    res_ff = shockdecomp(m, p1, exog1; solver=:firstorder, initdecomp=ref_f)
+
+    # res_fs.sd.:($var).term has NaN in the beginning
+    foreach(values(res_fs.sd)) do x
+        replace!(x -> isnan(x) ? 0 : x, x)
+    end
+
+    @test compare(res_fs, res_ss; atol, rtol, ignoremissing, quiet)
+    @test compare(res_ss, res_sf; atol, rtol, ignoremissing, quiet)
+    @test compare(res_sf, res_ff; atol, rtol, ignoremissing, quiet)
+    @test compare(res_ff, ref_s; atol, rtol, ignoremissing, quiet)
+
+end
 

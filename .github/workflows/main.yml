@@ -20,7 +20,7 @@ jobs:
 
     strategy: 
       matrix:
-        julia-version: ["1.7", "1.8"]
+        julia-version: ["1.7", "1.8", "1.9"]
         julia-arch: [x64]
         os: [ubuntu-latest, windows-latest, macOS-latest]
 
@@ -30,12 +30,12 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v2
 
       - name: Setup Julia environment
         # You may pin to the exact commit or the version.
         # uses: julia-actions/setup-julia@ee66464cb7897ffcc5322800f4b18d449794af30
-        uses: julia-actions/setup-julia@v1
+        uses: julia-actions/setup-julia@v2
         with:
           # The Julia version to download (if necessary) and use. Example: 1.0.4
           version: ${{ matrix.julia-version }}  # optional, default is 1
@@ -64,6 +64,9 @@ jobs:
 
       # process and submit the code coverage information
       - uses: julia-actions/julia-processcoverage@v1
-      - uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v4
         with:
           file: lcov.info
+          token: e9844f2a-a8b6-4c59-9f20-1c5a33ad9dbf
+          verbose: true # optional (default = false)
+          
