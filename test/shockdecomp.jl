@@ -1,15 +1,15 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
 using LinearAlgebra
-using JLD2
+using TimeSeriesEcon.DataEcon
 @testset "shkdcmp" begin
-    m = deepcopy(E7A.model)
-    expected = Workspace(load("data/shkdcmp_E7A.jld2"))
+    m = E7A.newmodel()
+    expected = readdb("data/shkdecomp_E7A.daec")
 
     empty!(m.sstate.constraints)
     @steadystate m lc = 1
