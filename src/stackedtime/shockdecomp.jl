@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -37,10 +37,16 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     verbose::Bool=getoption(m, :verbose, false),
     maxiter::Int=getoption(m, :maxiter, 20),
     tol::Float64=getoption(m, :tol, 1e-12),
-    linesearch::Bool=getoption(m, :linesearch, false),
     fctype::FinalCondition=getoption(m, :fctype, fcgiven),
-    _debug=false
+    _debug=false,
+    #= Newton-Raphson options =#
+    warn_maxiter=getoption(getoption(m, :warn, Options()), :maxiter, false),
+    linesearch::Bool=getoption(m, :linesearch, false),
+    sim_solver=:sim_nr,
+    damping=nothing
 )
+
+    sim_solve!, damping = _get_solver_damping(linesearch, sim_solver, damping)
 
     refresh_med!(m, variant)
 
@@ -74,7 +80,8 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
     stackedtime_R!(res_shocked, shocked, shocked, gdata)    # Run the "shocked" simulation with the given exogenous data.
     if norm(res_shocked, Inf) > tol
         assign_exog_data!(shocked, exog_data, gdata)
-        sim_nr!(shocked, gdata, maxiter, tol, verbose, linesearch)
+        converged = sim_solve!(shocked, gdata, maxiter, tol, verbose, damping)
+        check_converged(converged, warn_maxiter)
     end
 
     # We need the Jacobian matrix evaluated at the control solution.

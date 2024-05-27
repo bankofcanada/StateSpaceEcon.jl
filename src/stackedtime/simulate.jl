@@ -19,6 +19,32 @@ function check_converged(converged, warn_maxiter)
     end
 end
 
+
+function _get_solver_damping(linesearch::Bool, sim_solver=:sim_nr, damping=nothing)
+    sim_solve! =
+        sim_solver isa Function ? sim_solver :
+        sim_solver == :sim_nr ? sim_nr! :
+        sim_solver == :sim_lm ? sim_lm! :
+        sim_solver == :sim_gn ? sim_gn! :
+        error("Unknown solver $sim_solver.")
+    if sim_solve! != sim_nr! && !isnothing(damping)
+        @warn "Damping is used only with sim_solver=:sim_nr"
+    end
+    damping =
+        damping isa Function ? damping :
+        damping isa Number ? damping_schedule(damping) :
+        damping isa AbstractVector ? damping_schedule(damping) :
+        damping == :br81 ? damping_br81() :
+        damping isa Tuple && damping[1] == :br81 ? damping_br81(; Base.tail(damping)...) :
+        damping == :linesearch || damping == :armijo ? damping_armijo() :
+        damping isa Tuple && damping[1] == :armijo ? damping_armijo(; Base.tail(damping)...) :
+        linesearch ? damping_armijo() :  # compatibility with old code
+        damping isa Nothing ? damping_none :
+        error("Invalid damping specification")
+    return sim_solve!, damping
+end
+
+
 function simulate(m::Model,
     p_ant::Plan,
     exog_ant::AbstractArray{Float64,2},
@@ -40,35 +66,13 @@ function simulate(m::Model,
     fctype=getoption(m, :fctype, fcgiven),
     expectation_horizon::Union{Nothing,Int64}=nothing,
     #= Newton-Raphson options =#
-    linesearch::Bool=getoption(m, :linesearch, false),
     warn_maxiter=getoption(getoption(m, :warn, Options()), :maxiter, false),
+    linesearch::Bool=getoption(m, :linesearch, false),
     sim_solver=:sim_nr,
     damping=nothing
 )
 
-    sim_solve! =
-        sim_solver isa Function ? sim_solver :
-        sim_solver == :sim_nr ? sim_nr! :
-        sim_solver == :sim_lm ? sim_lm! :
-        sim_solver == :sim_gn ? sim_gn! :
-        error("Unknown solver $sim_solver.")
-
-    if sim_solve! != sim_nr! && !isnothing(damping)
-        @warn "Damping is used only with sim_solver=:sim_nr"
-    end
-
-    damping =
-        damping isa Function ? damping :
-        damping isa Number ? damping_schedule(damping) :
-        damping isa AbstractVector ? damping_schedule(damping) :
-        damping == :br81 ? damping_br81() :
-        damping isa Tuple && damping[1] == :br81 ? damping_br81(; Base.tail(damping)...) :
-        damping == :linesearch || damping == :armijo ? damping_armijo() :
-        damping isa Tuple && damping[1] == :armijo ? damping_armijo(; Base.tail(damping)...) :
-        linesearch ? damping_armijo() :  # compatibility with old code
-        damping isa Nothing ? damping_none :
-        error("Invalid damping specification")
-
+    sim_solve!, damping = _get_solver_damping(linesearch, sim_solver, damping)
 
     unant_given = !isempty(exog_unant)
 
