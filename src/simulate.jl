@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -92,6 +92,8 @@ Run a simulation for the given model, simulation plan and exogenous data.
         deviation from the steady state. Default value is `false`.
     * `anticipate::Bool` - set to `false` to instruct the solver that all shocks
         are unanticipated by the agents. Default value is `true`.
+    * `solver::Symbol` - specify the simulation solver. Available options are
+      :stackedtime and :firstorder. If not given, default is :stackedtime.
     * `verbose::Bool` - control whether or not to print progress information.
         Default value is taken from `model.options`.
     * `tol::Float64` - set the desired accuracy. Default value is taken from
@@ -99,9 +101,35 @@ Run a simulation for the given model, simulation plan and exogenous data.
     * `maxiter::Int` - algorithm fails if the desired accuracy is not reached
         within this maximum number of iterations. Default value is taken from
         `model.options`.
-    * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include a
-        search along the descent direction for a sufficient decrease in f. It will
-        do this at each iteration. Default is `false`.
+The following options are specific to the `:stackedtime` solver
+    * `sim_solver` - specify the non-linear solver to use. Available options are 
+      - `:sim_nr` : (default) Newton-Raphson, with possible damping, see below.
+      - `:sim_lm` : Levenberg–Marquardt
+      - `:sim_gn` : Gauss-Newton
+    * `linesearch::Bool` - When `true` the Newton-Raphson is modified to include
+      a search along the descent direction for a sufficient decrease in f. It
+      will do this at each iteration. Default is `false`. (Superseded by the
+      `damping` option described below)
+    * `damping` - Specifies the style of damping that can be applied to the
+      Newton non-linear solver. Available options are:
+      - if not given the default behaviour is no damping, i.e. the damping
+        coefficient is set to 1.0 in each iteration.
+      - number: the damping coefficient will be set to the given number (rather than 1)
+      - vector of numbers: the damping coefficient in each iteration will be set
+        the number in the corresponding entry of the given vector. If there are
+        more Newton iterations than the length of the vector, the last entry
+        will be used until in the remaining iterations.
+      - `:linesearch` or `:armijo` : same as setting `linesearch=true`. The
+        Armijo rule is taken from "C.T.Kelly, Iterative Methods for Linear and
+        Nonlinear Equations, ch.8.1, p.137"
+      - `(:armijo, :sigma => 0.5, :alpha => 1e-4)` - override the default
+        parameters of the Armijo rule.
+      - `:br81` : (experimental) implements the damping algorithm in "Bank, R.E.,
+        Rose, D.J. Global approximate Newton methods. Numer. Math. 37, 279–295
+        (1981)."
+      - `(:br81, :rateK => 10, :delta => 0.1)` : override the default parameters
+        of the Bank & Rose (1981) algorithm.
+
 """
 function simulate end
 export simulate

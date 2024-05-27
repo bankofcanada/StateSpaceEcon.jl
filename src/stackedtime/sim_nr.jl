@@ -28,6 +28,47 @@ Solve the simulation problem using a Newton iteration with damping.
       based on the Armijo rule
     - `damping_bank_rose(delta=0.1, rateK=10.0)` implements a the damping
       algorithm of Bank and Rose 1980
+
+##### Conventions for custom damping function.
+The `damping` callback function is expected to have the following signature:
+
+    function custom_damping(k::Int, λ::Float64, nR::Float64, R::AbstractVector{Float64},
+        J::Union{Nothing,Factorization,AbstractMatrix{Float64}}=nothing,
+        Δx::Union{Nothing,AbstractVector{Float64}}=nothing
+    )::Tuple{Bool, Float64}
+        # <your code goes here>
+    end
+
+The first call will be with `k=0`, before the solver enters the Newton
+iterations loop. This should allow any initialization and defaults to be setup.
+In this call, the values of `R` and `nR` will equal the residual and its norm at
+the initial guess. The norm used is `nR = norm(R, Inf)`. The `J` and `Δx` are
+not available. 
+
+Each subsequent call will be with `k` between 1 and `maxiter` (possibly multiple
+calls with the same `k`) will have the current `λ` (which equals the one returned by the
+previous call), the current `R` (and its Inf-norm `nR`), the Jacobian `J` and
+the Newton direction `Δx`.
+
+The damping function must return a tuple `(accept, λ)`. The same Newton
+iteration `k` will continue until the damping function returns `accept=true`,
+after which will begin the next Newton iteration (`k=k+1``).
+
+All calls with the same `k` will have the same `J` and `Δx` but different `R`
+and `nR`. These equal the Jacobian (possibly factorized), computed at the
+iteration guess, `xₖ` (not provided), and the Newton direction for the
+iteration.
+
+The first time the damping function is called for a given `k`, the `R` equals
+the residual at `xₖ` and the Newton direction is `Δx = J \\ R` for the `R` at
+this time.
+
+Each subsequent call with the same `k` will have the residual, `R`, (and its
+norm) computed at `xₖ - λ Δx` (not provided). Your callback must decide whether
+to accept this step, by returning `(true, λ)`, or reject it and propose a new λ
+to try, by returning `(false, new_λ)`. Don't return `(false, λ)` because this
+will make it an infinite loop. Good luck!
+
 """
 function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     maxiter::Int64, tol::Float64, verbose::Bool, damping::Function

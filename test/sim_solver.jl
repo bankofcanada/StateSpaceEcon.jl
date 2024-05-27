@@ -17,6 +17,7 @@ rng = Random.default_rng()
         issssolved(m) && (0 == check_sstate(m))
     end
     p01 = Plan(m, 1:100)
+    Random.seed!(rng, 0x1230ABCF)
     data01 = steadystatedata(m, p01)
     data01[begin:0U, m.variables] .+= randn(rng, m.maxlag, m.nvars)
     data01[1U:10U, m.shocks] .+= randn(rng, 10, m.nshks)
@@ -48,6 +49,7 @@ end
 
     rngsim = 2024Q1:2049Q4
     p = Plan(m, rngsim)
+    Random.seed!(rng, 0x65439876)
     exog = steadystatedata(m, p)
     exog[firstdate(p).+(0:m.maxlag-1), m.variables] .*= exp.(0.5 * randn(rng, m.maxlag, m.nvars))
     exog[rngsim[1:8], m.shocks] .= 0.8 * randn(rng, 8, m.nshks)
@@ -109,11 +111,10 @@ end
         issssolved(m) && (0 == check_sstate(m))
     end
     exog = steadystatedata(m, p)
-    Random.seed!(rng, 0o007)
+    Random.seed!(rng, 0o007)  #! this seed has been carefully selected!
     exog[firstdate(p).+(0:m.maxlag-1), m.variables] .*= exp.(17 * randn(rng, m.maxlag, m.nvars))
     exog[rngsim[1:8], m.shocks] .= 15 * randn(rng, 8, m.nshks)
 
-    # outp = @capture_err @test_throws SingularException simulate(m, p, exog, verbose=true, fctype=fcnatural)
     outp = @capture_err sim = simulate(m, p, exog, verbose=true, fctype=fcnatural)
     lines = split(outp, "\n"; keepempty=false)
     # foreach(println, lines)
