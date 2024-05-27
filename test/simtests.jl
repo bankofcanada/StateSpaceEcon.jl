@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -96,19 +96,19 @@ function test_simulation(m_in, path; atol=1.0e-9)
 end
 
 @testset "E1.sim" begin
-    test_simulation(getE1(), "data/M1_TestData.csv")
+    test_simulation(getE1(), joinpath(@__DIR__, "data", "M1_TestData.csv"))
 end
 
 @testset "E2.sim" begin
-    test_simulation(getE2(), "data/M2_TestData.csv")
+    test_simulation(getE2(), joinpath(@__DIR__, "data", "M2_TestData.csv"))
 end
 
 @testset "E3.sim" begin
-    test_simulation(getE3(), "data/M3_TestData.csv")
+    test_simulation(getE3(), joinpath(@__DIR__, "data", "M3_TestData.csv"))
 end
 
 @testset "E6.sim" begin
-    test_simulation(getE6(), "data/M6_TestData.csv")
+    test_simulation(getE6(), joinpath(@__DIR__, "data", "M6_TestData.csv"))
 end
 
 #############################################################
@@ -186,8 +186,8 @@ end
     # Steady state
     m.sstate.values .= 0
     m.sstate.mask .= true
-    let atrue = readdlm("./data/M2_Ant.csv", ',', Float64),
-        utrue = readdlm("./data/M2_Unant.csv", ',', Float64)
+    let atrue = readdlm(joinpath(@__DIR__, "data", "M2_Ant.csv"), ',', Float64),
+        utrue = readdlm(joinpath(@__DIR__, "data", "M2_Unant.csv"), ',', Float64)
         # Set simulation ranges and plan
         IDX = size(atrue, 1)
         init = 1:m.maxlag
@@ -224,8 +224,8 @@ end
         end
     end
     for s in (1, 4)
-        atrue = readdlm("./data/M2_t$(s)_Ant.csv", ',', Float64)
-        utrue = readdlm("./data/M2_t$(s)_Unant.csv", ',', Float64)
+        atrue = readdlm(joinpath(@__DIR__, "data", "M2_t$(s)_Ant.csv"), ',', Float64)
+        utrue = readdlm(joinpath(@__DIR__, "data", "M2_t$(s)_Unant.csv"), ',', Float64)
         # Set simulation ranges and plan
         IDX = size(atrue, 1)
         init = 1:m.maxlag
@@ -259,8 +259,8 @@ end
     # Steady state
     m.sstate.values .= 0
     m.sstate.mask .= true
-    let atrue = readdlm("./data/M3_Ant.csv", ',', Float64),
-        utrue = readdlm("./data/M3_Unant.csv", ',', Float64)
+    let atrue = readdlm(joinpath(@__DIR__, "data", "M3_Ant.csv"), ',', Float64),
+        utrue = readdlm(joinpath(@__DIR__, "data", "M3_Unant.csv"), ',', Float64)
         # Set simulation ranges and plan
         IDX = size(atrue, 1)
         init = 1:m.maxlag
@@ -317,8 +317,8 @@ end
         end
     end
     for s in (1, 4)
-        atrue = readdlm("./data/M3_t$(s)_Ant.csv", ',', Float64)
-        utrue = readdlm("./data/M3_t$(s)_Unant.csv", ',', Float64)
+        atrue = readdlm(joinpath(@__DIR__, "data", "M3_t$(s)_Ant.csv"), ',', Float64)
+        utrue = readdlm(joinpath(@__DIR__, "data", "M3_t$(s)_Unant.csv"), ',', Float64)
         # Set simulation ranges and plan
         IDX = size(atrue, 1)
         init = 1:m.maxlag
@@ -481,7 +481,7 @@ end
         nvars = ModelBaseEcon.nvariables(m)
         nshks = ModelBaseEcon.nshocks(m)
         #
-        data_chk = readdlm("data/M3_TestData.csv", ',', Float64)
+        data_chk = readdlm(joinpath(@__DIR__, "data", "M3_TestData.csv"), ',', Float64)
         IDX = size(data_chk, 1)
         plan = Plan(m, 1+m.maxlag:IDX-m.maxlead)
         #
@@ -502,7 +502,7 @@ end
         end
 
         # line search should give the same results
-        @test occursin("Linesearch success", out)
+        @test !occursin("Linesearch failed.", out)
         @test isapprox(res01, data_chk; atol=1.0e-9)
         @test isapprox(res01_line, data_chk; atol=1.0e-9)
         @test isapprox(res01, res01_line; atol=1.0e-9)
@@ -513,7 +513,7 @@ end
         nvars = ModelBaseEcon.nvariables(m)
         nshks = ModelBaseEcon.nshocks(m)
         #
-        data_chk = readdlm("data/M1_TestData.csv", ',', Float64)
+        data_chk = readdlm(joinpath(@__DIR__, "data", "M1_TestData.csv"), ',', Float64)
         IDX = size(data_chk, 1)
         plan = Plan(m, 1+m.maxlag:IDX-m.maxlead)
         #
@@ -536,7 +536,7 @@ end
         nvars = ModelBaseEcon.nvariables(m)
         nshks = ModelBaseEcon.nshocks(m)
         #
-        data_chk = readdlm("data/M3_TestData.csv", ',', Float64)
+        data_chk = readdlm(joinpath(@__DIR__, "data", "M3_TestData.csv"), ',', Float64)
         IDX = size(data_chk, 1)
         plan = Plan(m, 1+m.maxlag:IDX-m.maxlead)
         #

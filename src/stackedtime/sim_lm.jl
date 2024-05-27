@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -109,7 +109,7 @@ function _sim_lm_first_step(
 end
 
 """
-    sim_lm!(x, sd, maxiter, tol, verbose [, linesearch])
+    sim_lm!(x, sd, maxiter, tol, verbose, damping)
 
 Solve the simulation problem using the Levenberg–Marquardt method.
   * `x` - the array of data for the simulation. All initial, final and exogenous
@@ -119,12 +119,15 @@ Solve the simulation problem using the Levenberg–Marquardt method.
   * `maxiter` - maximum number of iterations.
   * `tol` - desired accuracy.
   * `verbose` - whether or not to print progress information.
+  * `damping` - no damping is implemented here, however the damping is forwarded
+    to [`sim_nr!`](@ref) when the LM algorithm switches to Newton-Raphson. 
 """
 function sim_lm!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
-    maxiter::Int64, tol::Float64, verbose::Bool, linesearch::Bool=false
+    maxiter::Int64, tol::Float64, verbose::Bool,
+    damping::Function # no damping in LM method, but passed on to sim_nr! when we switch to it
 )
 
-    @warn "Levenberg–Marquardt method is experimental."
+    # @warn "Levenberg–Marquardt method is experimental."
     if verbose
         @info "Simulation using Levenberg–Marquardt method."
     end
@@ -145,7 +148,7 @@ function sim_lm!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     nR = norm(R, Inf)
     nΔx = norm(Δx, Inf)
     if verbose
-        @info "1, || Fx || = $(nR), || Δx || = $(nΔx), lambda = $(lm_params[1]), qual = $(lm_params[3])"
+        @info "1, || Fx || = $(nR), || Δx || = $(nΔx), λ = $(lm_params[1]), qual = $(lm_params[3])"
     end
     for it = 2:maxiter
         if nR < tol
@@ -157,14 +160,14 @@ function sim_lm!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
         nR = norm(R, Inf)
         nΔx = norm(Δx, Inf)
         if verbose
-            @info "$it, || Fx || = $(nR), || Δx || = $(nΔx), lambda = $(lm_params[1]), qual = $(lm_params[3])"
+            @info "$it, || Fx || = $(nR), || Δx || = $(nΔx), λ = $(lm_params[1]), qual = $(lm_params[3])"
         end
-        if  (nΔx < 1e-5 || true ) &&  ((4nR < nR0 && nR < 1e-2) || (nR / nR0 > 0.8)) && (lm_params[1] <= 1e-4)
+        if (nΔx < 1e-5 || true) && ((4nR < nR0 && nR < 1e-2) || (nR / nR0 > 0.8)) && (lm_params[1] <= 1e-4)
             if verbose
                 @info "    --- switching to Newton-Raphson ---   "
             end
             sd.J_factorized[] = nothing
-            return sim_nr!(x, sd, maxiter, tol, verbose, linesearch)
+            return sim_nr!(x, sd, maxiter - it, tol, verbose, damping)
         end
         # nR0 = nR
     end

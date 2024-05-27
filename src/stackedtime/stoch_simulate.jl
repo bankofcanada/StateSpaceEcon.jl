@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -20,16 +20,13 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
     maxiter::Int=m.options.maxiter,
     fctype=getoption(m, :fctype, fcgiven),
     #= Newton-Raphson options =#
-    linesearch::Bool=getoption(m, :linesearch, false),
     warn_maxiter=getoption(getoption(m, :warn, Options()), :maxiter, false),
-    sim_solver=:sim_nr
+    linesearch::Bool=getoption(m, :linesearch, false),
+    sim_solver=:sim_nr,
+    damping=nothing
 )
 
-    sim_solve! =
-        sim_solver == :sim_nr ? sim_nr! :
-        sim_solver == :sim_lm ? sim_lm! :
-        sim_solver == :sim_gn ? sim_gn! :
-        error("Unknown solver $sim_solver.")
+    sim_solve!, damping = _get_solver_damping(linesearch, sim_solver, damping)
 
     if isempty(shocks)
         return _make_result_container(shocks, baseline)
@@ -133,7 +130,7 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
 
             # solve 
             try
-                converged = sim_solve!(eₜ, dₜ, maxiter, tol, verbose, linesearch)
+                converged = sim_solve!(eₜ, dₜ, maxiter, tol, verbose, damping)
                 check_converged(converged, warn_maxiter)
             catch
                 # marked as failed 

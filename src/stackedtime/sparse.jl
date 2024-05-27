@@ -67,7 +67,9 @@ export use_pardiso, use_pardiso!
 ###########################################################################
 ### :none 
 
-mutable struct NoFactorization{Tv} <: Factorization{Tv}
+abstract type SF_Factorization{Tv} <: Factorization{Tv} end
+
+mutable struct NoFactorization{Tv} <: SF_Factorization{Tv}
     A::SparseMatrixCSC{Tv,Int}
 end
 # don't factorize, just store the matrix
@@ -99,7 +101,7 @@ macro _sf_check_factorize(exception, expression)
     end)
 end
 
-mutable struct LUFactorization{Tv<:Real} <: Factorization{Tv}
+mutable struct LUFactorization{Tv<:Real} <: SF_Factorization{Tv}
     F::SuiteSparse.UMFPACK.UmfpackLU{Tv,Int}
     A::SparseMatrixCSC{Tv,Int}
 end
@@ -137,7 +139,7 @@ end
 # See https://github.com/JuliaSparse/Pardiso.jl/blob/master/examples/exampleunsym.jl
 # See https://www.intel.com/content/www/us/en/develop/documentation/onemkl-developer-reference-c/top/sparse-solver-routines/onemkl-pardiso-parallel-direct-sparse-solver-iface/pardiso-iparm-parameter.html
 
-mutable struct PardisoFactorization{Tv<:Real} <: Factorization{Tv}
+mutable struct PardisoFactorization{Tv<:Real} <: SF_Factorization{Tv}
     ps::MKLPardisoSolver
     A::SparseMatrixCSC{Tv,Int}
 end
