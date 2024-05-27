@@ -23,7 +23,7 @@ function sim_gn!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     ::Function # no damping used here
 )
 
-    @warn "Gauss-Newton method is experimental."
+    # @warn "Gauss-Newton method is experimental."
     if verbose
         @info "Simulation using Gauss-Newton method."
     end

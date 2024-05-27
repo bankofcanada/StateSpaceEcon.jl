@@ -39,7 +39,7 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     nFx = norm(Fx, Inf)
     nΔx = Inf
     _, λ = damping(0, 1.0, nFx, Fx)::Tuple{Bool,Float64}
-    while (it < maxiter) && (tol < nFx) && (tol < nΔx)
+    while (it < maxiter) && (tol < nFx) && (λ*tol < nΔx)
         it = it + 1
         TMP, Jx = stackedtime_RJ(x, x, sd)
         copyto!(Fx, TMP)
@@ -77,7 +77,7 @@ function damping_none(it::Int, λ::Float64, nR::Float64, R::AbstractVector{Float
     return true, 1.0
 end
 
-function damping_schedule(lambda::Real)
+function damping_schedule(lambda::Real; verbose::Bool=false)
     λ = convert(Float64, lambda)::Float64
     return function (::Int, ::Float64, ::Float64, ::AbstractVector{Float64},
         ::Union{Nothing,Factorization,AbstractMatrix{Float64}}=nothing,
@@ -87,7 +87,7 @@ function damping_schedule(lambda::Real)
     end
 end
 
-function damping_schedule(lambda::AbstractVector{<:Real})
+function damping_schedule(lambda::AbstractVector{<:Real}; verbose::Bool=false)
     λ = Float64[lambda...]
     return function (it::Int, ::Float64, ::Float64, ::AbstractVector{Float64},
         ::Union{Nothing,Factorization,AbstractMatrix{Float64}}=nothing,
@@ -100,7 +100,7 @@ function damping_schedule(lambda::AbstractVector{<:Real})
 end
 
 # the Armijo rule: C.T.Kelly, Iterative Methods for Linear and Nonlinear Equations, ch.8.1, p.137
-function damping_armijo(; alpha::Real=1e-4, sigma::Real=0.5, lambda_min::Real=0.00001)
+function damping_armijo(; alpha::Real=1e-4, sigma::Real=0.5, lambda_min::Real=0.00001, verbose::Bool=false)
     α = convert(Float64, alpha)
     σ = convert(Float64, sigma)
     λ_min = convert(Float64, lambda_min)
@@ -120,7 +120,7 @@ function damping_armijo(; alpha::Real=1e-4, sigma::Real=0.5, lambda_min::Real=0.
         end
         if λ < λ_min
             # λ too small
-            @warn "Linesearch failed."
+            verbose && @warn "Linesearch failed."
             return true, λ
         end
         if norm(F, 2) < (1.0 - α * λ) * nF2
@@ -135,7 +135,7 @@ end
 
 # Bank, R.E., Rose, D.J. Global approximate Newton methods. Numer. Math. 37, 279–295 (1981). 
 # https://doi.org/10.1007/BF01398257
-function damping_br81(; delta::Real=0.1, rateK::Real=10.0, lambda_min::Real=1e-5)
+function damping_br81(; delta::Real=0.1, rateK::Real=10.0, lambda_min::Real=1e-5, verbose::Bool=false)
     δ = convert(Float64, delta)
     λ_min = convert(Float64, lambda_min)
     bigK = 0.0  # Initialize with 0.0 (effectively the full Newton step)
@@ -166,6 +166,7 @@ function damping_br81(; delta::Real=0.1, rateK::Real=10.0, lambda_min::Real=1e-5
                 return false, λ
             else
                 # λ too small
+                verbose && @warn "Linesearch failed."
                 return true, λ_min
             end
         else

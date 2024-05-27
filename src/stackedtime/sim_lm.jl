@@ -127,7 +127,7 @@ function sim_lm!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     damping::Function # no damping in LM method, but passed on to sim_nr! when we switch to it
 )
 
-    @warn "Levenberg–Marquardt method is experimental."
+    # @warn "Levenberg–Marquardt method is experimental."
     if verbose
         @info "Simulation using Levenberg–Marquardt method."
     end
