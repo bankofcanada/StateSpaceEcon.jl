@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -54,8 +54,8 @@ include("stackedtime/sparse.jl")
 include("stackedtime/fctypes.jl")
 include("stackedtime/misc.jl")
 include("stackedtime/solverdata.jl")
-include("stackedtime/sim_lm.jl")
 include("stackedtime/sim_nr.jl")
+include("stackedtime/sim_lm.jl")
 include("stackedtime/sim_gn.jl")
 include("stackedtime/simulate.jl")
 include("stackedtime/shockdecomp.jl")

@@ -1,12 +1,12 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2024, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
 """
-    sim_gn!(x, sd, maxiter, tol, verbose [, linesearch])
+    sim_gn!(x, sd, maxiter, tol, verbose, damping)
 
 Solve the simulation problem using the Gauss-Newton method.
   * `x` - the array of data for the simulation. All initial, final and exogenous
@@ -16,9 +16,11 @@ Solve the simulation problem using the Gauss-Newton method.
   * `maxiter` - maximum number of iterations.
   * `tol` - desired accuracy.
   * `verbose` - whether or not to print progress information.
+  * `damping` - unused, no damping is implemented.
 """
 function sim_gn!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
-    maxiter::Int64, tol::Float64, verbose::Bool, linesearch::Bool=false, kwargs...
+    maxiter::Int64, tol::Float64, verbose::Bool,
+    ::Function # no damping used here
 )
 
     @warn "Gauss-Newton method is experimental."

@@ -43,14 +43,32 @@ function simulate(m::Model,
     linesearch::Bool=getoption(m, :linesearch, false),
     warn_maxiter=getoption(getoption(m, :warn, Options()), :maxiter, false),
     sim_solver=:sim_nr,
-    schedule_λ::Union{Bool,Function} = false,
+    damping=nothing
 )
 
     sim_solve! =
+        sim_solver isa Function ? sim_solver :
         sim_solver == :sim_nr ? sim_nr! :
         sim_solver == :sim_lm ? sim_lm! :
         sim_solver == :sim_gn ? sim_gn! :
         error("Unknown solver $sim_solver.")
+
+    if sim_solve! != sim_nr! && !isnothing(damping)
+        @warn "Damping is used only with sim_solver=:sim_nr"
+    end
+
+    damping =
+        damping isa Function ? damping :
+        damping isa Number ? damping_schedule(damping) :
+        damping isa AbstractVector ? damping_schedule(damping) :
+        damping == :br81 ? damping_br81() :
+        damping isa Tuple && damping[1] == :br81 ? damping_br81(; Base.tail(damping)...) :
+        damping == :linesearch || damping == :armijo ? damping_armijo() :
+        damping isa Tuple && damping[1] == :armijo ? damping_armijo(; Base.tail(damping)...) :
+        linesearch ? damping_armijo() :  # compatibility with old code
+        damping isa Nothing ? damping_none :
+        error("Invalid damping specification")
+
 
     unant_given = !isempty(exog_unant)
 
@@ -102,7 +120,7 @@ function simulate(m::Model,
         if verbose
             @info "Simulating $(p_ant.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
         end
-        converged = sim_solve!(x, gdata, maxiter, tol, verbose, linesearch, schedule_λ)
+        converged = sim_solve!(x, gdata, maxiter, tol, verbose, damping)
         check_converged(converged, warn_maxiter)
     else # unanticipated shocks
 
@@ -173,7 +191,7 @@ function simulate(m::Model,
                 if verbose
                     @info "Simulating $(p_ant.range[t:T]) with $((tol, maxiter))" # anticipate expectation_horizon gdata.FC
                 end
-                converged = sim_solve!(xx, gdata, maxiter, tol, verbose, linesearch, schedule_λ)
+                converged = sim_solve!(xx, gdata, maxiter, tol, verbose, damping)
                 check_converged(converged, warn_maxiter)
                 last_run = Workspace(; t, xx, gdata)
             end
@@ -184,7 +202,7 @@ function simulate(m::Model,
                 if verbose
                     @info "Simulating $(p_ant.range[t:T]) with $((tol, maxiter))" # anticipate expectation_horizon gdata.FC
                 end
-                converged = sim_solve!(xx, gdata, maxiter, tol, verbose, linesearch, schedule_λ)
+                converged = sim_solve!(xx, gdata, maxiter, tol, verbose, damping)
                 check_converged(converged, warn_maxiter)
             end
         else
@@ -216,7 +234,7 @@ function simulate(m::Model,
                 if verbose
                     @info "Simulating $(p_ant.range[t:T])" # anticipate expectation_horizon sdata.FC
                 end
-                converged = sim_solve!(xx, sdata, maxiter, tol, verbose, linesearch, schedule_λ)
+                converged = sim_solve!(xx, sdata, maxiter, tol, verbose, damping)
                 check_converged(converged, warn_maxiter)
             end
             # intermediate simulations
@@ -262,7 +280,7 @@ function simulate(m::Model,
                 if verbose
                     @info("Simulating $(p_ant.range[t] .+ (0:expectation_horizon - 1))") # anticipate expectation_horizon sdata.FC
                 end
-                converged = sim_solve!(xx, sdata, maxiter, tol, verbose, linesearch, schedule_λ)
+                converged = sim_solve!(xx, sdata, maxiter, tol, verbose, damping)
                 check_converged(converged, warn_maxiter)
                 last_t = t  # keep track of last simulation time
             end
@@ -284,7 +302,7 @@ function simulate(m::Model,
                     if verbose
                         @info "Simulating $(p_ant.range[last_t + 1:T])" # anticipate expectation_horizon sdata.FC
                     end
-                    converged = sim_solve!(xx, sdata, maxiter, tol, verbose, linesearch, schedule_λ)
+                    converged = sim_solve!(xx, sdata, maxiter, tol, verbose, damping)
                     check_converged(converged, warn_maxiter)
                 end
             end
