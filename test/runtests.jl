@@ -378,14 +378,14 @@ include("misc.jl")
     end
 end
 
-for sfdef = QuoteNode.(StateSpaceEcon.StackedTimeSolver.sf_libs)
+for sfdef = Iterators.map(QuoteNode, StateSpaceEcon.StackedTimeSolver.sf_libs)
 
     sfdef.value == :default && continue
     sfdef.value == :none && continue
 
     if sfdef.value == :pardiso
         # Pardiso in macos doesn't work.  Disable for now
-        if Sys.isapple() 
+        if Sys.isapple()
             @info "Skip :pardiso on apple"
             continue
         end
