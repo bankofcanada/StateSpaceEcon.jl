@@ -9,7 +9,7 @@ This package is part of the
 [StateSpaceEcon](https://github.com/bankofcanada/StateSpaceEcon.jl) ecosystem,
 which also includes
 [ModelBaseEcon](https://github.com/bankofcanada/ModelBaseEcon.jl) and
-[TImeSeriesEcon](https://github.com/bankofcanada/TimeSeriesEcon.jl).
+[TimeSeriesEcon](https://github.com/bankofcanada/TimeSeriesEcon.jl).
 
 ## Installation
 
