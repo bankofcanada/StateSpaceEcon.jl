@@ -409,6 +409,8 @@ end
 
 include("sim_solver.jl")
 
+include("mtkext.jl")
+
 # keep this one last because it overwrites getE?()
 include("modelchanges.jl")
 
