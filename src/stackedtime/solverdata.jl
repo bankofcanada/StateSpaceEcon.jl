@@ -88,7 +88,7 @@ function assign_fc! end
     return Dict{Int,Vector{Float64}}()
 end
 
-@inline function assign_fc!(x::AbstractVector{Float64}, exog::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCNone)
+@inline function assign_fc!(x::AbstractVector{<:Real}, exog::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCNone)
     # nothing to see here
     return x
 end
@@ -100,7 +100,7 @@ end
     return Dict{Int,Vector{Float64}}()
 end
 
-@inline function assign_fc!(x::AbstractVector{Float64}, exog::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCGiven)
+@inline function assign_fc!(x::AbstractVector{<:Real}, exog::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCGiven)
     # values given exogenously
     if x !== exog
         x[sd.TT[end]] .= exog[sd.TT[end]]
@@ -115,7 +115,7 @@ end
     return Dict{Int,Vector{Float64}}()
 end
 
-@inline function assign_fc!(x::AbstractVector{Float64}, ::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCMatchSSLevel)
+@inline function assign_fc!(x::AbstractVector{<:Real}, ::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCMatchSSLevel)
     # values come from the steady state
     x[sd.TT[end]] .= sd.SS[sd.TT[end], vind]
     return x
@@ -144,7 +144,7 @@ end
     return Dict{Int,Vector{Float64}}(0 => fill(-1.0, length(sd.TT[end])))
 end
 
-@inline function assign_fc!(x::AbstractVector{Float64}, ::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCMatchSSRate)
+@inline function assign_fc!(x::AbstractVector{<:Real}, ::AbstractVector{Float64}, vind::Int, sd::StackedTimeSolverData, ::FCMatchSSRate)
     # compute values using the slope from the steady state
     for t in sd.TT[end]
         x[t] = x[t-1] + sd.SS[t, vind] - sd.SS[t-1, vind]
@@ -181,7 +181,7 @@ end
     return Dict{Int,Vector{Float64}}(-1 => foo, 0 => -1.0 .- foo)
 end
 
-@inline function assign_fc!(x::AbstractVector{Float64}, ::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCConstRate)
+@inline function assign_fc!(x::AbstractVector{<:Real}, ::AbstractVector{Float64}, ::Int, sd::StackedTimeSolverData, ::FCConstRate)
     # compute values using the slope at the end of the simulation
     for t in sd.TT[end]
         x[t] = 2x[t-1] - x[t-2]
@@ -430,7 +430,7 @@ exogenous data from `exog`.  Also call [`assign_final_condition!`](@ref).
 !!! warning
     Internal function not part of the public interface.
 """
-function assign_exog_data!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
+function assign_exog_data!(x::AbstractArray{<:Real,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
     # @assert size(x,1) == size(exog,1) == sd.NT
     x[sd.exog_mask] = exog[sd.exog_mask]
     assign_final_condition!(x, exog, sd)
@@ -446,7 +446,7 @@ are stored in the the solver data `sd`. `exog` is used for [`fcgiven`](@ref).
 !!! warning
     Internal function not part of the public interface.
 """
-function assign_final_condition!(x::AbstractArray{Float64,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
+function assign_final_condition!(x::AbstractArray{<:Real,2}, exog::AbstractArray{Float64,2}, sd::StackedTimeSolverData)
     for (vi, fc) in enumerate(sd.FC)
         assign_fc!(view(x, :, vi), exog[:, vi], vi, sd, fc)
     end
