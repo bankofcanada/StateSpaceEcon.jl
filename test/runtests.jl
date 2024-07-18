@@ -409,6 +409,10 @@ end
 
 include("sim_solver.jl")
 
+if VERSION >= v"1.10"
+    include("mtkext.jl")
+end
+
 # keep this one last because it overwrites getE?()
 include("modelchanges.jl")
 

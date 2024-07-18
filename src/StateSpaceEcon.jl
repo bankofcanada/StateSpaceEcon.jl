@@ -39,5 +39,6 @@ function getsolvermodule(solvername::Symbol)
 end
 
 include("simulate.jl")
+include("MTKExt.jl")
 
 end # module
