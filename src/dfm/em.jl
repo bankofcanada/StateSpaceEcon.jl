@@ -179,6 +179,7 @@ function _scale_model!(wks::DFMKalmanWks{T}, Mx, Wx, model::DFMModel, em_wks::EM
             end
         end
         ldiv!(D, view(R, yinds, yinds))
+        constraint === nothing && continue
         @unpack W, q = constraint
         nnz(q) == 0 && continue
         oblk_Λ = vec(view(Λ, yinds, xinds_estim))
