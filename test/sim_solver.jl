@@ -33,6 +33,26 @@ rng = Random.default_rng()
     @test @compare res01[2] res01[3] quiet
 end
 
+@testset "warn_maxiter" begin
+    m = getE7A()
+    sssolve!(m)
+    @test issssolved(m) && (0 == check_sstate(m))
+    
+    p01 = Plan(m, 1:100)
+    Random.seed!(rng, 0x1230ABCF)
+    data01 = steadystatedata(m, p01)
+    data01[begin:0U, m.variables] .+= randn(rng, m.maxlag, m.nvars)
+    data01[1U:10U, m.shocks] .+= randn(rng, 10, m.nshks)
+
+    @testset "warn_maxiter = false" begin
+        @test simulate(m, p01, data01; warn_maxiter=false, sim_solver=:sim_nr, verbose=false, fctype=fcnatural, maxiter=1) !== nothing
+    end
+
+    @testset "warn_maxiter = :error" begin
+        @test_throws ErrorException simulate(m, p01, data01; warn_maxiter=:error, sim_solver=:sim_nr, verbose=false, fctype=fcnatural, maxiter=1)
+    end
+end
+
 @testset "damping" begin
 
     m = getE7A()

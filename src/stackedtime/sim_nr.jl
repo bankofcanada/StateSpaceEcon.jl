@@ -80,7 +80,7 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     nFx = norm(Fx, Inf)
     nΔx = Inf
     _, λ = damping(0, 1.0, nFx, Fx)::Tuple{Bool,Float64}
-    while (it < maxiter) && (tol < nFx) && (λ*tol < nΔx)
+    while (it <= maxiter) && (tol < nFx) && (λ*tol < nΔx)
         it = it + 1
         TMP, Jx = stackedtime_RJ(x, x, sd)
         copyto!(Fx, TMP)
