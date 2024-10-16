@@ -72,11 +72,12 @@ const KFDataInfo = (;
     y=_KFValueInfo((:NO,), "true observations, as returned by `kf_true_y!`"),
     y_pred=_KFValueInfo((:NO,), "filtered observation, i.e. E[yₜ | y₁, ..., yₜ₋₁]"),
     Py_pred=_KFValueInfo((:NO, :NO), "covariance of filtered observation"),
-    error_y=_KFValueInfo((:NO,), "observation error ( y - y_pred)"),
     Pxy_pred=_KFValueInfo((:NS, :NO), "cross-covariance of x_pred and y_pred"),
+    error_y=_KFValueInfo((:NO,), "observation error ( y - y_pred)"),
     K=_KFValueInfo((:NS, :NO), "Kalman gain matrix"),
     x_smooth=_KFValueInfo((:NS,), "smoothed state, i.e. E[xₜ | all y]"),
     Px_smooth=_KFValueInfo((:NS, :NS), "covariance of smoothed state"),
+    Pxx_pred=_KFValueInfo((:NS, :NS), "cross-covariance of xₜ and xₜ₊₁"),
     y_smooth=_KFValueInfo((:NO,), "smoothed observation, i.e. E[yₜ | all y]"),
     Py_smooth=_KFValueInfo((:NO, :NO), "covariance of smoothed observation"),
     J=_KFValueInfo((:NS, :NS), "Kalman smoother matrix"),
@@ -159,7 +160,7 @@ function _new_kf_data(expr)
     if !all(x -> x isa Symbol, FIELDS)
         error("Argument must be a simple struct where only the field names are given and without inner constructors.")
     end
-    allocs = []
+    alloc_exprs = []
     struct_expr = MacroTools.postwalk(expr) do x
         x isa Bool && return x
         x isa LineNumberNode && return x
@@ -168,23 +169,23 @@ function _new_kf_data(expr)
             haskey(KFDataInfo, x) || error("$x is not a valid field name for Kalman filter data")
             xdims = KFDataInfo[x].dims
             ndims = 1 + length(xdims)
-            push!(allocs, :(Array{T}(undef, $(xdims...), nperiods)))
+            push!(alloc_exprs, :(Array{T}(undef, $(xdims...), nperiods)))
             return :($x::Array{T,$ndims})
         end
         x isa Expr && return x
         error("Can't process x of type $(typeof(x))")
     end
-    isempty(allocs) && error("Must specify at least one field")
+    isempty(alloc_exprs) && error("Must specify at least one field")
     constr_expr = MacroTools.striplines(:(
-        function $Name(T::Type{<:Real}, rng::Union{Integer,UnitRange{<:Integer}}, model::$(@__MODULE__).AbstractKFModel, data...)
-            NS = kf_length_x(model, data...)
-            NO = kf_length_y(model, data...)
+        function $Name(T::Type{<:Real}, rng::Union{Integer,UnitRange{<:Integer}}, model, user_data...)
+            NS = kf_length_x(model, user_data...)
+            NO = kf_length_y(model, user_data...)
             nperiods = rng isa UnitRange ? length(rng) : rng
-            return $Name{rng,NS,NO,T}($(allocs...))
+            return $Name{rng,NS,NO,T}($(alloc_exprs...))
         end
     ))
     constr2_expr = MacroTools.striplines(:(
-        $Name(rng::Union{Integer,UnitRange{<:Integer}}, model::$(@__MODULE__).AbstractKFModel, data...) = $Name(Float64, rng, model, data...)
+        $Name(rng::Union{Integer,UnitRange{<:Integer}}, model, user_data...) = $Name(Float64, rng, model, user_data...)
     ))
     return Expr(:block, struct_expr, constr_expr, constr2_expr)
 end
@@ -233,6 +234,39 @@ KFDataFilterEx
     loglik
 end
 
+@kf_data_struct struct KFDataSmootherEx
+    x_pred
+    Px_pred
+    y_pred
+    Py_pred
+    Pxy_pred
+    x
+    Px
+    K
+    error_y
+    x_smooth
+    Px_smooth
+    y_smooth
+    Py_smooth
+    Pxx_pred
+    J
+    res2
+    loglik
+end
 
+macro kfd_set!(kfd, t, values::Symbol...)
+    ret = MacroTools.striplines(quote end)
+    push!(ret.args, __source__)
+    for val in values
+        push!(ret.args,
+            :(kfd_setvalue!($kfd, $val, $t, Val($(Meta.quot(val)))))
+        )
+    end
+    return esc(ret)
+end
 
-
+macro kfd_get(kfd, t, value::Symbol)
+    return esc(:(
+        kfd_getvalue($kfd, $t, Val($(Meta.quot(value))))
+    ))
+end
