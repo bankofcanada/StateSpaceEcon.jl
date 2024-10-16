@@ -25,5 +25,6 @@ include("kalman/filter.jl")
 # include("kalman/sqrt.jl")
 
 include("kalman/smoother.jl")
+include("kalman/linear_stationary.jl")
 
 end
