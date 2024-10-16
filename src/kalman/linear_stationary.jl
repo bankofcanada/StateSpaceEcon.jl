@@ -31,7 +31,8 @@
 
 function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
     fwdstate::Bool=true,
-    anymissing::Bool=any(isnan, Y))
+    anymissing::Bool=any(isnan, Y)
+)
 
     _Q = if R isa UniformScaling
         Q
@@ -48,7 +49,6 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
 
     x_pred = aₜ₊₁ = aₜ = kf.x_pred
     Px_pred = Pₜ₊₁ = Pₜ = kf.Px_pred
-    # Pxy_pred = kf.Pxy_pred
 
     x = auₜ = kf.x
     Px = Puₜ = kf.Px
@@ -57,10 +57,12 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
     error_y = vₜ = kf.error_y
     Py_pred = Fₜ = kf.Py_pred
 
-
     ZP = similar(Z)
-    UorL = similar(Fₜ)
     TP = similar(Pₜ)
+
+    if anymissing
+        have_y = trues(kf.ny)
+    end
 
     aₜ[:] = a₁
     Pₜ[:, :] = P₁
@@ -73,6 +75,7 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
     end
 
     tstart, tstop = extrema(kf.range)
+    all_y = true
     t = tstart
     while true
 
@@ -84,11 +87,12 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
         copyto!(vₜ, Y[t, :])
         BLAS.axpy!(-1.0, y_pred, vₜ)
         if anymissing
-            for (i, v) in enumerate(vₜ)
-                if isnan(v)
-                    vₜ[i] = 0
-                end
-            end
+            map!(!isnan, have_y, vₜ)
+            all_y = all(have_y)
+        end
+
+        if !all_y
+            vₜ .*= have_y
         end
 
         # Either:  PZᵀ[:, :] = Pₜ * transpose(Z)
@@ -104,31 +108,62 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a₁, P₁,
 
         @kfd_set! kfd t y_pred Py_pred error_y
 
+        ZTIF = @kfd_view kfd t aux_ZᵀPy⁻¹
         # Compute K = P Zᵀ / Fₜ using Cholesky factorization (faster than LU)
-
-        # Cholesky factorization  Fₜ = Uᵀ U 
-        copyto!(UorL, LowerTriangular(Fₜ))
-        LAPACK.potrf!('L', UorL)
-        kfd_setvalue!(kfd, UorL, t, Val(:Ly_pred))
-        CF = Cholesky(LowerTriangular(UorL))
-
-        copyto!(Kₜ, transpose(ZP))
-        rdiv!(Kₜ, CF)
+        if !all_y
+            ny = sum(have_y)
+            fill!(Kₜ, 0.0)
+            fill!(ZTIF, 0.0)
+            if ny == 0
+                # if observations are missing, we cannot update the prediction
+                # we set the Kalman gain, K, to zero, effectively 
+                # giving auₜ = aₜ and Puₜ = Pₜ
+                cFₜ = Cholesky(zeros(0,0), :U, 0)
+                nothing
+            else
+                # delete rows of Z and rows and columns of F where observations are missing
+                # and proceed with the same formulas but smaller matrices
+                F⁺ = view(Fₜ, 1:ny, 1:ny)
+                Z⁺ = view(Z, have_y, :)
+                TMP = view(ZP, 1:ny, :)
+                mul!(F⁺, mul!(TMP, Z⁺, Pₜ), transpose(Z⁺))
+                F⁺[:,:] += view(H, have_y, have_y)
+                cFₜ = cholesky!(Symmetric(F⁺))
+                TMP[:,:] = Z⁺
+                ldiv!(cFₜ, TMP)
+                ZTIF[:, have_y] = transpose(TMP)
+                mul!(view(Kₜ, :, have_y), Pₜ, transpose(TMP))
+            end
+        else
+            # compute the Kalman gain K
+            copyto!(Kₜ, transpose(ZP))
+            cFₜ = cholesky!(Symmetric(Fₜ))
+            rdiv!(Kₜ, cFₜ)
+            # compute the auxiliary matrix Zᵀ⋅Fₜ⁻ꜝ
+            copyto!(ZTIF, transpose(Z))
+            rdiv!(ZTIF, cFₜ)
+        end
 
         # auₜ[:] = aₜ + Kₜ * vₜ
         BLAS.gemv!('N', 1.0, Kₜ, vₜ, 0.0, auₜ)
         BLAS.axpy!(1.0, aₜ, auₜ)
 
-        # Puₜ[:, :] = Pₜ - Kₜ * transpose(PZᵀ)
+        # Puₜ[:, :] = Pₜ - Kₜ * Z * Pₜ = (I-KₜZ)Pₜ
         # BLAS.gemm!('N', 'T', -1.0, Kₜ, PZᵀ, 1.0, Puₜ)
-        BLAS.gemm!('N', 'N', -1.0, Kₜ, ZP, 0.0, Puₜ)
-        BLAS.axpy!(1.0, Pₜ, Puₜ)
+        # BLAS.gemm!('N', 'N', -1.0, Kₜ, ZP, 0.0, Puₜ)
+        # BLAS.axpy!(1.0, Pₜ, Puₜ)
+        mul!(copyto!(TP, I), Kₜ, Z, -1.0, 1.0)  # TP =  I - KₜZ
+        mul!(Puₜ, TP, Pₜ) # Puₜ = TP * Pₜ
 
         @kfd_set! kfd t x_pred Px_pred K x Px
 
         # compute likelihood and residual-squared
         _assign_res2(kfd, t, error_y)
-        _assign_loglik(kfd, t, error_y, CF)
+        if !all_y
+            _assign_loglik(kfd, t, view(error_y, have_y), cFₜ)
+        else
+            _assign_loglik(kfd, t, error_y, cFₜ)
+        end
 
         t = t + 1
         t > tstop && break
@@ -186,7 +221,7 @@ function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R)
     Lₜ = Matrix{Float64}(undef, kf.nx, kf.nx)
     TMPx = Vector{Float64}(undef, kf.nx)
     TMPxx = Matrix{Float64}(undef, kf.nx, kf.nx)
-    ZᵀiFₜ = TMPxy = Matrix{Float64}(undef, kf.nx, kf.ny)
+    TMPxy = Matrix{Float64}(undef, kf.nx, kf.ny)
 
     tstart, tstop = extrema(kf.range)
 
@@ -203,7 +238,7 @@ function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R)
         Pₜ = @kfd_view kfd t Px_pred
         vₜ = @kfd_view kfd t error_y
         Kₜ = @kfd_view kfd t K
-        Fₜ = Cholesky(LowerTriangular(@kfd_view kfd t Ly_pred))
+        ZᵀiFₜ = @kfd_view kfd t aux_ZᵀPy⁻¹
 
         # Lₜ[:,:] = T * ( I - Kₜ * Z )
         copyto!(TMPxx, I)
@@ -217,9 +252,6 @@ function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R)
         t == tstop || BLAS.gemm!('N', 'N', -1.0, Nₜ₋₁, Pₜ₊₁, 1.0, Pxx_smooth)
         BLAS.gemm!('T', 'N', 1.0, Lₜ, Pxx_smooth, 0.0, TMPxx)
         BLAS.gemm!('N', 'N', 1.0, Pₜ, TMPxx, 0.0, Pxx_smooth)
-
-        copyto!(ZᵀiFₜ, transpose(Z))
-        rdiv!(ZᵀiFₜ, Fₜ)
 
         # rₜ₋₁[:] = (transpose(Z) / Fₜ) * vₜ + transpose(Lₜ) * rₜ
         copyto!(TMPx, rₜ₋₁)  # rₜ₋₁ and rₜ are stored in the same memory
