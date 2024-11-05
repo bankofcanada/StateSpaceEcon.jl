@@ -236,7 +236,9 @@ function update_plan!(sd::StackedTimeSolverData, model::Model, plan::Plan; chang
     if changed
         @. sd.solve_mask = !(sd.fc_mask | sd.exog_mask)
         @assert !any(sd.exog_mask .& sd.fc_mask)
-        @assert sum(sd.solve_mask) == size(sd.J, 1)
+        if sum(sd.solve_mask) != size(sd.J, 1)
+            throw(ArgumentError("Mismatch in the numbers of equations ($(size(sd.J, 1))) and unknowns ($(sum(sd.solve_mask))).\nCheck the model definition and the simulation plan."))
+        end
         sm_index = cumsum(sd.solve_mask)
 
         # Update the Jacobian correction matrix, if exogenous plan changed
