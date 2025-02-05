@@ -26,8 +26,8 @@ Solve the simulation problem using a Newton iteration with damping.
       `array[end]`.
     - `damping_amijo(α=1e-4, σ=0.5)` implements a standard linesearch algorithm
       based on the Armijo rule
-    - `damping_bank_rose(delta=0.1, rateK=10.0)` implements a the damping
-      algorithm of Bank and Rose 1980
+    - `damping_br81(delta=0.1, rateK=10.0)` implements a the damping
+      algorithm of Bank and Rose 1981
 
 ##### Conventions for custom damping function.
 The `damping` callback function is expected to have the following signature:
