@@ -141,44 +141,62 @@ function damping_schedule(lambda::AbstractVector{<:Real}; verbose::Bool=false)
 end
 
 # the Armijo rule: C.T.Kelly, Iterative Methods for Linear and Nonlinear Equations, ch.8.1, p.137
-function damping_armijo(; alpha::Real=1e-4, sigma::Real=0.5, lambda_min::Real=0.00001, verbose::Bool=false)
+function damping_armijo(; alpha::Real=1e-4, sigma::Real=0.5, lambda_min::Real=1e-5, lambda_max::Real=1.0, lambda_growth::Real=1.1, verbose::Bool=false)
     α = convert(Float64, alpha)
     σ = convert(Float64, sigma)
     λ_min = convert(Float64, lambda_min)
+    λ_max = convert(Float64, lambda_max)
+    λ_growth = convert(Float64, lambda_growth)
     nF2_it = 0  # iteration number at which nF2 is valid
     nF2 = NaN   # the norm of the residual at the beginning of iteration nF2_it
     return function (it::Int, λ::Float64, nF::Float64, F::AbstractVector{Float64},
         ::Union{Nothing,Factorization,AbstractMatrix{Float64}}=nothing,
         ::Union{Nothing,AbstractVector{Float64}}=nothing
     )
-        # @printf "    it=%d, λ=%g, nF=%g\n" it λ nF
-        it < 1 && return true, 1.0
+        it < 1 && return true, min(1.0, λ_max)  
+
         if nF2_it != it
-            # first time we're called this iteration 
-            nF2 = norm(F, 2)  # store the residual 
+            # First call in this iteration: Store the residual norm
+            nF2 = norm(F, 2)
             nF2_it = it
-            return false, 1.0   # try λ=1.0, a full Newton step, first
+            return false, min(1.0, λ_max)  
         end
+
         if λ < λ_min
-            # λ too small
-            verbose && @warn "Linesearch failed."
+            verbose && @warn "Linesearch failed: λ fell below λ_min."
             return true, λ
         end
+
         if norm(F, 2) < (1.0 - α * λ) * nF2
-            # Armijo test pass => accept the given λ
-            return true, λ
+            # Armijo test passed => accept the given λ
+            new_λ = min(λ * λ_growth, λ_max)  # Gradually increase λ but cap at λ_max
+            
+            if abs(norm(F, 2) - nF2) < 1e-12  # Convergence check to break loops
+                verbose && @info "Solver converged: residual change too small."
+                return true, new_λ
+            end
+
+            return true, new_λ
         else
-            # reject and try a smaller λ
-            return false, σ * λ
+            # Reject and try a smaller λ
+            new_λ = max(σ * λ, λ_min)
+            
+            if λ == new_λ  # Prevent infinite shrinking loops
+                verbose && @warn "Stuck in shrinking loop, forcing exit."
+                return true, λ
+            end
+
+            return false, new_λ
         end
     end
 end
 
 # Bank, R.E., Rose, D.J. Global approximate Newton methods. Numer. Math. 37, 279–295 (1981). 
 # https://doi.org/10.1007/BF01398257
-function damping_br81(; delta::Real=0.1, rateK::Real=10.0, lambda_min::Real=1e-5, verbose::Bool=false)
+function damping_br81(; delta::Real=0.1, rateK::Real=10.0, lambda_min::Real=1e-5, lambda_max::Real=1.0, verbose::Bool=false)
     δ = convert(Float64, delta)
     λ_min = convert(Float64, lambda_min)
+    λ_max = convert(Float64, lambda_max)
     bigK = 0.0  # Initialize with 0.0 (effectively the full Newton step)
     nF2_it = 0  # iteration number at which nF2 is valid
     nF2 = NaN   # the norm of the residual at the beginning of iteration nF2_it
@@ -187,33 +205,37 @@ function damping_br81(; delta::Real=0.1, rateK::Real=10.0, lambda_min::Real=1e-5
         ::Union{Nothing,Factorization,AbstractMatrix{Float64}}=nothing,
         ::Union{Nothing,AbstractVector{Float64}}=nothing
     )
-        # @printf "    it=%d, λ=%g, nF=%g\n" it λ nF
-        it < 1 && (bigK = 0.0; return true, 1.0)
+        # Initialization step
+        it < 1 && (bigK = 0.0; return true, λ_max)
+        
         if nF2_it != it
-            # first time we're called this iteration 
+            # First time we're called in this iteration
             nF2 = norm(F, 2)  # store the residual 
             nF2_it = it
             return false, calc_λ()
         end
+        
         if (1 - δ * λ) * nF2 < norm(F, 2)
-            # test failed => reject and try smaller λ
+            # If test failed, decrease step size
             if bigK == 0.0
                 bigK = 1.0
             else
-                bigK = rateK * bigK
+                bigK *= rateK  # Increase `bigK` slower to prevent excessive reductions in λ
             end
             λ = calc_λ()
             if λ > λ_min
                 return false, λ
             else
-                # λ too small
                 verbose && @warn "Linesearch failed."
                 return true, λ_min
             end
         else
-            # lower bigK for next iteration ...
-            bigK = bigK / rateK
-            # ... and accept given λ 
+            # Lower `bigK` more aggressively when convergence is happening
+            bigK /= sqrt(rateK)
+
+            # If λ is near the lower bound for many steps, slowly increase it
+            λ = min(λ * 1.05, λ_max)
+
             return true, λ
         end
     end
