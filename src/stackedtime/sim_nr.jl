@@ -193,10 +193,11 @@ end
 
 # Bank, R.E., Rose, D.J. Global approximate Newton methods. Numer. Math. 37, 279–295 (1981). 
 # https://doi.org/10.1007/BF01398257
-function damping_br81(; delta::Real=0.1, rateK::Real=10.0, lambda_min::Real=1e-5, lambda_max::Real=1.0, verbose::Bool=false)
+function damping_br81(; delta::Real=0.1, rateK::Real=10.0, lambda_min::Real=1e-5, lambda_max::Real=1.0, lambda_growth::Real=1.05, verbose::Bool=false)
     δ = convert(Float64, delta)
     λ_min = convert(Float64, lambda_min)
     λ_max = convert(Float64, lambda_max)
+    λ_growth = convert(Float64, lambda_growth)
     bigK = 0.0  # Initialize with 0.0 (effectively the full Newton step)
     nF2_it = 0  # iteration number at which nF2 is valid
     nF2 = NaN   # the norm of the residual at the beginning of iteration nF2_it
@@ -234,7 +235,7 @@ function damping_br81(; delta::Real=0.1, rateK::Real=10.0, lambda_min::Real=1e-5
             bigK /= sqrt(rateK)
 
             # If λ is near the lower bound for many steps, slowly increase it
-            λ = min(λ * 1.05, λ_max)
+            λ = min(λ * λ_growth, λ_max)
 
             return true, λ
         end
