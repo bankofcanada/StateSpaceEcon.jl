@@ -24,21 +24,21 @@ Solve the simulation problem using a Newton iteration with damping.
     - `damping_schedule(vector)` returns `λ=vector[it]` on iteration `it`. If
       the vector is shorter than the number of iterations, it keeps returning
       `array[end]`.
-    - `damping_amijo(α=1e-4, σ=0.5)` implements a standard linesearch algorithm
+    - `damping_amijo(sigma = 0.5, alpha = 1e-4, lambda_min = 1e-5, lambda_max = 1.0, lambda_growth = 1.05)` implements a standard linesearch algorithm
       based on the Armijo rule
-    - `damping_br81(delta=0.1, rateK=10.0)` implements a the damping
-      algorithm of Bank and Rose 1981
-
+    - `damping_br81(delta = 0.1, lambda_min = 1e-5, lambda_max = 1.0, lambda_growth = 1.05)` implements a the damping
+      algorithm of Bank and Rose (1981)
+    
 ##### Conventions for custom damping function.
 The `damping` callback function is expected to have the following signature:
-
+    
     function custom_damping(k::Int, λ::Float64, nR::Float64, R::AbstractVector{Float64},
         J::Union{Nothing,Factorization,AbstractMatrix{Float64}}=nothing,
         Δx::Union{Nothing,AbstractVector{Float64}}=nothing
     )::Tuple{Bool, Float64}
         # <your code goes here>
     end
-
+    
 The first call will be with `k=0`, before the solver enters the Newton
 iterations loop. This should allow any initialization and defaults to be setup.
 In this call, the values of `R` and `nR` will equal the residual and its norm at
@@ -49,7 +49,7 @@ Each subsequent call will be with `k` between 1 and `maxiter` (possibly multiple
 calls with the same `k`) will have the current `λ` (which equals the one returned by the
 previous call), the current `R` (and its Inf-norm `nR`), the Jacobian `J` and
 the Newton direction `Δx`.
-
+    
 The damping function must return a tuple `(accept, λ)`. The same Newton
 iteration `k` will continue until the damping function returns `accept=true`,
 after which will begin the next Newton iteration (`k=k+1``).
@@ -69,7 +69,7 @@ to accept this step, by returning `(true, λ)`, or reject it and propose a new �
 to try, by returning `(false, new_λ)`. Don't return `(false, λ)` because this
 will make it an infinite loop. Good luck!
 
-"""
+    """
 function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
     maxiter::Int64, tol::Float64, verbose::Bool, damping::Function
 )

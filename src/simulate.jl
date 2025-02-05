@@ -75,16 +75,16 @@ Run a simulation for the given model, simulation plan and exogenous data.
     * `model` - the [`Model`](@ref ModelBaseEcon.Model) instance to simulate.
     * `plan` - the [`Plan`](@ref) for the simulation.
     * `data` - a 2D `Array` containing the exogenous data. This includes the
-        initial and final conditions.
+  initial and final conditions.
 
 ### Options as keyword arguments
     * `fctype::`[`FinalCondition`](@ref) - set the desired final condition type
-        for the simulation. The default value is [`fcgiven`](@ref). Other possible
+  for the simulation. The default value is [`fcgiven`](@ref). Other possible
         values include [`fclevel`](@ref), [`fcslope`](@ref) and
-        [`fcnatural`](@ref).
+  [`fcnatural`](@ref).
     * `initial_guess::AbstractMatrix{Float64}` - a 2D `Array` containing the
-        initial guess for the solution. This is used to start the Newton-Raphson
-        algorithm. The default value is an empty array (`zeros(0,0)`), in which case
+  initial guess for the solution. This is used to start the Newton-Raphson
+  algorithm. The default value is an empty array (`zeros(0,0)`), in which case
         we use the exogenous data for the initial condition. You can use the steady
         state solution using [`steadystatearray`](@ref).
     * `deviation::Bool` - set to `true` if the `data` is given in deviations from
@@ -97,10 +97,10 @@ Run a simulation for the given model, simulation plan and exogenous data.
     * `verbose::Bool` - control whether or not to print progress information.
         Default value is taken from `model.options`.
     * `tol::Float64` - set the desired accuracy. Default value is taken from
-        `model.options`.
+  `model.options`.
     * `maxiter::Int` - algorithm fails if the desired accuracy is not reached
         within this maximum number of iterations. Default value is taken from
-        `model.options`.
+  `model.options`.
 The following options are specific to the `:stackedtime` solver
     * `sim_solver` - specify the non-linear solver to use. Available options are 
       - `:sim_nr` : (default) Newton-Raphson, with possible damping, see below.
@@ -111,7 +111,7 @@ The following options are specific to the `:stackedtime` solver
       will do this at each iteration. Default is `false`. (Superseded by the
       `damping` option described below)
     * `damping` - Specifies the style of damping that can be applied to the
-      Newton non-linear solver. Available options are:
+  Newton non-linear solver. Available options are:
       - if not given the default behaviour is no damping, i.e. the damping
         coefficient is set to 1.0 in each iteration.
       - number: the damping coefficient will be set to the given number (rather than 1)
@@ -122,13 +122,11 @@ The following options are specific to the `:stackedtime` solver
       - `:linesearch` or `:armijo` : same as setting `linesearch=true`. The
         Armijo rule is taken from "C.T.Kelly, Iterative Methods for Linear and
         Nonlinear Equations, ch.8.1, p.137"
-      - `(:armijo, :sigma => 0.5, :alpha => 1e-4)` - override the default
-        parameters of the Armijo rule.
-      - `:br81` : (experimental) implements the damping algorithm in "Bank, R.E.,
-        Rose, D.J. Global approximate Newton methods. Numer. Math. 37, 279–295
-        (1981)."
-      - `(:br81, :rateK => 10, :delta => 0.1)` : override the default parameters
-        of the Bank & Rose (1981) algorithm.
+      - `(:armijo, :sigma => 0.5, :alpha => 1e-4, :lambda_min => 1e-5, :lambda_max => 1.0, :lambda_growth => 1.05)` - 
+      extends the Armijo rule with additional controls for minimum and maximum damping factors and a lambda growth parameter.
+      - `:br81` - (experimental) implements the damping algorithm from "Bank, R.E., Rose, D.J. Global approximate Newton methods. Numer. Math. 37, 279–295 (1981)."
+      - `(:br81, :rateK => 10, :delta => 0.1, :lambda_min => 1e-5, :lambda_max => 1.0, :lambda_growth => 1.05)`
+      - extends `:br81` with additional controls for minimum and maximum damping factors and a lambda growth parameter.
 
 """
 function simulate end
