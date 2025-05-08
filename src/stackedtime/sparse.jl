@@ -149,8 +149,11 @@ end
     ps = MKLPardisoSolver()
     set_matrixtype!(ps, Pardiso.REAL_NONSYM)
     pardisoinit(ps)
+    # set_msglvl!(ps, 1) # make pardiso verbose
     fix_iparm!(ps, :N)
     set_iparm!(ps, 2, 3) # Select algorithm
+    # set_iparm!(ps, 8, 5) # Maximum number of iterative refinement steps
+    set_iparm!(ps, 10, 15) # Pivot perturbation (if pivot is less than 10^(-iparam[10]))
     pf = PardisoFactorization{Tv}(ps, get_matrix(ps, A, :N))
     finalizer(pf) do x
         set_phase!(x.ps, Pardiso.RELEASE_ALL)
@@ -166,6 +169,8 @@ end
     @_sf_check_factorize Union{Pardiso.PardisoException,Pardiso.PardisoPosDefException} begin
         set_phase!(ps, Pardiso.ANALYSIS_NUM_FACT)
         pardiso(ps, pf.A, Float64[])
+        # Fail if Pardiso perturbed any pivots
+        get_iparm(ps, 14) == 0 || throw(Pardiso.PardisoException("Zero or near-zero pivot."))
     end
     return pf
 end
@@ -176,6 +181,8 @@ end
     @_sf_check_factorize Union{Pardiso.PardisoException,Pardiso.PardisoPosDefException} begin
         set_phase!(ps, Pardiso.NUM_FACT)
         pardiso(ps, pf.A, Float64[])
+        # Fail if Pardiso perturbed any pivots
+        get_iparm(ps, 14) == 0 || throw(Pardiso.PardisoException("Zero or near-zero pivot."))
     end
     return pf
 end
