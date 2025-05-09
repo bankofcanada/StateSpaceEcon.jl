@@ -19,6 +19,8 @@ using ModelBaseEcon
 @using_example E7A
 @using_example S1
 @using_example S2
+@using_example DFM1
+@using_example DFM2
 
 getE1 = E1.newmodel
 getE2 = E2.newmodel
@@ -29,6 +31,8 @@ getE7 = E7.newmodel
 getE7A = E7A.newmodel
 getS1 = S1.newmodel
 getS2 = S2.newmodel
+getDFM1 = DFM1.newmodel
+getDFM2 = DFM2.newmodel
 
 using Test
 using Random

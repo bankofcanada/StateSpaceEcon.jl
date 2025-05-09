@@ -1,9 +1,11 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
+
+import ModelBaseEcon.DFMModels.SymVec
 
 export ShocksSampler
 struct ShocksSampler{M,F} <: Distributions.Sampleable{Multivariate,Continuous}
@@ -11,7 +13,15 @@ struct ShocksSampler{M,F} <: Distributions.Sampleable{Multivariate,Continuous}
     cov::M
     fact::F
 end
-ShocksSampler(names::Vector{ModelVariable}, mat::AbstractMatrix) = ShocksSampler(map(Symbol, names), mat)
+
+ShocksSampler(names::SymVec, Sigma::AbstractVecOrMat) = ShocksSampler(Symbol[Symbol(n) for n in names], Sigma)
+ShocksSampler(names::Vector{Symbol}, variances::AbstractVector) = ShocksSampler(names, Diagonal(variances))
+function ShocksSampler(names::Vector{Symbol}, Sigma::AbstractMatrix) 
+    isdiag(Sigma) && return ShocksSampler(names, Diagonal(diag(Sigma)))
+    issymmetric(Sigma) && return ShocksSampler(names, Symmetric(Sigma))
+    # ? should this be an ArgumentError?
+    return ShocksSampler(names, Symmetric(0.5 * (Sigma + Sigma')))
+end
 function ShocksSampler(names::Vector{Symbol}, cov::Diagonal)
     fact = Diagonal(sqrt.(diag(cov)))
     ShocksSampler{typeof(cov),typeof(fact)}(names, cov, fact)
