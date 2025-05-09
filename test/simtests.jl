@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -43,6 +43,7 @@ using DelimitedFiles
     # test_simulation(E1.model, "data/M1_TestMatrix.csv")
 end
 
+if !isdefined(@__MODULE__, :test_simulation)
 function test_simulation(m_in, path; atol=1.0e-9)
     m = deepcopy(m_in)
     nvars = ModelBaseEcon.nvariables(m)
@@ -93,6 +94,7 @@ function test_simulation(m_in, path; atol=1.0e-9)
     end
     res01_dev = simulate(m, p01, data01_dev; deviation=true)
     @test isapprox(res01_dev, data_chk_dev; atol=atol)
+end
 end
 
 @testset "E1.sim" begin

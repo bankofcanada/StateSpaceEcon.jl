@@ -1,13 +1,14 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
 using Random
 using LinearAlgebra
 
+if !isdefined(@__MODULE__, :run_fo_unant_tests)
 function run_fo_unant_tests(model)
     clear_sstate!(model)
     sssolve!(model)
@@ -39,6 +40,7 @@ function run_fo_unant_tests(model)
         xsol = simulate(model, xplan, data, solver=:firstorder, anticipate=false)
         @test xsol[test_rng] ≈ fsol[test_rng]
     end
+end
 end
 
 module M
@@ -108,6 +110,7 @@ end
 end
 
 
+if !isdefined(@__MODULE__, :test_shockdecomp_firstorder)
 function test_shockdecomp_firstorder(m, rng=1U:20U, fctype=fcslope)
     clear_sstate!(m)
     sssolve!(m)
@@ -127,6 +130,7 @@ function test_shockdecomp_firstorder(m, rng=1U:20U, fctype=fcslope)
     @test compare(r1, r2, quiet=true, ignoremissing=true, atol=2^10 * eps(1.0), rtol=sqrt(eps(1.0)))
 
     return (; r1, r2)
+end
 end
 
 @testset "shkdcmp.fo" begin
@@ -156,7 +160,7 @@ end
     end
 end
 
-
+if !isdefined(@__MODULE__, :test_initdecomp_firstorder)
 function test_initdecomp_firstorder(m, rng=2001Q1:2020Q4, step=max(2, length(rng) ÷ 5))
     clear_sstate!(m)
     sssolve!(m)
@@ -187,6 +191,7 @@ function test_initdecomp_firstorder(m, rng=2001Q1:2020Q4, step=max(2, length(rng
     end
     return rs
 end
+end
 
 
 @testset "inidcmp.fo" begin
@@ -216,6 +221,7 @@ end
     end
 end
 
+if !isdefined(@__MODULE__, :test_initdecomp_stackedtime)
 function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fctype=fcnatural)
     solver = :stackedtime
     atol = 2^10 * eps()
@@ -314,6 +320,7 @@ function test_initdecomp_stackedtime(m; nonlin=!m.linear, rng=2001Q1:2024Q4, fct
     @test rangeof(ref) == rangeof(res1)
     @test compare(ref, res1; atol, quiet=true)
     return true
+end
 end
 
 @testset "inidcmp.st" begin

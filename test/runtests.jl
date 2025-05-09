@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -20,15 +20,15 @@ using ModelBaseEcon
 @using_example S1
 @using_example S2
 
-getE1() = E1.newmodel()
-getE2() = E2.newmodel()
-getE3() = E3.newmodel()
-getE3nl() = E3nl.newmodel()
-getE6() = E6.newmodel()
-getE7() = E7.newmodel()
-getE7A() = E7A.newmodel()
-getS1() = S1.newmodel()
-getS2() = S2.newmodel()
+getE1 = E1.newmodel
+getE2 = E2.newmodel
+getE3 = E3.newmodel
+getE3nl = E3nl.newmodel
+getE6 = E6.newmodel
+getE7 = E7.newmodel
+getE7A = E7A.newmodel
+getS1 = S1.newmodel
+getS2 = S2.newmodel
 
 using Test
 using Random
@@ -411,4 +411,5 @@ include("sim_solver.jl")
 
 # keep this one last because it overwrites getE?()
 include("modelchanges.jl")
+
 
