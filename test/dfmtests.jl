@@ -45,6 +45,14 @@ end
     @test (X = rand(ss, nsamples); X isa AbstractMatrix && size(X) == (length(ss),nsamples))
     X = rand(ss, nsamples)
     @test norm(X*X'/nsamples - ss.cov, Inf) < 1e-4
+
+    @test begin
+        search_output = occursin(let io = IOBuffer()
+            show(io, ss)
+            String(take!(io))
+        end)
+        search_output("ShocksSampler") & search_output("shocks:") && search_output("covariance:")
+    end
 end
 
 
@@ -57,6 +65,10 @@ end
     @test (Plan(dfm, rng); true)
     pl = Plan(dfm, rng)
     @test (rangeof(pl) == 0U:300U)
+    vars = [i for (i, v) in enumerate(varshks(dfm)) if v ∉ shocks(dfm)]
+    shks = [i for (i, v) in enumerate(varshks(dfm)) if v ∈ shocks(dfm)]
+    @test all(pl.exogenous[:,shks])
+    @test !any(pl.exogenous[:,vars])
     
     @test (steadystatedata(dfm, pl) isa MVTSeries)
     @test (steadystatearray(dfm, pl) isa Matrix)
@@ -79,6 +91,9 @@ end
 
     @test (simulate(dfm, pl, data); true)
     sim = simulate(dfm, pl, data)
+    
+    exog_endo!(pl, [:a], [:a_shk], rng[1:5])
+    @test_throws "Non-empty plan" simulate(dfm, pl, data)
 
 end
 
@@ -92,6 +107,10 @@ end
     @test (Plan(dfm, rng); true)
     pl = Plan(dfm, rng)
     @test (rangeof(pl) == 0U:300U)
+    vars = [i for (i, v) in enumerate(varshks(dfm)) if v ∉ shocks(dfm)]
+    shks = [i for (i, v) in enumerate(varshks(dfm)) if v ∈ shocks(dfm)]
+    @test all(pl.exogenous[:,shks])
+    @test !any(pl.exogenous[:,vars])
     
     @test (steadystatedata(dfm, pl) isa MVTSeries)
     @test (steadystatearray(dfm, pl) isa Matrix)
@@ -114,6 +133,9 @@ end
 
     @test (simulate(dfm, pl, data); true)
     sim = simulate(dfm, pl, data)
+
+    exog_endo!(pl, [:a], [:a_shk], rng[1:5])
+    @test_throws "Non-empty plan" simulate(dfm, pl, data)
 
 end
 

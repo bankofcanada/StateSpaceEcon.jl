@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -29,33 +29,10 @@
 #   aₜ₊₁ = E(αₜ₊₁ | Yₜ)
 #   Pₜ₊₁ = Var(αₜ₊₁ | Yₜ)
 
-"""
-    _symm!(A::AbstractMatrix)
-
-Force matrix `A` to be symmetric by overwriting it with `0.5 (A + Aᵀ)`.
-This is useful to stabilize the algorithm when a matrix is known to be
-symmetric, but may lose this property due accumulation of round off and
-truncation errors.
-"""
-function _symm!(A::AbstractMatrix)
-    m, n = size(A)
-    for i = 1:m
-        for j = i+1:n
-            v = 0.5 * (A[i, j] + A[j, i])
-            A[i, j] = v
-            A[j, i] = v
-        end
-    end
-    return A
-end
-
-
 function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a_init, P_init,
-    fwdstate::Bool,
-    anymissing::Bool=any(isnan, Y)
-)
+    fwdstate::Bool, anymissing::Bool=any(isnan, Y))
 
-    _Q = (R isa UniformScaling) ? Q : (R * Q * transpose(R))
+    _Q = (R isa UniformScaling && isone(R)) ? Q : (R * Q * transpose(R))
 
     have_mu = dot(mu, mu) > 0
 
@@ -74,11 +51,13 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a_init, P_init,
     error_y = vₜ = kf.error_y
     Py_pred = Fₜ = kf.Py_pred
 
-    ZP = similar(Z)
-    TP = similar(Pₜ)
+    ZᵀiFₜ = kf.A_xy
+
+    ZP = kf.A_yx
+    TP = kf.A_xx
 
     if anymissing
-        have_y = trues(kf.ny)
+        have_y = trues(kf_length_y(kf))
     end
 
     kfd[0, :x0] = a_init
@@ -96,9 +75,9 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a_init, P_init,
         _symm!(Pₜ)
     end
 
-    tstart, tstop = extrema(kf.range)
     all_y = true
-    t = tstart
+    tstop = kf_time_periods(kf)
+    t = 1
     while true
 
         # y_pred[:] = μ + Z * aₜ
@@ -125,12 +104,14 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a_init, P_init,
 
         @kfd_set! kfd t y_pred Py_pred error_y
 
-        ZTIF = @kfd_view kfd t aux_ZᵀPy⁻¹
+        if hasfield(typeof(kfd), :aux_ZᵀPy⁻¹)
+            ZᵀiFₜ = @kfd_view kfd t aux_ZᵀPy⁻¹
+        end
         # Compute K = P Zᵀ / Fₜ using Cholesky factorization (faster than LU)
         if !all_y
             ny = sum(have_y)
             fill!(Kₜ, 0.0)
-            fill!(ZTIF, 0.0)
+            fill!(ZᵀiFₜ, 0.0)
             if ny == 0
                 # if observations are missing, we cannot update the prediction
                 # we set the Kalman gain, K, to zero, effectively 
@@ -149,7 +130,7 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a_init, P_init,
                 cFₜ = cholesky!(Symmetric(F⁺))
                 TMP[:, :] = Z⁺
                 ldiv!(cFₜ, TMP)
-                ZTIF[:, have_y] = transpose(TMP)
+                ZᵀiFₜ[:, have_y] = transpose(TMP)
                 mul!(view(Kₜ, :, have_y), Pₜ, transpose(TMP))
             end
         else
@@ -158,8 +139,8 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a_init, P_init,
             cFₜ = cholesky!(Symmetric(Fₜ))
             rdiv!(Kₜ, cFₜ)
             # compute the auxiliary matrix Zᵀ⋅Fₜ⁻ꜝ
-            copyto!(ZTIF, transpose(Z))
-            rdiv!(ZTIF, cFₜ)
+            copyto!(ZᵀiFₜ, transpose(Z))
+            rdiv!(ZᵀiFₜ, cFₜ)
         end
 
         # auₜ[:] = aₜ + Kₜ * vₜ
@@ -196,7 +177,7 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a_init, P_init,
 
     end
 
-    return
+    return kf
 end
 
 

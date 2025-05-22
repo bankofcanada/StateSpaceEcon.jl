@@ -413,6 +413,11 @@ end
 
 include("sim_solver.jl")
 
+
+include("kalman.jl")
+include("dfmtests.jl")
+
+
 # keep this one last because it overwrites getE?()
 include("modelchanges.jl")
 

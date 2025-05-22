@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -10,9 +10,11 @@
 
 
 """
-    AbstractKFData{RANGE,NS,NO,T}
+    AbstractKFData{T,RANGE,NS,NO}
 
-The parent class for all Kalman filter data types. 
+The parent class for all Kalman filter data containers. 
+
+`T<:Real` - type of values, typically `Float64`.
 
 `RANGE` - a positive integer, or a range. Determines the number of periods and
 the range of values of `t` that will be passed in calls to
@@ -21,8 +23,6 @@ the range of values of `t` that will be passed in calls to
 `NS` - number of state variables, as returned by [`kf_length_x`](@ref)
 
 `NO` - number of observed variables, as returned by [`kf_length_y`](@ref)
-
-`T<:Real` - type of values, typically `Float64`.
 
 Concrete types derived from `AbstractKFData` may have some or all of the
 following fields:
@@ -45,13 +45,20 @@ following fields:
 * `res2` - sum of squared observation residuals (error_y' * error_y)
 
 """
-abstract type AbstractKFData{RANGE,NS,NO,T} end
+abstract type AbstractKFData{T,RANGE,NS,NO} end
 
-Base.eltype(::Type{<:AbstractKFData{RANGE,NS,NO,T}}) where {RANGE,NS,NO,T} =
-    @isdefined(T) ? T : Real
+kf_length_x(::AbstractKFData{T,RANGE,NS,NO}) where {T,RANGE,NS,NO} = NS
+kf_length_y(::AbstractKFData{T,RANGE,NS,NO}) where {T,RANGE,NS,NO} = NO
+function kf_time_periods(kd::AbstractKFData{T,RANGE,NS,NO}) where {T,RANGE,NS,NO}
+    RANGE isa Integer && return RANGE
+    RANGE isa AbstractUnitRange && return length(RANGE)
+    error("Invalid RANGE type parameter for $(typeof(kd))")
+end
+
+Base.eltype(::Type{<:AbstractKFData{T}}) where {T} = @isdefined(T) ? T : Real
 
 
-function TimeSeriesEcon.compare_equal(x::T, y::T; kwargs...) where {T<:AbstractKFData}
+function TimeSeriesEcon.compare_equal(x::KFD, y::KFD; kwargs...) where {KFD<:AbstractKFData}
     equal = true
     for prop in propertynames(x)
         if !compare(getproperty(x, prop), getproperty(y, prop), prop; kwargs...)
@@ -62,7 +69,7 @@ function TimeSeriesEcon.compare_equal(x::T, y::T; kwargs...) where {T<:AbstractK
     return equal
 end
 
-function TimeSeriesEcon.compare_equal(x::T1, y::T2; kwargs...) where {T1<:AbstractKFData,T2<:AbstractKFData}
+function TimeSeriesEcon.compare_equal(x::AbstractKFData, y::AbstractKFData; kwargs...)
     equal = true
     for prop in union(propertynames(x), propertynames(y))
         propx = hasproperty(x, prop) ? getproperty(x, prop) : missing
@@ -118,13 +125,13 @@ const KFDataInfo = (;
 )
 
 _offset_expr(::Integer) = :t
-_offset_expr(RANGE::UnitRange) = (offset = first(RANGE) - 1; :(Int(t - $offset)))
+_offset_expr(RANGE::AbstractUnitRange) = (offset = first(RANGE) - 1; :(Int(t - $offset)))
 
 Base.view(kfd::AbstractKFData, t::Integer, name::Symbol) = kfd_getvalue(view, kfd, t, Val(name))
 Base.view(kfd::AbstractKFData, t::Integer, name::Val) = kfd_getvalue(view, kfd, t, name)
 Base.getindex(kfd::AbstractKFData, t::Integer, name::Symbol) = kfd_getvalue(getindex, kfd, t, Val(name))
 Base.getindex(kfd::AbstractKFData, t::Integer, v::Val) = kfd_getvalue(getindex, kfd, t, v)
-@generated function kfd_getvalue(access::Function, kfd::AbstractKFData{RANGE}, t::Integer, ::Val{NAME}) where {RANGE,NAME}
+@generated function kfd_getvalue(access::Function, kfd::AbstractKFData{T,RANGE}, t::Integer, ::Val{NAME}) where {T,RANGE,NAME}
     vinfo = get(KFDataInfo, NAME, nothing)
     # if a non-standard field is requested, we return an error
     if isnothing(vinfo)
@@ -135,24 +142,14 @@ Base.getindex(kfd::AbstractKFData, t::Integer, v::Val) = kfd_getvalue(getindex, 
         return nothing
     end
     # figure out the number of dimensions in this field
-    ndims = length(vinfo.dims)
     tt = _offset_expr(RANGE)
-    inds = vinfo._t ? ((Colon() for _ = 1:ndims)..., tt) : ((Colon() for _ = 1:ndims)...,) 
+    ndims = length(vinfo.dims)
+    inds = vinfo._t ? ((Colon() for _ = 1:ndims)..., tt) : ((Colon() for _ = 1:ndims)...,)
     return :(access(kfd.$NAME, $(inds...)))
 end
 
-
-# function Base.setindex!(kfd::AbstractKFData, values::Tuple, t::Integer, names::Symbol...)
-#     if length(value) != length(names)
-#         throw(ArgumentError("number of values on the right doesn't match number of names within the brackets."))
-#     end
-#     for (val, name) in zip(values, names)
-#         kf_setvalue!(kfd, val, t, Val(name))
-#     end
-#     values
-# end
 Base.setindex!(kfd::AbstractKFData, value, t::Integer, name::Symbol) = kfd_setvalue!(kfd, value, t, Val(name))
-@generated function kfd_setvalue!(kfd::AbstractKFData{RANGE}, value, t::Integer, ::Val{NAME}) where {RANGE,NAME}
+@generated function kfd_setvalue!(kfd::AbstractKFData{T,RANGE}, value, t::Integer, ::Val{NAME}) where {T,RANGE,NAME}
     vinfo = get(KFDataInfo, NAME, nothing)
     # if a non-standard field is requested, we return an error
     if isnothing(vinfo)
@@ -164,7 +161,7 @@ Base.setindex!(kfd::AbstractKFData, value, t::Integer, name::Symbol) = kfd_setva
     end
     tt = _offset_expr(RANGE)
     ndims = length(vinfo.dims)
-    inds = vinfo._t ? ((Colon() for _ = 1:ndims)..., tt) : ((Colon() for _ = 1:ndims)...,) 
+    inds = vinfo._t ? ((Colon() for _ = 1:ndims)..., tt) : ((Colon() for _ = 1:ndims)...,)
     return :(kfd.$NAME[$(inds...)] = value)
 end
 
@@ -186,7 +183,7 @@ function _new_kf_data(expr)
     struct_expr = MacroTools.postwalk(expr) do x
         x isa Bool && return x
         x isa LineNumberNode && return x
-        x === Name && return :($Name{RANGE,NS,NO,T} <: $(@__MODULE__).AbstractKFData{RANGE,NS,NO,T})
+        x === Name && return :($Name{T,RANGE,NS,NO} <: $(@__MODULE__).AbstractKFData{T,RANGE,NS,NO})
         x isa Symbol && begin
             haskey(KFDataInfo, x) || error("$x is not a valid field name for Kalman filter data")
             vinfo = KFDataInfo[x]
@@ -204,16 +201,16 @@ function _new_kf_data(expr)
     end
     isempty(alloc_exprs) && error("Must specify at least one field")
     constr_expr = MacroTools.striplines(:(
-        function $Name(T::Type{<:Real}, rng::Union{Integer,UnitRange{<:Integer}}, model, user_data...)
+        function $Name(T::Type{<:Real}, rng::Union{Integer,AbstractUnitRange{<:Integer}}, model, user_data...)
             NS = kf_length_x(model, user_data...)
             NO = kf_length_y(model, user_data...)
             # `nperiods` is used in alloc_exprs
-            nperiods = rng isa UnitRange ? length(rng) : rng
-            return $Name{rng,NS,NO,T}($(alloc_exprs...))
+            nperiods = rng isa AbstractUnitRange ? length(rng) : rng
+            return $Name{T,rng,NS,NO}($(alloc_exprs...))
         end
     ))
     constr2_expr = MacroTools.striplines(:(
-        $Name(rng::Union{Integer,UnitRange{<:Integer}}, model, user_data...) = $Name(Float64, rng, model, user_data...)
+        $Name(rng::Union{Integer,AbstractUnitRange{<:Integer}}, model, user_data...) = $Name(Float64, rng, model, user_data...)
     ))
     return Expr(:block, struct_expr, constr_expr, constr2_expr)
 end
@@ -221,6 +218,8 @@ end
 macro kf_data_struct(expr)
     return esc(_new_kf_data(expr))
 end
+
+#############################################################################
 
 """
     struct KFDataFilter <: AbstractKFData ... end
@@ -246,7 +245,7 @@ end
 """
     struct KFDataFilterEx <: AbstractKFData ... end
 
-A structure type that contains the all outputs of the Kalman filter.
+A structure type that contains all outputs of the Kalman filter.
 Namely, `x_pred`, `x`, `Px_pred`, `Px`, `y_pred`, `Py_pred`, `loglik`.
 """
 KFDataFilterEx
@@ -320,7 +319,7 @@ macro kfd_set!(kfd, t, values::Symbol...)
     push!(ret.args, __source__)
     for val in values
         push!(ret.args,
-            :(kfd_setvalue!($kfd, $val, $t, Val($(Meta.quot(val)))))
+            :($(@__MODULE__).kfd_setvalue!($kfd, $val, $t, Val($(Meta.quot(val)))))
         )
     end
     return esc(ret)

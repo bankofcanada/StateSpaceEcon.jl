@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -79,85 +79,85 @@ function _update_params!(params::DFMParams, model::DFMModel, wks::DFMKalmanWks)
 end
 
 
-Kalman.kf_islinear(M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M)) = true
-Kalman.kf_isstationary(M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M)) = true
+# function Kalman.kf_linear_stationary(H, F, Q, R, M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M))
+#     copyto!(H, wks.Λ)
+#     copyto!(F, wks.A)
+#     copyto!(Q, wks.Q)
+#     copyto!(R, wks.R)
+#     return
+# end
 
-function Kalman.kf_linear_stationary(H, F, Q, R, M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M))
-    copyto!(H, wks.Λ)
-    copyto!(F, wks.A)
-    copyto!(Q, wks.Q)
-    copyto!(R, wks.R)
-    return
-end
+# function Kalman.kf_predict_x!(t, xₜ, Pxₜ, Pxxₜ₋₁ₜ, xₜ₋₁, Pxₜ₋₁, M::DFM, ::AbstractMatrix, wks::DFMKalmanWks=DFMKalmanWks(M))
 
-function Kalman.kf_predict_x!(t, xₜ, Pxₜ, Pxxₜ₋₁ₜ, xₜ₋₁, Pxₜ₋₁, M::DFM, ::AbstractMatrix, wks::DFMKalmanWks=DFMKalmanWks(M))
+#     @unpack A, Q, Txx = wks
+#     # xₜ = A * xₜ₋₁
+#     if !isnothing(xₜ)
+#         BLAS.gemv!('N', 1.0, A, xₜ₋₁, 0.0, xₜ)
+#     end
 
-    @unpack A, Q, Txx = wks
-    # xₜ = A * xₜ₋₁
-    if !isnothing(xₜ)
-        BLAS.gemv!('N', 1.0, A, xₜ₋₁, 0.0, xₜ)
-    end
+#     isnothing(Pxₜ) && isnothing(Pxxₜ₋₁ₜ) && return
 
-    isnothing(Pxₜ) && isnothing(Pxxₜ₋₁ₜ) && return
+#     # this one is needed for both Pxₜ and Pxxₜ₋₁ₜ 
+#     #    Txx = A * Pxₜ₋₁
+#     mul!(Txx, A, Pxₜ₋₁)
+#     # BLAS.symm!('R', 'U', 1.0, Pxₜ₋₁, A, 0.0, Txx)
 
-    # this one is needed for both Pxₜ and Pxxₜ₋₁ₜ 
-    #    Txx = A * Pxₜ₋₁
-    mul!(Txx, A, Pxₜ₋₁)
-    # BLAS.symm!('R', 'U', 1.0, Pxₜ₋₁, A, 0.0, Txx)
+#     # Pxₜ = A * Pxₜ₋₁ * A' + G * Q * G'
+#     if !isnothing(Pxₜ)
+#         copyto!(Pxₜ, Q) # G = I 
+#         mul!(Pxₜ, Txx, transpose(A), 1.0, 1.0)
+#     end
 
-    # Pxₜ = A * Pxₜ₋₁ * A' + G * Q * G'
-    if !isnothing(Pxₜ)
-        copyto!(Pxₜ, Q) # G = I 
-        mul!(Pxₜ, Txx, transpose(A), 1.0, 1.0)
-    end
+#     # Pxxₜ₋₁ₜ = Pxₜ₋₁ * A'
+#     if !isnothing(Pxxₜ₋₁ₜ)
+#         #    Txx already contains A * Pxₜ₋₁
+#         copyto!(Pxxₜ₋₁ₜ, transpose(Txx))
+#     end
 
-    # Pxxₜ₋₁ₜ = Pxₜ₋₁ * A'
-    if !isnothing(Pxxₜ₋₁ₜ)
-        #    Txx already contains A * Pxₜ₋₁
-        copyto!(Pxxₜ₋₁ₜ, transpose(Txx))
-    end
+#     return
+# end
 
-    return
-end
+# function Kalman.kf_predict_y!(t, yₜ, Pyₜ, Pxyₜ, xₜ, Pxₜ, M::DFM, ::AbstractMatrix, wks::DFMKalmanWks)
 
-function Kalman.kf_predict_y!(t, yₜ, Pyₜ, Pxyₜ, xₜ, Pxₜ, M::DFM, ::AbstractMatrix, wks::DFMKalmanWks)
+#     @unpack μ, Λ, R, Tyx = wks
 
-    @unpack μ, Λ, R, Tyx = wks
+#     if !isnothing(yₜ)
+#         # yₜ = mu + Λ xₜ
+#         copyto!(yₜ, μ)
+#         mul!(yₜ, Λ, xₜ, 1.0, 1.0)
+#     end
 
-    if !isnothing(yₜ)
-        # yₜ = mu + Λ xₜ
-        copyto!(yₜ, μ)
-        mul!(yₜ, Λ, xₜ, 1.0, 1.0)
-    end
+#     isnothing(Pyₜ) && isnothing(Pxyₜ) && return
 
-    isnothing(Pyₜ) && isnothing(Pxyₜ) && return
+#     # this one is needed for both Pyₜ and Pxyₜ
+#     mul!(Tyx, Λ, Pxₜ)
+#     # BLAS.symm!('R', 'U', 1.0, Pxₜ, wks.Λ, 0.0, wks.Tyx)
 
-    # this one is needed for both Pyₜ and Pxyₜ
-    mul!(Tyx, Λ, Pxₜ)
-    # BLAS.symm!('R', 'U', 1.0, Pxₜ, wks.Λ, 0.0, wks.Tyx)
+#     if !isnothing(Pyₜ)
+#         # Pyₜ = Λ Pxₜ Λ' + G * R * G'
+#         copyto!(Pyₜ, R) # G = I
+#         mul!(Pyₜ, Tyx, transpose(Λ), 1.0, 1.0)
+#     end
 
-    if !isnothing(Pyₜ)
-        # Pyₜ = Λ Pxₜ Λ' + G * R * G'
-        copyto!(Pyₜ, R) # G = I
-        mul!(Pyₜ, Tyx, transpose(Λ), 1.0, 1.0)
-    end
+#     if !isnothing(Pxyₜ)
+#         # Pxyₜ = Pxₜ * Λ'
+#         copyto!(Pxyₜ, transpose(Tyx))
+#     end
 
-    if !isnothing(Pxyₜ)
-        # Pxyₜ = Pxₜ * Λ'
-        copyto!(Pxyₜ, transpose(Tyx))
-    end
+#     return
+# end
 
-    return
-end
+# function Kalman.kf_true_y!(t, yₜ, ::DFM, data::AbstractMatrix, ::DFMKalmanWks)
+#     rng = 1:length(yₜ)
+#     copyto!(transpose(yₜ), 1:1, rng, data, t:t, rng)
+# end
 
-function Kalman.kf_true_y!(t, yₜ, M::DFM, data::AbstractMatrix, ::DFMKalmanWks)
-    rng = 1:length(yₜ)
-    copyto!(transpose(yₜ), 1:1, rng, data, t:t, rng)
-end
+# function Kalman.kf_true_y!(t, yₜ, M::DFM, data::SimData, ::DFMKalmanWks)
+#     copyto!(yₜ, view(data, t, observed(M.model)))
+# end
 
-function Kalman.kf_true_y!(t, yₜ, M::DFM, data::SimData, ::DFMKalmanWks)
-    copyto!(yₜ, view(data, t, observed(M.model)))
-end
+
+Kalman.kf_is_linear(M::DFM, args...) = true
 
 function Kalman.kf_length_x(M::DFM, args...)
     ns = 0
@@ -169,9 +169,24 @@ end
 
 Kalman.kf_length_y(M::DFM, args...) = nobserved(M.model)
 
-Kalman.dk_filter!(kf::Kalman.KFilter, Y, wks::DFMKalmanWks, args...) =
-    Kalman.dk_filter!(kf, Y, wks.μ, wks.Λ, wks.A, wks.R, wks.Q, I, args...)
+Kalman.kf_state_noise_shaping(::DFM, user_data...) = false
 
-Kalman.dk_smoother!(kf::Kalman.KFilter, Y, wks::DFMKalmanWks, args...) =
-    Kalman.dk_smoother!(kf, Y, wks.μ, wks.Λ, wks.A, wks.R, wks.Q, I, args...)
+function Kalman.kf_linear_model(dfm::DFM, args...)
+    model = dfm.model
+    params = dfm.params
+    m = KFLinearModel(dfm, args...)
+    DFMModels.get_mean!(m.mu, model, params)
+    DFMModels.get_loading!(m.H, model, params)
+    DFMModels.get_covariance!(m.Q, model, params, Val(:Observed))
+    DFMModels.get_transition!(m.F, model, params)
+    DFMModels.get_covariance!(m.R, model, params, Val(:State))
+    return m
+end
+
+
+# Kalman.dk_filter!(kf::Kalman.KFilter, Y, wks::DFMKalmanWks, args...) =
+#     Kalman.dk_filter!(kf, Y, wks.μ, wks.Λ, wks.A, wks.R, wks.Q, I, args...)
+
+# Kalman.dk_smoother!(kf::Kalman.KFilter, Y, wks::DFMKalmanWks, args...) =
+#     Kalman.dk_smoother!(kf, Y, wks.μ, wks.Λ, wks.A, wks.R, wks.Q, I, args...)
 
