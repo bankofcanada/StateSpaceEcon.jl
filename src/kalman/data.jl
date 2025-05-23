@@ -270,6 +270,8 @@ end
     Px_pred
     y_pred
     Py_pred
+    x
+    Px
     # Ly_pred
     aux_ZᵀPy⁻¹
     K

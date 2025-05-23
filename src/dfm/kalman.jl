@@ -190,3 +190,52 @@ end
 # Kalman.dk_smoother!(kf::Kalman.KFilter, Y, wks::DFMKalmanWks, args...) =
 #     Kalman.dk_smoother!(kf, Y, wks.μ, wks.Λ, wks.A, wks.R, wks.Q, I, args...)
 
+
+#############################################################################
+# The following functions provide conversion from KFData to SimData
+
+_dfm_contemp_states_inds(dfm::DFM) = _dfm_contemp_states_inds(dfm.model)
+function _dfm_contemp_states_inds(model::DFMModel)
+    offset_with_lags = offset = 0
+    inds = Vector{Int}(undef, nstates(model))
+    for blk in values(model.components)
+        ns = nstates(blk)
+        L = lags(blk)
+        inds[offset .+ (1:ns)] = (offset_with_lags + (L-1)*ns) .+ (1:ns)
+        offset += ns
+        offset_with_lags += L*ns
+    end
+    return inds
+end
+
+export kfd2data
+function kfd2data(kfd::Kalman.AbstractKFData, which::Symbol,
+    dfm::DFM, range::AbstractUnitRange{<:MIT};
+    states_with_lags::Bool=true)
+
+    wstr = lowercase(string(which))
+    if startswith(wstr, "update") || startswith(wstr, "filter")
+        y = :y_pred  # we don't really have an updated y
+        x = :x
+    elseif startswith(wstr, "pred")
+        y = :y_pred
+        x = :x_pred
+    elseif startswith(wstr, "smooth")
+        y = :y_smooth
+        x = :x_smooth
+    else
+        error("Unknown :$(which); try one of :updated, :predicted, :smoothed.")
+    end
+    if states_with_lags
+        data = hcat(transpose(getproperty(kfd, y)),
+        transpose(getproperty(kfd, x)))
+        return MVTSeries(range, [observed(dfm);states(dfm)], data)
+    else
+        inds = _dfm_contemp_states_inds(dfm)
+        data = hcat(transpose(getproperty(kfd, y)),
+            transpose(getproperty(kfd, x)[inds, :]))
+        return MVTSeries(range, [observed(dfm);states_with_lags(dfm)], data)
+    end
+end
+
+

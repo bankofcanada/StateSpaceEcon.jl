@@ -59,15 +59,44 @@ end
 function kf_filter!(kf::KFilter, Y::AbstractMatrix,
     x0::AbstractVector, Px0::AbstractMatrix,
     model, user_data...;
-    fwdstate::Bool=true, anymissing::Bool=any(isnan, Y))
+    fwdstate::Bool=true, anymissing::Bool=any(isnan, Y), kwargs...)
 
     if kf_is_linear(model, user_data...)
-        # extract the matrices
-        m = kf_linear_model(model, user_data...)
-        # 
+        m = model isa KFLinearModel ? model : kf_linear_model(model, user_data...)
         dk_filter!(kf, Y, m.mu, m.H, m.F, m.Q, m.R, m.G, x0, Px0, fwdstate, anymissing)
         return kf
     else
         error("Not implemented for non-linear models yet.")
     end
 end
+
+
+function kf_smoother(Y::AbstractMatrix, x0::AbstractVector, Px0::AbstractMatrix,
+    model, user_data...; kwargs...)
+    if kf_is_linear(model, user_data...)
+        # construct the data container
+        kfd = KFDataSmoother(axes(Y, 1), model, user_data...)
+        # construct the KFilter instance
+        kf = KFilter(kfd)
+        if kf_length_y(kf) != size(Y, 2)
+            error("Invalid data size - number of columns in the data does not match number of observed variables in the model.")
+        end
+        # 
+        kf_filter!(kf, Y, x0, Px0, model, user_data...; kwargs...)
+        kf_smoother!(kf, model, user_data...; kwargs...)
+        return kfd
+    else
+        error("Not implemented for non-linear models yet.")
+    end
+end
+
+function kf_smoother!(kf::KFilter, model, user_data...; fwdstate::Bool=true, kwargs...)
+    if kf_is_linear(model, user_data...)
+        m = model isa KFLinearModel ? model : kf_linear_model(model, user_data...)
+        dk_smoother!(kf, m.mu, m.H, m.F, m.Q, m.R, m.G, fwdstate)
+        return kf
+    else
+        error("Not implemented for non-linear models yet.")
+    end
+end
+

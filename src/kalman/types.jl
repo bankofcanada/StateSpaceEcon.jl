@@ -110,9 +110,11 @@ struct KFilter{ET<:Real,NS,NO}
     Py_smooth::MMatrix{NO,NO,ET}
     # J::MMatrix{ET}
     ###### general use storage
+    A_x
     A_xy::MMatrix{NS,NO,ET}
     A_yx::MMatrix{NO,NS,ET}
     A_xx::MMatrix{NS,NS,ET}
+    B_xx::MMatrix{NS,NS,ET}
     ###### Reference to the data collection we need to fill in
     kfd::Ref{AbstractKFData{ET,RANGE,NS,NO} where {RANGE}}
 end
@@ -133,8 +135,10 @@ function KFilter(kfd::AbstractKFData{ET,RANGE,NS,NO}) where {ET,RANGE,NS,NO}
         MVector{NO,ET}(undef),
         MMatrix{NO,NO,ET}(undef),
         #############
+        MVector{NS,ET}(undef),
         MMatrix{NS,NO,ET}(undef),
         MMatrix{NO,NS,ET}(undef),
+        MMatrix{NS,NS,ET}(undef),
         MMatrix{NS,NS,ET}(undef),
         kfd
     )

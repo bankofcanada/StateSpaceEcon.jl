@@ -10,19 +10,19 @@ using StateSpaceEcon.Kalman
     struct KFTestModel
         NS::Int
         NO::Int
-        islinear::Bool
+        is_linear::Bool
     end
     model = KFTestModel(1, 1, true)
     Kalman.kf_length_x(m::KFTestModel) = m.NS
     Kalman.kf_length_y(m::KFTestModel) = m.NO
-    Kalman.kf_is_linear(m::KFTestModel) = m.islinear
+    Kalman.kf_is_linear(m::KFTestModel) = m.is_linear
+    Kalman.kf_state_noise_shaping(::KFTestModel) = false
     function Kalman.kf_linear_model(model::KFTestModel)
-        @assert model.islinear && (model.NS == model.NO == 1)
+        @assert model.is_linear && (model.NS == model.NO == 1)
         m = KFLinearModel(model)
         m.mu .= [6]
         m.H .= [0.9;;]
         m.F .= [0.6;;]
-        m.G .= [1;;]
         m.Q .= [0.7;;]
         m.R .= [0.8;;]
         return m

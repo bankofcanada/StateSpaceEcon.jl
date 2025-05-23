@@ -182,7 +182,7 @@ end
 
 
 
-function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R, fwdstate::Bool)
+function dk_smoother!(kf::KFilter, mu, Z, T, H, Q, R, fwdstate::Bool)
 
     #  note - in the book we have
     #     Kₜ = T Pₜ Zᵀ Fₜ⁻¹
@@ -215,12 +215,13 @@ function dk_smoother!(kf::KFilter, Y, mu, Z, T, H, Q, R, fwdstate::Bool)
     fill!(rₜ₋₁, 0)
     fill!(Nₜ₋₁, 0)
 
-    Lₜ = Matrix{Float64}(undef, kf.nx, kf.nx)
-    TMPx = Vector{Float64}(undef, kf.nx)
-    TMPxx = Matrix{Float64}(undef, kf.nx, kf.nx)
-    TMPxy = Matrix{Float64}(undef, kf.nx, kf.ny)
-
-    tstart, tstop = extrema(kf.range)
+    Lₜ = kf.B_xx
+    TMPx = kf.A_x
+    TMPxx = kf.A_xx
+    TMPxy = kf.A_xy
+    
+    tstop = kf_time_periods(kf)
+    tstart = 1
 
     t = tstop + 1
     # Initialize Pₙ₊₁ with Pₙ -- close enough if n is large

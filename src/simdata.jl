@@ -112,7 +112,7 @@ workspace2array(w::Workspace, model::Model, plan::Plan; copy=false) = workspace2
     workspace2data(w, model, plan; copy=false)
     workspace2data(w, vars, plan; copy=false)
 
-Convert a [`SimData`](@ref) to a [`Workspace`](@ref TimeSeriesEcon.Workspace)
+Convert a [`Workspace`](@ref TimeSeriesEcon.Workspace) to a [`SimData`](@ref)
 """
 function workspace2data end
 

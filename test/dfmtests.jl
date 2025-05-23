@@ -13,6 +13,8 @@ using ModelBaseEcon.DFMModels
 using StateSpaceEcon.DFMSolver
 using StateSpaceEcon.DFMSolver.Random
 
+using TimeSeriesEcon.DataEcon
+
 @using_example DFM1
 @using_example DFM2
 
@@ -140,5 +142,24 @@ end
 end
 
 
+td = DataEcon.readdb(joinpath(@__DIR__, "data", "dfm.daec"))
+@testset "DFM1Filter" begin
+    dfm = DFM1.newmodel()
+    rng = rangeof(td.dfm1.shks; drop=lags(dfm))
+    p = Plan(dfm, rng)
+    data = steadystatedata(dfm, p)
+    data[rng, :] .= 0
+    data[rng, :] = td.dfm1.shks
+    sim = simulate(dfm, p, data)
+    @test @compare sim td.dfm1.sim quiet
 
+    Y = sim[rng, observed(dfm)].values
+    x0 = sim[begin, states_with_lags(dfm)]
+    Px0 = I(nstates_with_lags(dfm))
+    kfd = kf_filter(Y, x0, Px0, dfm)
+    @test @compare kfd2data(kfd, :update, dfm, rng) td.dfm1.update quiet
+    @test @compare kfd2data(kfd, :pred, dfm, rng) td.dfm1.pred quiet
+    kfd = kf_smoother(Y, x0, Px0, dfm)
+    @test @compare kfd2data(kfd, :smooth, dfm, rng) td.dfm1.smooth quiet
+end
 

@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -35,7 +35,7 @@ export KFLinearModel
 export @kfd_get, @kfd_set!, @kfd_view
 export KFDataFilter, KFDataFilterEx, KFDataSmoother, KFDataSmootherEx
 export KFilter
-export kf_filter, kf_smoother
+export kf_filter, kf_smoother, kf_filter!, kf_smoother!
 
 
 """
