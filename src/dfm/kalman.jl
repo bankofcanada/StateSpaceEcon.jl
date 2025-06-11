@@ -79,83 +79,6 @@ function _update_params!(params::DFMParams, model::DFMModel, wks::DFMKalmanWks)
 end
 
 
-# function Kalman.kf_linear_stationary(H, F, Q, R, M::DFM, ::SimData, wks::DFMKalmanWks=DFMKalmanWks(M))
-#     copyto!(H, wks.Λ)
-#     copyto!(F, wks.A)
-#     copyto!(Q, wks.Q)
-#     copyto!(R, wks.R)
-#     return
-# end
-
-# function Kalman.kf_predict_x!(t, xₜ, Pxₜ, Pxxₜ₋₁ₜ, xₜ₋₁, Pxₜ₋₁, M::DFM, ::AbstractMatrix, wks::DFMKalmanWks=DFMKalmanWks(M))
-
-#     @unpack A, Q, Txx = wks
-#     # xₜ = A * xₜ₋₁
-#     if !isnothing(xₜ)
-#         BLAS.gemv!('N', 1.0, A, xₜ₋₁, 0.0, xₜ)
-#     end
-
-#     isnothing(Pxₜ) && isnothing(Pxxₜ₋₁ₜ) && return
-
-#     # this one is needed for both Pxₜ and Pxxₜ₋₁ₜ 
-#     #    Txx = A * Pxₜ₋₁
-#     mul!(Txx, A, Pxₜ₋₁)
-#     # BLAS.symm!('R', 'U', 1.0, Pxₜ₋₁, A, 0.0, Txx)
-
-#     # Pxₜ = A * Pxₜ₋₁ * A' + G * Q * G'
-#     if !isnothing(Pxₜ)
-#         copyto!(Pxₜ, Q) # G = I 
-#         mul!(Pxₜ, Txx, transpose(A), 1.0, 1.0)
-#     end
-
-#     # Pxxₜ₋₁ₜ = Pxₜ₋₁ * A'
-#     if !isnothing(Pxxₜ₋₁ₜ)
-#         #    Txx already contains A * Pxₜ₋₁
-#         copyto!(Pxxₜ₋₁ₜ, transpose(Txx))
-#     end
-
-#     return
-# end
-
-# function Kalman.kf_predict_y!(t, yₜ, Pyₜ, Pxyₜ, xₜ, Pxₜ, M::DFM, ::AbstractMatrix, wks::DFMKalmanWks)
-
-#     @unpack μ, Λ, R, Tyx = wks
-
-#     if !isnothing(yₜ)
-#         # yₜ = mu + Λ xₜ
-#         copyto!(yₜ, μ)
-#         mul!(yₜ, Λ, xₜ, 1.0, 1.0)
-#     end
-
-#     isnothing(Pyₜ) && isnothing(Pxyₜ) && return
-
-#     # this one is needed for both Pyₜ and Pxyₜ
-#     mul!(Tyx, Λ, Pxₜ)
-#     # BLAS.symm!('R', 'U', 1.0, Pxₜ, wks.Λ, 0.0, wks.Tyx)
-
-#     if !isnothing(Pyₜ)
-#         # Pyₜ = Λ Pxₜ Λ' + G * R * G'
-#         copyto!(Pyₜ, R) # G = I
-#         mul!(Pyₜ, Tyx, transpose(Λ), 1.0, 1.0)
-#     end
-
-#     if !isnothing(Pxyₜ)
-#         # Pxyₜ = Pxₜ * Λ'
-#         copyto!(Pxyₜ, transpose(Tyx))
-#     end
-
-#     return
-# end
-
-# function Kalman.kf_true_y!(t, yₜ, ::DFM, data::AbstractMatrix, ::DFMKalmanWks)
-#     rng = 1:length(yₜ)
-#     copyto!(transpose(yₜ), 1:1, rng, data, t:t, rng)
-# end
-
-# function Kalman.kf_true_y!(t, yₜ, M::DFM, data::SimData, ::DFMKalmanWks)
-#     copyto!(yₜ, view(data, t, observed(M.model)))
-# end
-
 
 Kalman.kf_is_linear(M::DFM, args...) = true
 
@@ -201,9 +124,9 @@ function _dfm_contemp_states_inds(model::DFMModel)
     for blk in values(model.components)
         ns = nstates(blk)
         L = lags(blk)
-        inds[offset .+ (1:ns)] = (offset_with_lags + (L-1)*ns) .+ (1:ns)
+        inds[offset.+(1:ns)] = (offset_with_lags + (L - 1) * ns) .+ (1:ns)
         offset += ns
-        offset_with_lags += L*ns
+        offset_with_lags += L * ns
     end
     return inds
 end
@@ -221,20 +144,20 @@ function kfd2data(kfd::Kalman.AbstractKFData, which::Symbol,
         y = :y_pred
         x = :x_pred
     elseif startswith(wstr, "smooth")
-        y = :y_smooth
+        y = :y_smooth 
         x = :x_smooth
     else
         error("Unknown :$(which); try one of :updated, :predicted, :smoothed.")
     end
     if states_with_lags
         data = hcat(transpose(getproperty(kfd, y)),
-        transpose(getproperty(kfd, x)))
-        return MVTSeries(range, [observed(dfm);states(dfm)], data)
+            transpose(getproperty(kfd, x)))
+        return MVTSeries(range, [observed(dfm); DFMModels.states_with_lags(dfm)], data)
     else
         inds = _dfm_contemp_states_inds(dfm)
         data = hcat(transpose(getproperty(kfd, y)),
             transpose(getproperty(kfd, x)[inds, :]))
-        return MVTSeries(range, [observed(dfm);states_with_lags(dfm)], data)
+        return MVTSeries(range, [observed(dfm); DFMModels.states(dfm)], data)
     end
 end
 

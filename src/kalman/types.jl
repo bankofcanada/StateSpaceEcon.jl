@@ -175,29 +175,3 @@ function Base.setproperty!(kf::KFilter, name::Symbol, val)
     end
 end
 
-#     function KFilter(kfd::AbstractKFData{RANGE,NS,NO,ET}) where {RANGE,NS,NO,ET}
-#         range = isa(RANGE, UnitRange) ? RANGE : 1:RANGE
-#         x = zeros(ET, NS)
-#         Px = zeros(ET, NS, NS)
-#         x_pred = zeros(ET, NS)
-#         Px_pred = zeros(ET, NS, NS)
-#         error_y = zeros(ET, NO)
-#         y_pred = zeros(ET, NO)
-#         Py_pred = zeros(ET, NO, NO)
-#         # Pxy and K occupy the same memory.
-#         # We can get away with it because Pxy is only used to compute K
-#         K = Pxy_pred = zeros(ET, NS, NO)
-#         # smoother things
-#         x_smooth = zeros(ET, NS)
-#         Px_smooth = zeros(ET, NS, NS)
-#         y_smooth = zeros(ET, NO)
-#         Py_smooth = zeros(ET, NO, NO)
-#         # Pxx and J occupy the same memory.
-#         # We can get away with it because Pxx is only used to compute J
-#         J = Pxx_smooth = zeros(ET, NS, NS)
-#         new{typeof(kfd),ET}(NS, NO, range,
-#             x, Px, x_pred, Px_pred,
-#             error_y, y_pred, Py_pred, Pxy_pred, K,
-#             x_smooth, Px_smooth, Pxx_smooth, y_smooth, Py_smooth, J, kfd)
-#     end
-# end

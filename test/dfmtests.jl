@@ -19,34 +19,34 @@ using TimeSeriesEcon.DataEcon
 @using_example DFM2
 
 if !isdefined(@__MODULE__, :dfm_check_steadystatedata)
-function dfm_check_steadystatedata(dfm, data, has_rand_shks)
-    @unpack model, params = dfm
-    for v in observed(model)
-        @test all(data[v] .== params.observed.mean[v])
+    function dfm_check_steadystatedata(dfm, data, has_rand_shks)
+        @unpack model, params = dfm
+        for v in observed(model)
+            @test all(data[v] .== params.observed.mean[v])
+        end
+        for v in states(model)
+            @test iszero(data[v])
+        end
+        for v in shocks(model)
+            @test iszero(data[v]) != has_rand_shks
+        end
     end
-    for v in states(model)
-        @test iszero(data[v])
-    end
-    for v in shocks(model)
-        @test iszero(data[v]) != has_rand_shks
-    end
-end
 end
 
 @testset "ShocksSampler" begin
     # test constructors of various kinds
-    @test (ss = ShocksSampler((:a, :b), [3, 4]); ss isa ShocksSampler && ss.names == [:a,:b] && ss.cov == [3.0 0; 0 4.0])
-    @test (ss = ShocksSampler([:a, :b], 3:4); ss isa ShocksSampler && ss.names == [:a,:b] && ss.cov == [3.0 0; 0 4.0])
-    @test (ss = ShocksSampler(["a", "b"], 3:4); ss isa ShocksSampler && ss.names == [:a,:b] && ss.cov == [3.0 0; 0 4.0])
-    @test (ss = ShocksSampler([:a, :b], [3 0; 0 4]); ss isa ShocksSampler && ss.names == [:a,:b] && ss.cov == [3.0 0; 0 4.0])
-    @test (ss = ShocksSampler(["a", "b"], [3 2e-8; 0 4]); ss isa ShocksSampler && ss.names == [:a,:b] && ss.cov == [3.0 1e-8; 1e-8 4.0])
-    
+    @test (ss = ShocksSampler((:a, :b), [3, 4]); ss isa ShocksSampler && ss.names == [:a, :b] && ss.cov == [3.0 0; 0 4.0])
+    @test (ss = ShocksSampler([:a, :b], 3:4); ss isa ShocksSampler && ss.names == [:a, :b] && ss.cov == [3.0 0; 0 4.0])
+    @test (ss = ShocksSampler(["a", "b"], 3:4); ss isa ShocksSampler && ss.names == [:a, :b] && ss.cov == [3.0 0; 0 4.0])
+    @test (ss = ShocksSampler([:a, :b], [3 0; 0 4]); ss isa ShocksSampler && ss.names == [:a, :b] && ss.cov == [3.0 0; 0 4.0])
+    @test (ss = ShocksSampler(["a", "b"], [3 2e-8; 0 4]); ss isa ShocksSampler && ss.names == [:a, :b] && ss.cov == [3.0 1e-8; 1e-8 4.0])
+
     ss = ShocksSampler((:a, :b), [0.09, 0.04])
     @test length(ss) == 2
     nsamples = 10_000_000
-    @test (X = rand(ss, nsamples); X isa AbstractMatrix && size(X) == (length(ss),nsamples))
+    @test (X = rand(ss, nsamples); X isa AbstractMatrix && size(X) == (length(ss), nsamples))
     X = rand(ss, nsamples)
-    @test norm(X*X'/nsamples - ss.cov, Inf) < 1e-4
+    @test norm(X * X' / nsamples - ss.cov, Inf) < 1e-4
 
     @test begin
         search_output = occursin(let io = IOBuffer()
@@ -69,9 +69,9 @@ end
     @test (rangeof(pl) == 0U:300U)
     vars = [i for (i, v) in enumerate(varshks(dfm)) if v ∉ shocks(dfm)]
     shks = [i for (i, v) in enumerate(varshks(dfm)) if v ∈ shocks(dfm)]
-    @test all(pl.exogenous[:,shks])
-    @test !any(pl.exogenous[:,vars])
-    
+    @test all(pl.exogenous[:, shks])
+    @test !any(pl.exogenous[:, vars])
+
     @test (steadystatedata(dfm, pl) isa MVTSeries)
     @test (steadystatearray(dfm, pl) isa Matrix)
     @test (steadystateworkspace(dfm, pl) isa Workspace)
@@ -93,7 +93,7 @@ end
 
     @test (simulate(dfm, pl, data); true)
     sim = simulate(dfm, pl, data)
-    
+
     exog_endo!(pl, [:a], [:a_shk], rng[1:5])
     @test_throws "Non-empty plan" simulate(dfm, pl, data)
 
@@ -111,9 +111,9 @@ end
     @test (rangeof(pl) == 0U:300U)
     vars = [i for (i, v) in enumerate(varshks(dfm)) if v ∉ shocks(dfm)]
     shks = [i for (i, v) in enumerate(varshks(dfm)) if v ∈ shocks(dfm)]
-    @test all(pl.exogenous[:,shks])
-    @test !any(pl.exogenous[:,vars])
-    
+    @test all(pl.exogenous[:, shks])
+    @test !any(pl.exogenous[:, vars])
+
     @test (steadystatedata(dfm, pl) isa MVTSeries)
     @test (steadystatearray(dfm, pl) isa Matrix)
     @test (steadystateworkspace(dfm, pl) isa Workspace)
@@ -161,5 +161,39 @@ td = DataEcon.readdb(joinpath(@__DIR__, "data", "dfm.daec"))
     @test @compare kfd2data(kfd, :pred, dfm, rng) td.dfm1.pred quiet
     kfd = kf_smoother(Y, x0, Px0, dfm)
     @test @compare kfd2data(kfd, :smooth, dfm, rng) td.dfm1.smooth quiet
+
+    for which in (:update, :pred, :smooth)
+        a1 = kfd2data(kfd, which, dfm, rng; states_with_lags=false)
+        a2 = kfd2data(kfd, which, dfm, rng; states_with_lags=true)
+        @test @compare(a1, a2, quiet) == (lags(dfm) == 1)
+        @test @compare(a1, a2, quiet, ignoremissing) == true
+    end
+end
+
+@testset "DFM2Filter" begin
+    dfm = DFM2.newmodel()
+    rng = rangeof(td.dfm2.shks; drop=lags(dfm))
+    p = Plan(dfm, rng)
+    data = steadystatedata(dfm, p)
+    data[rng, :] .= 0
+    data[rng, :] = td.dfm2.shks
+    sim = simulate(dfm, p, data)
+    @test @compare sim td.dfm2.sim quiet
+
+    Y = sim[rng, observed(dfm)].values
+    x0 = zeros(nstates_with_lags(dfm))
+    Px0 = I(nstates_with_lags(dfm))
+    kfd = kf_filter(Y, x0, Px0, dfm)
+    @test @compare kfd2data(kfd, :update, dfm, rng) td.dfm2.update quiet
+    @test @compare kfd2data(kfd, :pred, dfm, rng) td.dfm2.pred quiet
+    kfd = kf_smoother(Y, x0, Px0, dfm)
+    @test @compare kfd2data(kfd, :smooth, dfm, rng) td.dfm2.smooth quiet
+
+    for which in (:update, :pred, :smooth)
+        a1 = kfd2data(kfd, which, dfm, rng; states_with_lags=false)
+        a2 = kfd2data(kfd, which, dfm, rng; states_with_lags=true)
+        @test @compare(a1, a2, quiet) == (lags(dfm) == 1)
+        @test @compare(a1, a2, quiet, ignoremissing) == true
+    end
 end
 
