@@ -1,9 +1,11 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
+
+include("em/constraints.jl")
 
 """
     em_impute_kalman!(EY, Y, kfd)
@@ -35,7 +37,7 @@ function em_impute_kalman!(EY::AbstractMatrix{T}, Y::AbstractMatrix{T}, kfd::Kal
 end
 
 """
-    em_impute_interp!(EY, Y, IT)
+    em_impute_interpolation!(EY, Y, IT)
 
 Fill in any missing values using interpolation.
 

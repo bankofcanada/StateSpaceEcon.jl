@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -11,7 +11,7 @@ struct EM_Observed_Block_Loading_Wks{T,YI<:AbstractVector{Int},XIE<:AbstractVect
     xinds_given::XIG
     mean_estim::Bool
     orthogonal_factors_ics::Bool
-    constraint::Union{Nothing,DFMConstraint{T}}
+    constraint::Union{Nothing,EM_MatrixConstraint{T}}
     # pre-allocated matrices
     YTX::Matrix{T}
     new_Λ::Matrix{T}
@@ -109,7 +109,7 @@ function em_observed_block_loading_wks(on::Symbol, M::DFM, wks::DFMKalmanWks{T};
         # xinds, 
         xinds_estim, xinds_given,
         mean_estim, orthogonal_factors_ics,
-        DFMConstraint(nest, W, q),
+        EM_MatrixConstraint(nest, W, q),
         Matrix{T}(undef, nobs, nest),     # YTX
         Matrix{T}(undef, nobs, nest),     # new_Λ
         Matrix{T}(undef, nest, nest),     # XTX
@@ -274,7 +274,7 @@ function _em_update_observed_block_loading!(
             BLAS.ger!(-one(T) / NT, SX, SX, XTX)
         end
         cXTX = cholesky!(Symmetric(XTX))
-        _apply_constraint!(new_Λ, constraint, cXTX, view(R, yinds, yinds))
+        EM_apply_constraint!(new_Λ, constraint, cXTX, view(R, yinds, yinds))
     end
 
     if mean_estim
@@ -359,7 +359,7 @@ function _em_update_observed_block_loading!(
     cXTX = cholesky!(Symmetric(XTX))  # overwrites XTX
     rdiv!(new_Λ, cXTX)
 
-    _apply_constraint!(new_Λ, constraint, cXTX, view(R, yinds, yinds))
+    EM_apply_constraint!(new_Λ, constraint, cXTX, view(R, yinds, yinds))
 
     if mean_estim
         # solve for mean using backward substitution

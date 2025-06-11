@@ -8,11 +8,12 @@
 module DFMSolver
 
 # Julia Standard Library
-using Random
 using LinearAlgebra
-using Statistics
-using SparseArrays
 using Printf
+using Random
+using SparseArrays
+using StaticArrays
+using Statistics
 
 # juliastats.org
 using ComponentArrays
@@ -36,7 +37,6 @@ include("dfm/plandata.jl")
 include("dfm/random.jl")
 include("dfm/simulate.jl")
 include("dfm/kalman.jl")
-include("dfm/constraints.jl")
 include("dfm/em.jl")
 
 end

@@ -119,7 +119,7 @@ function EMinit!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractM
     for obs_wks in em_wks.observed.loadings
         @unpack yinds, xinds_estim, constraint, XTX, new_Λ = obs_wks
         cFTF = Cholesky(UpperTriangular(XTX))
-        _apply_constraint!(new_Λ, constraint, cFTF, cov(view(resY, lags(model):NT, yinds)))
+        EM_apply_constraint!(new_Λ, constraint, cFTF, cov(view(resY, lags(model):NT, yinds)))
         assign_non_nan!(Λ, yinds, xinds_estim, new_Λ)
     end
 
@@ -164,7 +164,7 @@ function EMinit!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractM
         end
         cFMAT = cholesky!(Symmetric(FMAT, :U))
         rdiv!(FRHS, cFMAT)
-        _apply_constraint!(FRHS, tr_wks.constraint, cFMAT, cov(F))
+        EM_apply_constraint!(FRHS, tr_wks.constraint, cFMAT, cov(F))
         # assign A
         assign_non_nan!(A, xinds_1, xinds_2, FRHS)
 

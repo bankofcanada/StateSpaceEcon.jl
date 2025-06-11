@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -11,7 +11,7 @@ struct EM_Transition_Block_Wks{T,TA,TQ}
     xinds_1::Vector{Int}
     xinds_2::Vector{Int}
     covar_estim::Bool
-    constraint::Union{Nothing,DFMConstraint{T}}
+    constraint::Union{Nothing,EM_MatrixConstraint{T}}
     new_A::TA
     new_Q::TQ
     XTX_22::Matrix{T}
@@ -52,7 +52,7 @@ function em_transition_block_wks(cn::Symbol, M::DFM, wks::DFMKalmanWks{T}) where
     XTX_22 = Matrix{T}(undef, NS_2, NS_2)
     XTX_12 = Matrix{T}(undef, NS_1, NS_2)
     covar_estim = any(isnan, view(Q, xinds_1, xinds_1))
-    constraint = DFMSolver.DFMConstraint(length(xinds_2), W, q)
+    constraint = EM_MatrixConstraint(length(xinds_2), W, q)
     return EM_Transition_Block_Wks{T,typeof(new_A),typeof(new_Q)}(
         xinds, xinds_1, xinds_2, covar_estim,
         constraint, new_A, new_Q, XTX_22, XTX_12
@@ -98,7 +98,7 @@ function em_update_transition_block!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractK
     copyto!(new_A, XTX_12)
     rdiv!(new_A, cXTX)
 
-    _apply_constraint!(new_A, constraint, cXTX, vQ)
+    EM_apply_constraint!(new_A, constraint, cXTX, vQ)
 
     A[xinds_1, xinds_2] = new_A
 
