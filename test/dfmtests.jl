@@ -170,6 +170,8 @@ td = DataEcon.readdb(joinpath(@__DIR__, "data", "dfm.daec"))
     end
 end
 
+## 
+
 @testset "DFM2Filter" begin
     dfm = DFM2.newmodel()
     rng = rangeof(td.dfm2.shks; drop=lags(dfm))
@@ -196,4 +198,77 @@ end
         @test @compare(a1, a2, quiet, ignoremissing) == true
     end
 end
+
+##
+
+@testset "DFM2 Missing" begin
+    dfm = DFM2.newmodel()
+    rng = rangeof(td.dfm2.shks; drop=lags(dfm))
+    p = Plan(dfm, rng)
+    data = steadystatedata(dfm, p)
+    data[rng, :] .= 0
+    data[rng, :] = td.dfm2.shks
+    sim = simulate(dfm, p, data)
+    @test @compare sim td.dfm2.sim quiet
+
+    Y = sim[rng, observed(dfm)].values
+    # make 20% missing values in Y 
+    miss = rand(length(Y)) .< 0.2
+    Y[miss] .= NaN
+
+    # run filter and smoother on data with missing values
+    x0 = zeros(nstates_with_lags(dfm))
+    Px0 = I(nstates_with_lags(dfm))
+    kfd = kf_smoother(Y, x0, Px0, dfm)
+
+    # Don't overwrite missing values pattern in original data
+    @test DFMSolver.em_impute_kalman!(Y, Y, kfd) === Y
+    @test DFMSolver.em_impute_interpolation!(Y, Y) === Y
+    
+    # Interpolate by fetching missing values from the smoother results
+    EY = copy(Y)
+    DFMSolver.em_impute_kalman!(EY, Y, kfd)
+    @test compare(EY[.!miss], Y[.!miss], quiet=true)
+    SY = kfd2data(kfd, :smooth, dfm, rng; states_with_lags=true)[:, observed(dfm)]
+    @test compare(EY[miss], SY[miss], quiet=true)
+    
+    # Interpolate by cubic interpolation
+    DFMSolver.em_impute_interpolation!(EY, Y)
+    @test compare(EY[.!miss], Y[.!miss], quiet=true)
+    @test compare(EY[miss], SY[miss], quiet=true) == false # interpolation is not the same as 
+
+end
+
+##
+
+@testset "EM matrix constraint" begin
+
+    A = rand(3, 2)
+    W = zeros(2, 6)
+    q = zeros(2)
+    # force A[2,2] = 3
+    W[1, 5] = 1
+    q[1] = 3
+    # force 5A[3,1]  = A[3,2] + 1
+    W[2, 3] = 5
+    W[2, 6] = -1
+    q[2] = 1
+
+    mc = DFMSolver.EM_MatrixConstraint(2, W, q)
+    cXTX = cholesky(Matrix{Float64}(I(3)))
+    Σ = Matrix{Float64}(I(3))
+    
+    B = DFMSolver.em_apply_constraint!(copy(A), nothing, cXTX, Σ)
+    @test norm(B - A) < 1e-14
+    
+    same = [true, true, false, true, false, false]
+    B = DFMSolver.em_apply_constraint!(B, mc, cXTX, Σ)
+    @test compare(A[same], B[same], quiet=true)
+    @test compare(B[2,2], q[1], quiet=true)
+    @test compare(5B[3,1], B[3,2]+q[2], quiet=true)
+
+end
+
+
+
 

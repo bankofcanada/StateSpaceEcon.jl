@@ -67,8 +67,8 @@ struct EM_MatrixConstraint{T<:Real, NCONS, NELS, NROWS, NCOLS,
 end
 
 """
-    EM_apply_constraint!(M, ::Nothing, ...) = M
-    EM_apply_constraint!(M, cons::EM_MatrixConstraint, ...)
+    em_apply_constraint!(M, ::Nothing, ...) = M
+    em_apply_constraint!(M, cons::EM_MatrixConstraint, ...)
 
 Modify matrix M in place to enforce the given constraint. This is done in the
 course of the EM algorithm. The minimization problems is first solved
@@ -78,10 +78,10 @@ function performs this update.
 
 This is an internal function.
 """
-function EM_apply_constraint! end
+function em_apply_constraint! end
 
-EM_apply_constraint!(M::AbstractMatrix{T}, ::Nothing, args...) where {T<:Real} = M
-function EM_apply_constraint!(M::AbstractMatrix{T}, cons::EM_MatrixConstraint{T, NCONS, NELS, NROWS, NCOLS},
+em_apply_constraint!(M::AbstractMatrix{T}, ::Nothing, args...) where {T<:Real} = M
+function em_apply_constraint!(M::AbstractMatrix{T}, cons::EM_MatrixConstraint{T, NCONS, NELS, NROWS, NCOLS},
     cXᵀX::Cholesky{T}, Σ::AbstractMatrix{T}) where {T, NCONS, NELS, NROWS, NCOLS}
 
     NCONS > 0 || return M

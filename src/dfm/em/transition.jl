@@ -98,7 +98,7 @@ function em_update_transition_block!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractK
     copyto!(new_A, XTX_12)
     rdiv!(new_A, cXTX)
 
-    EM_apply_constraint!(new_A, constraint, cXTX, vQ)
+    em_apply_constraint!(new_A, constraint, cXTX, vQ)
 
     A[xinds_1, xinds_2] = new_A
 

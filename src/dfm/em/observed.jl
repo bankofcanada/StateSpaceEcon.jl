@@ -274,7 +274,7 @@ function _em_update_observed_block_loading!(
             BLAS.ger!(-one(T) / NT, SX, SX, XTX)
         end
         cXTX = cholesky!(Symmetric(XTX))
-        EM_apply_constraint!(new_Λ, constraint, cXTX, view(R, yinds, yinds))
+        em_apply_constraint!(new_Λ, constraint, cXTX, view(R, yinds, yinds))
     end
 
     if mean_estim
@@ -359,7 +359,7 @@ function _em_update_observed_block_loading!(
     cXTX = cholesky!(Symmetric(XTX))  # overwrites XTX
     rdiv!(new_Λ, cXTX)
 
-    EM_apply_constraint!(new_Λ, constraint, cXTX, view(R, yinds, yinds))
+    em_apply_constraint!(new_Λ, constraint, cXTX, view(R, yinds, yinds))
 
     if mean_estim
         # solve for mean using backward substitution
