@@ -23,30 +23,41 @@ optionally showing the column names.
 
 """
 printmatrix(mat::AbstractMatrix, args...) = printmatrix(stdout, mat, args...)
-printmatrix(io::IO, mat::AbstractMatrix, args...) = printmatrix(io, mat, Val(12.7), args...)
-@generated function printmatrix(io::IO, mat::AbstractMatrix, ::Val{F}, cols=nothing) where {F}
+# printmatrix(io::IO, mat::AbstractMatrix, args...) = printmatrix(io, mat, args...)
+@generated function printmatrix(io::IO, mat::AbstractMatrix, ::Val{F}=Val(12.7), ::Val{g}=Val(:g), cols=nothing, rows=nothing, ::Val{RW}=Val(20)) where {F,g,RW}
     N = floor(Int, F)
+    digits = parse(Int, split("$(F-N)", ".")[2])
     fmts = "% $(N)s "
-    fmtn = "% $(F)f "
+    fmtn = "% $F$g "
+    row_fmt = "% -$(RW)s "
     return quote
         m, n = size(mat)
         if cols !== nothing
-            s = ""
+            if !isnothing(rows)
+                Printf.@printf(io, $row_fmt, "")
+            end
             for j ∈ 1:n
                 c = string(cols[j])
                 if length(c) > $N
                     c = c[1:$N-1] * "…"
                 end
-                s *= Printf.@sprintf($fmts, c)
+                Printf.@printf(io, $fmts, c)
             end
-            println(io, s)
+            println(io)
         end
         for i in 1:m
-            s = ""
-            for j in 1:n
-                s *= Printf.@sprintf($fmtn, mat[i, j])
+            if !isnothing(rows)
+                c = string(rows[i])
+                if length(c) > $RW
+                    c = c[1:$RW-1] * "…"
+                end
+                Printf.@printf(io, $row_fmt, c)
             end
-            println(io, s)
+            for j in 1:n
+                # s *= Printf.@sprintf($fmtn, mat[i, j])
+                Printf.@printf(io, $fmtn, round(mat[i, j]; digits=$digits))
+            end
+            println(io)
         end
         return nothing
     end
