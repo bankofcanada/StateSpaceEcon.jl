@@ -269,6 +269,22 @@ end
 
 end
 
+##
 
+@testset "DEM1 EM" begin
+    m = DFM1.newmodel()
+    true_p = copy(m.params)
+    Y = td.dfm1.sim[1U:end, observed(m)].values
 
+    fill!(m.params, NaN)
+    m.params.F.covar .= 1.0
+    DFMSolver.EMestimate!(m, Y)
+    @test compare(m.params, td.dfm1.em_p1, quiet=true)
+    
+    fill!(m.params, NaN)
+    m.params.observed.loadings.F[2,1] = 0.9
+    m.params.F.covar .= 1.0
+    DFMSolver.EMestimate!(m, Y)
+    @test compare(m.params, td.dfm1.em_p2, quiet=true)
+end
 

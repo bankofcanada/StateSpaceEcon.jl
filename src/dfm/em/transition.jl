@@ -6,21 +6,30 @@
 ##################################################################################
 
 
-struct EM_Transition_Block_Wks{T,TA,TQ}
+struct EM_Transition_Block_Wks{T,
+    EMC<:Maybe_EM_MatrixConstraint,
+    TA<:AbstractMatrix{T},TQ<:AbstractMatrix{T},
+    TX22<:AbstractMatrix{T},TX21<:AbstractMatrix{T}}
     xinds::Vector{Int}
     xinds_1::Vector{Int}
     xinds_2::Vector{Int}
     covar_estim::Bool
-    constraint::Union{Nothing,EM_MatrixConstraint{T}}
+    constraint::EMC
     new_A::TA
     new_Q::TQ
-    XTX_22::Matrix{T}
-    XTX_12::Matrix{T}
+    XTX_22::TX22
+    XTX_12::TX21
+    function EM_Transition_Block_Wks{T}(xinds, xinds_1, xinds_2, covar_estim,
+        constraint, new_A, new_Q, XTX_22, XTX_12) where {T}
+        return new{T,typeof(constraint),typeof(new_A),typeof(new_Q),
+            typeof(XTX_22),typeof(XTX_12)}(xinds, xinds_1, xinds_2, covar_estim,
+            constraint, new_A, new_Q, XTX_22, XTX_12)
+    end
 end
 
-function em_transition_block_wks(cn::Symbol, M::DFM, wks::DFMKalmanWks{T}) where {T}
+function em_transition_block_wks(cn::Symbol, M::DFM, LM::KFLinearModel{T}) where {T}
     @unpack model, params = M
-    @unpack A, Q = wks
+    A, Q = LM.F, LM.R
     cb = model.components[cn]
     NS = nstates(cb)
     ord = DFMModels.order(cb)
@@ -47,26 +56,26 @@ function em_transition_block_wks(cn::Symbol, M::DFM, wks::DFMKalmanWks{T}) where
     end
     NS_1 = length(xinds_1)
     NS_2 = length(xinds_2)
-    new_A = Matrix{T}(undef, NS_1, NS_2)
+    new_A = MMatrix{NS_1, NS_2, T}(undef)
     new_Q = similar(get_covariance(cb, params[cn]))
-    XTX_22 = Matrix{T}(undef, NS_2, NS_2)
-    XTX_12 = Matrix{T}(undef, NS_1, NS_2)
+    XTX_22 = MMatrix{NS_2, NS_2, T}(undef)
+    XTX_12 = MMatrix{NS_1, NS_2, T}(undef)
     covar_estim = any(isnan, view(Q, xinds_1, xinds_1))
     constraint = EM_MatrixConstraint(length(xinds_2), W, q)
-    return EM_Transition_Block_Wks{T,typeof(new_A),typeof(new_Q)}(
+    return EM_Transition_Block_Wks{T}(
         xinds, xinds_1, xinds_2, covar_estim,
         constraint, new_A, new_Q, XTX_22, XTX_12
     )
 end
 
-function em_update_transition_block!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData,
+function em_update_transition_block!(LM::KFLinearModel{T}, kfd::Kalman.AbstractKFData{T},
     EY::AbstractMatrix{T}, em_wks::EM_Transition_Block_Wks{T},
     ::Val{use_x0_smooth}
 ) where {T,use_x0_smooth}
     # unpack the inputs
     @unpack xinds_1, xinds_2, covar_estim, constraint = em_wks
     @unpack new_A, new_Q, XTX_22, XTX_12 = em_wks
-    @unpack A, Q = wks
+    A, Q = LM.F, LM.R
     @unpack x_smooth, Px_smooth, Pxx_smooth = kfd
 
     vQ = view(Q, xinds_1, xinds_1)
@@ -153,9 +162,9 @@ end
 struct EM_Transition_Wks{T,TBLK}
     blocks::TBLK
 end
-function em_transition_wks(M::DFM, wks::DFMKalmanWks{T}) where {T}
+function em_transition_wks(M::DFM, LM::KFLinearModel{T}) where {T}
     @unpack model, params = M
-    blocks = (; (nm => em_transition_block_wks(nm, M, wks) for nm in keys(model.components))...)
+    blocks = (; (nm => em_transition_block_wks(nm, M, LM) for nm in keys(model.components))...)
     return EM_Transition_Wks{T,typeof(blocks)}(blocks)
 end
 

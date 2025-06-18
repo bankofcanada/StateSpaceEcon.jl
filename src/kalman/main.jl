@@ -40,61 +40,74 @@ function kf_filter end
 
 function kf_filter(Y::AbstractMatrix, x0::AbstractVector, Px0::AbstractMatrix,
     model, user_data...; kwargs...)
-    if kf_is_linear(model, user_data...)
-        # construct the data container
-        kfd = KFDataFilter(axes(Y, 1), model, user_data...)
-        # construct the KFilter instance
-        kf = KFilter(kfd)
-        if kf_length_y(kf) != size(Y, 2)
-            error("Invalid data size - number of columns in the data does not match number of observed variables in the model.")
-        end
-        # 
-        kf_filter!(kf, Y, x0, Px0, model, user_data...; kwargs...)
-        return kfd
-    else
+
+    if !kf_is_linear(model, user_data...)
         error("Not implemented for non-linear models yet.")
     end
+
+    # construct the data container
+    kfd = KFDataFilter(axes(Y, 1), model, user_data...)
+    # construct the KFilter instance
+    kf = KFilter(kfd)
+    if kf_length_y(kf) != size(Y, 2)
+        error("Invalid data size - number of columns in the data does not match number of observed variables in the model.")
+    end
+    # call the default Kalman filter
+    kf_filter!(kf, Y, x0, Px0, model, user_data...; kwargs...)
+    return kfd
+
 end
 
 function kf_filter!(kf::KFilter, Y::AbstractMatrix,
     x0::AbstractVector, Px0::AbstractMatrix,
-    model, user_data...;
+    LM::KFLinearModel;
     fwdstate::Bool=true, anymissing::Bool=any(isnan, Y), kwargs...)
 
+    # call the default linear Kalman filter
+    dk_filter!(kf, Y, LM.mu, LM.H, LM.F, LM.Q, LM.R, LM.G, x0, Px0, fwdstate, anymissing)
+    return kf
+end
+
+function kf_filter!(kf::KFilter, Y::AbstractMatrix,
+    x0::AbstractVector, Px0::AbstractMatrix,
+    model, user_data...; kwargs...)
+
     if kf_is_linear(model, user_data...)
-        m = model isa KFLinearModel ? model : kf_linear_model(model, user_data...)
-        dk_filter!(kf, Y, m.mu, m.H, m.F, m.Q, m.R, m.G, x0, Px0, fwdstate, anymissing)
-        return kf
+        return kf_filter!(kf, Y, x0, Px0, kf_linear_model(model, user_data...); kwargs...)
     else
         error("Not implemented for non-linear models yet.")
     end
 end
-
 
 function kf_smoother(Y::AbstractMatrix, x0::AbstractVector, Px0::AbstractMatrix,
     model, user_data...; kwargs...)
-    if kf_is_linear(model, user_data...)
-        # construct the data container
-        kfd = KFDataSmoother(axes(Y, 1), model, user_data...)
-        # construct the KFilter instance
-        kf = KFilter(kfd)
-        if kf_length_y(kf) != size(Y, 2)
-            error("Invalid data size - number of columns in the data does not match number of observed variables in the model.")
-        end
-        # 
-        kf_filter!(kf, Y, x0, Px0, model, user_data...; kwargs...)
-        kf_smoother!(kf, model, user_data...; kwargs...)
-        return kfd
-    else
+
+    if !kf_is_linear(model, user_data...)
         error("Not implemented for non-linear models yet.")
     end
+
+    # construct the data container
+    kfd = KFDataSmoother(axes(Y, 1), model, user_data...)
+    # construct the KFilter instance
+    kf = KFilter(kfd)
+    if kf_length_y(kf) != size(Y, 2)
+        error("Invalid data size - number of columns in the data does not match number of observed variables in the model.")
+    end
+    # Call the default Kalman filter and then smoother
+    kf_filter!(kf, Y, x0, Px0, model, user_data...; kwargs...)
+    kf_smoother!(kf, model, user_data...; kwargs...)
+    return kfd
+
 end
 
-function kf_smoother!(kf::KFilter, model, user_data...; fwdstate::Bool=true, kwargs...)
+function kf_smoother!(kf::KFilter, LM::KFLinearModel; fwdstate::Bool=true, kwargs...)
+    dk_smoother!(kf, LM.mu, LM.H, LM.F, LM.Q, LM.R, LM.G, fwdstate)
+    return kf
+end
+
+function kf_smoother!(kf::KFilter, model, user_data...; kwargs...)
     if kf_is_linear(model, user_data...)
-        m = model isa KFLinearModel ? model : kf_linear_model(model, user_data...)
-        dk_smoother!(kf, m.mu, m.H, m.F, m.Q, m.R, m.G, fwdstate)
-        return kf
+        return kf_smoother!(kf, kf_linear_model(model, user_data...); kwargs...)
     else
         error("Not implemented for non-linear models yet.")
     end

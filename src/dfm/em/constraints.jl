@@ -54,6 +54,7 @@ struct EM_MatrixConstraint{T<:Real, NCONS, NELS, NROWS, NCOLS,
         # NOTE: the matrix being constrained has dimensions nrows × ncols, for a total of nels=nrows*ncols elements
         #   Matrix W has dimension ncons × nels - one row for each constraint and a column for each element of the constrained matrix
         #   We deduce nrows from ncons (given directly) and nels (from second dimension of W)
+        ncols == 0 && return nothing
         ncons, nels = size(W)
         nrows, rem = divrem(nels, ncols)
         @assert rem == 0 "Inconsistent number of columns in W. Expected multiple of $ncols, got $nels"
@@ -65,6 +66,8 @@ struct EM_MatrixConstraint{T<:Real, NCONS, NELS, NROWS, NCOLS,
             MMatrix{ncons, nels, T}(undef))
     end
 end
+
+const Maybe_EM_MatrixConstraint{T} = Union{Nothing,EM_MatrixConstraint{T}}
 
 """
     em_apply_constraint!(M, ::Nothing, ...) = M

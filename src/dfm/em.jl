@@ -7,9 +7,6 @@
 
 include("em/constraints.jl")
 include("em/interpolation.jl")
-
-##################################################################################
-
 include("em/observed.jl")
 include("em/transition.jl")
 
@@ -20,9 +17,9 @@ struct EM_Wks{T,TOBS,TTRS}
     transition::TTRS
 end
 
-function em_workspace(M::DFM, wks::DFMKalmanWks{T}; orthogonal_factors_ics=true) where {T}
-    obs = em_observed_wks(M, wks; orthogonal_factors_ics)
-    trans = em_transition_wks(M, wks)
+function em_workspace(M::DFM{T}, LM::KFLinearModel{T}; orthogonal_factors_ics=true) where {T}
+    obs = em_observed_wks(M, LM; orthogonal_factors_ics)
+    trans = em_transition_wks(M, LM)
     return EM_Wks{T,typeof(obs),typeof(trans)}(obs, trans)
 end
 
@@ -31,20 +28,18 @@ end
 
 
 
-function EMstep!(wks::DFMKalmanWks{T}, x0::AbstractVector{T}, Px0::AbstractMatrix{T},
-    kfd::Kalman.AbstractKFData, EY::AbstractMatrix{T}, M::DFM, em_wks::EM_Wks{T},
+function EMstep!(LM::KFLinearModel{T}, x0::AbstractVector{T}, Px0::AbstractMatrix{T},
+    kfd::Kalman.AbstractKFData{T}, EY::AbstractMatrix{T}, M::DFM, em_wks::EM_Wks{T},
     anymissing::Bool, # =any(isnan, EY)
     use_x0_smooth::Bool=false,
-    use_full_XTX::Bool=true,
-
-) where {T}
+    use_full_XTX::Bool=true,) where {T}
     @unpack observed, transition = em_wks
     for em_w in observed.loadings
-        em_update_observed_block_loading!(wks, kfd, EY, em_w, Val(anymissing), Val(use_full_XTX))
+        em_update_observed_block_loading!(LM, kfd, EY, em_w, Val(anymissing), Val(use_full_XTX))
     end
-    em_update_observed_covar!(wks, kfd, EY, observed.covars, Val(anymissing))
+    em_update_observed_covar!(LM, kfd, EY, observed.covars, Val(anymissing))
     for em_w in transition.blocks
-        em_update_transition_block!(wks, kfd, EY, em_w, Val(use_x0_smooth))
+        em_update_transition_block!(LM, kfd, EY, em_w, Val(use_x0_smooth))
     end
     x0[:] = kfd.x0_smooth
     # fill!(x0, zero(T))
@@ -64,7 +59,7 @@ function EMstep!(wks::DFMKalmanWks{T}, x0::AbstractVector{T}, Px0::AbstractMatri
             Px0[xinds, xinds] = kfd.Px0_smooth[xinds, xinds]
         end
     end
-    return wks
+    return LM
 end
 
 
@@ -72,12 +67,12 @@ end
 ##################################################################################
 
 
-function _scale_model!(wks::DFMKalmanWks{T}, Mx, Wx, model::DFMModel, em_wks::EM_Wks) where {T}
+function em_scale_model!(LM::KFLinearModel{T}, Mx, Wx, model::DFMModel, em_wks::EM_Wks) where {T}
     # IDEA: factors (CommonComponents) have loadings, so we scale the loadings
     #       obs noise and idiosyncratic components figure in with fixed loadings, 
-    #       so we scale thier noises covariances instead.
+    #       so we scale their noises covariances instead.
     # scale the loadings of factors
-    μ, Λ, R, Q = wks.μ, wks.Λ, wks.R, wks.Q
+    μ, Λ, R, Q = LM.mu, LM.H, LM.Q, LM.R
     for (obs_wks, oblk) in zip(em_wks.observed.loadings, values(model.observed))
         @unpack yinds, xinds_estim, inds_cb, constraint = obs_wks
         D = Diagonal(Wx[yinds])
@@ -109,21 +104,73 @@ function _scale_model!(wks::DFMKalmanWks{T}, Mx, Wx, model::DFMModel, em_wks::EM
         end
     end
     fill!(μ, zero(T))
-    return wks
+    return LM
 end
 
+"""
+    EMestimate!(M::DFM, Y, <args>; <options>)
 
-function EMestimate!(M::DFM, Y::AbstractMatrix,
-    wks::DFMKalmanWks{T}=DFMKalmanWks(M),
-    x0::AbstractVector=zeros(Kalman.kf_length_x(M)),
-    Px0::AbstractMatrix=Matrix{T}(1e-10 * I(Kalman.kf_length_x(M))),
-    em_wks::EM_Wks{T}=em_workspace(M, wks),
-    kfd=Kalman.KFDataSmoother(size(Y, 1), M, Y, wks),
-    kf=Kalman.KFilter(kfd)
+Main function to run DFM estimation by the EM algorithm. The DFM model instance
+will be updated in place and returned. 
+
+On input `M.params` must contain `NaN` for parameters that are to be estimated
+and numbers for parameters that are known and will not be estimated. On output
+`M.params` will contain the estimated parameters, that is non-NaN values will be
+preserved while NaN values will be overwritten with their estimated values.
+
+Observed data `Y` may contain an arbitrary pattern of missing values.
+
+Additional positional arguments are optional. Their order is as follows:
+ * `x0` - state vector at time 0 used for the Kalman Filter. Default is the zero
+   vector.
+ * 'Px0` - state covariance matrix at time 0 used for the Kalman Filter. Default
+   is 1e-10*I
+ * `LM` - an instance of `KFLinearModel` for the same model as `M`. Default
+   value is `kf_linear_model(M)`
+ * `em_wks` - an instance of `EM_Wks` to be used by the EM estimator. Default
+   value is `em_workspace(M, LM)`
+ * `kfd` - an instance of `AbstractKFData` to be used by the EM estimator. The
+   provided instance must be suitable for running the Kalman Smoother. Default
+   value is `KFDataSmoother(size(Y,1), M, Y)`
+ * `kf` - an instance of `KFilter` to be used by the EM estimator. The default
+   value is `KFilter(kfd)`
+
+Named options
+ * `verbose`
+ * You can save yourself a few CPU cycles by setting `anymissing` to `true` or
+   `false`, if known. Otherwise the default is computed by checking `Y`.
+ * `fwdstate` controls whether the Kalman Filter starts with states at time 0 or
+   at time 1. Default value is `false`, which means time 0. See also
+   [`kf_filter`](@ref) and [`kf_smoother`](@ref) and note the the default here
+   is different that in the `Kalman` sub-module.
+ * `maxiter`, `rftol`, and `axtol` control the convergence/termination checks of
+   the EM estimation iteration.
+ * `initial_guess` can be used to provide an initial guess for `M.params`. If
+   not given (`nothing`), or if the given vector has any missing values, then an
+   internal procedure is called to generate the initial guess. Default is
+   `nothing`. If given and all values are non-zero, they will be used as initial
+   guess. *N.B. it is the responsibility of the caller to ensure that all non-NaN
+   values in `M.params` and `initial_guess` match; this is neither verified nor
+   enforced here.*
+ * `impute_missing` controls how to deal with missing values in `Y`. If set to
+   `false` (default) then the missing values are treated by a modification of
+   the EM algorithm formulas as in Banbura & Modugno 2014. Otherwise, missing
+   data are filled in using their expected values (from the Kalman smoother) on
+   each iteration of the EM estimation.
+ * `use_max_norm` as opposed to root mean squared difference. Default is
+   `false`.
+"""
+function EMestimate!(M::DFM{T}, Y::AbstractMatrix,
+    x0::AbstractVector{T}=zeros(kf_length_x(M)),
+    Px0::AbstractMatrix{T}=Matrix{T}(1e-10 * I(kf_length_x(M))),
+    LM::KFLinearModel{T}=kf_linear_model(M),
+    em_wks::EM_Wks{T}=em_workspace(M, LM),
+    kfd::Kalman.AbstractKFData{T}=KFDataSmoother(T, size(Y, 1), M, Y),
+    kf::KFilter{T}=KFilter(kfd)
     ;
     fwdstate::Bool=false,
     initial_guess::Union{Nothing,AbstractVector}=nothing,
-    maxiter=100, rftol=1e-4, axtol=1e-4,
+    maxiter=100, rftol=1e-8, axtol=1e-8,
     verbose=false,
     impute_missing::Bool=false,  # true - use Kalman smoother to impute missing data, false - treat missing data as in Banbura & Modugno 2014
     use_x0_smooth::Bool=false, # true - use x0_smooth in the EMstep update (experimental). Set to `false` for normal operation.
@@ -144,7 +191,7 @@ function EMestimate!(M::DFM, Y::AbstractMatrix,
     # scale data
     Mx = nanmean(Y, dims=1)
     for i = eachindex(Mx)
-        v = wks.μ[i]
+        v = LM.mu[i]
         isnan(v) || (Mx[i] = v)
     end
     Wx = nanstd(Y, dims=1, mean=Mx)
@@ -161,19 +208,19 @@ function EMestimate!(M::DFM, Y::AbstractMatrix,
 
     if isnothing(initial_guess)
         verbose && @info "EM initial guess not given. Calling EMinit!"
-        _scale_model!(wks, Mx, Wx, model, em_wks)
-        EMinit!(wks, kfd, EY, M, em_wks)
+        em_scale_model!(LM, Mx, Wx, model, em_wks)
+        EMinit!(LM, kfd, EY, M, em_wks)
     else
-        _update_wks!(wks, model, initial_guess)
-        _scale_model!(wks, Mx, Wx, model, em_wks)
+        update_dfm_lm!(LM, model, initial_guess)
+        em_scale_model!(LM, Mx, Wx, model, em_wks)
         if any(isnan, initial_guess)
             verbose && @info "EM initial guess given but incomplete. Calling EMinit!"
-            EMinit!(wks, kfd, EY, M, em_wks)
+            EMinit!(LM, kfd, EY, M, em_wks)
         else
             verbose && @info "EM initial guess given."
         end
     end
-    _update_params!(params, model, wks)
+    update_dfm_params!(params, model, LM)
 
     if anymissing && !impute_missing
         copyto!(EY, Y)
@@ -183,15 +230,17 @@ function EMestimate!(M::DFM, Y::AbstractMatrix,
     loglik_best = -Inf
     iter_best = 0
     params_best = copy(params)
-    for iter = 1:maxiter
+    iter = 0
+    while iter < maxiter
+        iter += 1
 
         ##############
         # E-step
 
-        # run the Kalman filter and smoother using the original data 
+        # run the Kalman filter and smoother using the original data, 
         # which possibly contains NaN values where data is missing
-        Kalman.dk_filter!(kf, Y, wks, x0, Px0, fwdstate, anymissing)
-        Kalman.dk_smoother!(kf, Y, wks, fwdstate)
+        kf_filter!(kf, Y, x0, Px0, LM; fwdstate, anymissing)
+        kf_smoother!(kf, LM; fwdstate)
 
         #############
         # M-step
@@ -201,27 +250,26 @@ function EMestimate!(M::DFM, Y::AbstractMatrix,
             em_impute_kalman!(EY, Y, kfd)
         end
 
-        # update model matrices (wks) by maximizing the expected
-        # likelihood
-        EMstep!(wks, x0, Px0, kfd, EY, M, em_wks, anymissing, use_x0_smooth, use_full_XTX)
+        # update model matrices (LM) by maximizing the expected likelihood
+        EMstep!(LM, x0, Px0, kfd, EY, M, em_wks, anymissing, use_x0_smooth, use_full_XTX)
 
         #############
         # extract new parameters from wks into params vector
         copyto!(old_params, params)
-        _update_params!(params, model, wks)
-        _update_wks!(wks, model, params)
+        update_dfm_params!(params, model, LM)
+        update_dfm_lm!(LM, model, params)
 
         #############
         # check for convergence and print progress info
         loglik_new = sum(kfd.loglik)
         if use_max_norm
-            dx = maximum(abs2, (n - o for (n, o) in zip(params, old_params)))
+            dx = maximum(abs, (n - o for (n, o) in zip(params, old_params)))
         else
-            dx = mean(abs2, (n - o for (n, o) in zip(params, old_params)))
+            dx = √mean(abs2, (n - o for (n, o) in zip(params, old_params)))
         end
         df = 2 * abs(loglik - loglik_new) / (abs(loglik) + abs(loglik_new) + eps())
 
-        if verbose == true && mod(iter, 1) == 0
+        if verbose && mod(iter, 1) == 0
             sl = @sprintf "%.6g" loglik_new
             sx = @sprintf "%.6g" dx
             sf = @sprintf "%.6g" df
@@ -231,6 +279,9 @@ function EMestimate!(M::DFM, Y::AbstractMatrix,
         loglik = loglik_new
 
         if df < rftol || dx < axtol
+            if verbose
+                @info "EM reached desired tolerance: df = $df < $rftol or dx = $dx < $axtol"
+            end
             break
         end
 
@@ -244,13 +295,17 @@ function EMestimate!(M::DFM, Y::AbstractMatrix,
                 @warn "Loglikelihood has not improved for more than 5 interations. Best parameters found at iteration $iter_best"
             end
             params[:] = params_best
-            _update_wks!(wks, model, params)
+            update_dfm_lm!(LM, model, params)
             break
         end
     end
 
-    _scale_model!(wks, Mx, map(inv, Wx), model, em_wks)
-    _update_params!(params, model, wks)
+    if verbose && (iter >= maxiter)
+        @info "EM reached maximum iterations: iter = $iter >= $maxiter"
+    end
+
+    em_scale_model!(LM, Mx, map(inv, Wx), model, em_wks)
+    update_dfm_params!(params, model, LM)
 
     # bring back the original means, if they were given
     for (em_w, onm) in zip(em_wks.observed.loadings, keys(model.observed))
@@ -261,7 +316,7 @@ function EMestimate!(M::DFM, Y::AbstractMatrix,
         end
     end
 
-    _update_wks!(wks, model, params)
+    update_dfm_lm!(LM, model, params)
 
     Y .= Y .* Wx .+ Mx
 

@@ -8,77 +8,7 @@
 # this file contains implementation of the api of ..Kalman for 
 # DFMModels
 
-struct DFMKalmanWks{T,Tμ,TΛ,TR,TA,TQ}
-    μ::Tμ
-    Λ::TΛ
-    R::TR
-    A::TA
-    Q::TQ
-    Tx::Vector{T}
-    Txx::Matrix{T}
-    Txx_1::Matrix{T}
-    Txx_2::Matrix{T}
-    Ty::Vector{T}
-    Tyx::Matrix{T}
-end
-
-function DFMKalmanWks(model::DFMModel, params::DFMParams; sparse=false, sparse_A=sparse, sparse_Q=sparse)
-    return DFMKalmanWks(DFM(model, params); sparse, sparse_A, sparse_Q)
-end
-function DFMKalmanWks(M::DFM; sparse=false, sparse_A=sparse, sparse_Q=sparse)
-    NO = Kalman.kf_length_y(M)
-    NS = Kalman.kf_length_x(M)
-    @unpack model, params = M
-    T = eltype(params)
-    μ = DFMModels.get_mean!(Vector{T}(undef, NO), model, params)
-    Λ = DFMModels.get_loading!(Matrix{T}(undef, NO, NS), model, params)
-    A = sparse_A ? spzeros(T, NS, NS) : zeros(T, NS, NS)
-    DFMModels.get_transition!(A, model, params)
-    R = DFMModels.get_covariance!(Diagonal(Vector{T}(undef, NO)), model, params, Val(:Observed))
-    Q = sparse_Q ? spzeros(T, NS, NS) : zeros(T, NS, NS)
-    DFMModels.get_covariance!(Q, model, params, Val(:State))
-    return DFMKalmanWks{T,typeof(μ),typeof(Λ),typeof(R),typeof(A),typeof(Q)}(
-        μ, Λ, R, A, Q,
-        Vector{T}(undef, NS),
-        Matrix{T}(undef, NS, NS),
-        Matrix{T}(undef, NS, NS),
-        Matrix{T}(undef, NS, NS),
-        Vector{T}(undef, NO),
-        Matrix{T}(undef, NO, NS))
-end
-
-function TimeSeriesEcon.compare_equal(x::T, y::T; kwargs...) where {T<:DFMKalmanWks}
-    for prop in (:μ, :Λ, :R, :A, :Q)
-        if !compare(getproperty(x, prop), getproperty(y, prop), prop; kwargs...)
-            return false
-        end
-    end
-    return true
-end
-
-_update_wks!(wks::DFMKalmanWks, M::DFM) = _update_wks!(wks, M.model, M.params)
-function _update_wks!(wks::DFMKalmanWks, model::DFMModel, params::DFMParams)
-    @unpack μ, Λ, R, A, Q = wks
-    DFMModels.get_mean!(μ, model, params)
-    DFMModels.get_loading!(Λ, model, params)
-    DFMModels.get_covariance!(R, model, params, Val(:Observed))
-    DFMModels.get_transition!(A, model, params)
-    DFMModels.get_covariance!(Q, model, params, Val(:State))
-    return wks
-end
-
-_update_params!(M::DFM, wks::DFMKalmanWks) = (_update_params!(M.params, M.model, wks); return M)
-function _update_params!(params::DFMParams, model::DFMModel, wks::DFMKalmanWks)
-    @unpack μ, Λ, R, A, Q = wks
-    DFMModels.set_mean!(params, model, μ)
-    DFMModels.set_loading!(params, model, Λ)
-    DFMModels.set_transition!(params, model, A)
-    DFMModels.set_covariance!(params, model, R, Val(:Observed))
-    DFMModels.set_covariance!(params, model, Q, Val(:State))
-    return params
-end
-
-
+##
 
 Kalman.kf_is_linear(M::DFM, args...) = true
 
@@ -94,24 +24,45 @@ Kalman.kf_length_y(M::DFM, args...) = nobserved(M.model)
 
 Kalman.kf_state_noise_shaping(::DFM, user_data...) = false
 
-function Kalman.kf_linear_model(dfm::DFM, args...)
+function Kalman.kf_linear_model(dfm::DFM{T}, args...) where {T}
     model = dfm.model
     params = dfm.params
-    m = KFLinearModel(dfm, args...)
-    DFMModels.get_mean!(m.mu, model, params)
-    DFMModels.get_loading!(m.H, model, params)
-    DFMModels.get_covariance!(m.Q, model, params, Val(:Observed))
-    DFMModels.get_transition!(m.F, model, params)
-    DFMModels.get_covariance!(m.R, model, params, Val(:State))
-    return m
+    return KFLinearModel(T, 
+        DFMModels.get_mean(model, params),
+        DFMModels.get_loading(model, params),
+        DFMModels.get_transition(model, params),
+        one(T)*I,
+        Diagonal(DFMModels.get_covariance(model, params, Val(:Observed))),
+        DFMModels.get_covariance(model, params, Val(:State))
+    )
+    # m = KFLinearModel(T, dfm, args...)
+    # DFMModels.get_mean!(m.mu, model, params)
+    # DFMModels.get_loading!(m.H, model, params)
+    # DFMModels.get_transition!(m.F, model, params)
+    # DFMModels.get_covariance!(m.Q, model, params, Val(:Observed))
+    # DFMModels.get_covariance!(m.R, model, params, Val(:State))
+    # return m
 end
 
+update_dfm_lm!(LM::KFLinearModel, M::DFM) = update_dfm_lm!(LM, M.model, M.params)
+function update_dfm_lm!(LM::KFLinearModel, model::DFMModel, params::DFMParams)
+    DFMModels.get_mean!(LM.mu, model, params)
+    DFMModels.get_loading!(LM.H, model, params)
+    DFMModels.get_transition!(LM.F, model, params)
+    DFMModels.get_covariance!(LM.Q, model, params, Val(:Observed))
+    DFMModels.get_covariance!(LM.R, model, params, Val(:State))
+    return LM
+end
 
-# Kalman.dk_filter!(kf::Kalman.KFilter, Y, wks::DFMKalmanWks, args...) =
-#     Kalman.dk_filter!(kf, Y, wks.μ, wks.Λ, wks.A, wks.R, wks.Q, I, args...)
-
-# Kalman.dk_smoother!(kf::Kalman.KFilter, Y, wks::DFMKalmanWks, args...) =
-#     Kalman.dk_smoother!(kf, Y, wks.μ, wks.Λ, wks.A, wks.R, wks.Q, I, args...)
+update_dfm_params!(M::DFM, LM::KFLinearModel) = (update_dfm_params!(M.params, M.model, LM); return M)
+function update_dfm_params!(params::DFMParams, model::DFMModel, LM::KFLinearModel)
+    DFMModels.set_mean!(params, model, LM.mu)
+    DFMModels.set_loading!(params, model, LM.H)
+    DFMModels.set_transition!(params, model, LM.F)
+    DFMModels.set_covariance!(params, model, LM.Q, Val(:Observed))
+    DFMModels.set_covariance!(params, model, LM.R, Val(:State))
+    return params
+end
 
 
 #############################################################################

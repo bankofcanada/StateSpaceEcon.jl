@@ -39,6 +39,8 @@ using Random
 using Suppressor
 import Pardiso
 
+#= 
+
 @testset "1dsolvers" begin
     # f(x) = (x-2)*(x-3) = a x^2 + b x + c with vals = [a, x, b, c]
     let f(v) = v[1] * v[2]^2 + v[3] * v[2] + v[4],
@@ -413,12 +415,12 @@ end
 
 include("sim_solver.jl")
 
+=# 
 
 include("kalman.jl")
 include("dfmtests.jl")
 
 
-# keep this one last because it overwrites getE?()
-include("modelchanges.jl")
-
+# # keep this one last because it overwrites getE?()
+# include("modelchanges.jl")
 

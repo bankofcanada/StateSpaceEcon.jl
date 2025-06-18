@@ -1,11 +1,11 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
-function EMinit!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, M::DFM, em_wks::EM_Wks{T}) where {T}
+function EMinit!(LM::KFLinearModel{T}, kfd::Kalman.AbstractKFData{T}, EY::AbstractMatrix{T}, M::DFM{T}, em_wks::EM_Wks{T}) where {T}
 
     # use this to overwrite only NaN values (preserving any initial guesses already given)
     assign_non_nan!(DEST, row_inds, col_inds, SRC) = begin
@@ -19,7 +19,7 @@ function EMinit!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractM
     end
 
     @unpack model, params = M
-    @unpack μ, Λ, R, A, Q = wks
+    μ, Λ, R, A, Q = LM.mu, LM.H, LM.Q, LM.F, LM.R
     NT, NO = size(EY)
 
     resY = copy(EY)
@@ -218,7 +218,7 @@ function EMinit!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractM
     end
 
     assign_non_nan!(R, axes(R)..., I(NO))
-    return wks
+    return LM
 end
 
 

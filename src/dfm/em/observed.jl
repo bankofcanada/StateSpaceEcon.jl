@@ -5,41 +5,67 @@
 # All rights reserved.
 ##################################################################################
 
-struct EM_Observed_Block_Loading_Wks{T,YI<:AbstractVector{Int},XIE<:AbstractVector{Int},XIG<:AbstractVector{Int}}
+# This file is part of the EM algorithm. It contains the codes to update
+# the observed blocks of the DFM model.
+
+"""
+    struct EM_Observed_Block_Loading_Wks 
+        ...
+    end
+
+Structure holding the internal data needed to update an observed block of a DFM
+model during EM algorithm.
+
+"""
+struct EM_Observed_Block_Loading_Wks{T,
+    YI<:AbstractVector{Int},XIE<:AbstractVector{Int},XIG<:AbstractVector{Int},
+    EMC<:Maybe_EM_MatrixConstraint,
+    TYTX<:AbstractMatrix{T},TLAM<:AbstractMatrix{T},
+    TXTX<:AbstractMatrix{T},TXTXGE<:AbstractMatrix{T},
+    TSY<:AbstractVector{T},TSX<:AbstractVector{T}}
+    #
     yinds::YI
     xinds_estim::XIE
     xinds_given::XIG
     mean_estim::Bool
     orthogonal_factors_ics::Bool
-    constraint::Union{Nothing,EM_MatrixConstraint{T}}
+    constraint::EMC
     # pre-allocated matrices
-    YTX::Matrix{T}
-    new_Λ::Matrix{T}
-    XTX::Matrix{T}
-    XTX_ge::Matrix{T}
-    SY::Vector{T}
-    SX::Vector{T}
+    YTX::TYTX
+    new_Λ::TLAM
+    XTX::TXTX
+    XTX_ge::TXTXGE
+    SY::TSY
+    SX::TSX
     # indices corresponding to each block
     inds_cb::Vector{UnitRange{Int}}
 
-    function EM_Observed_Block_Loading_Wks{T}(yinds, xinds_estim, xinds_given, args...) where {T}
+    function EM_Observed_Block_Loading_Wks{T}(yinds, xinds_estim, xinds_given,
+        mean_estim, orthogonal_factors_ics, constraint, YTX, new_Λ, XTX,
+        XTX_ge, SY, SX, inds_cb) where {T}
+        #
         ry = UnitRange(extrema(yinds)...)
         yinds == ry && (yinds = ry)
-        rxe = UnitRange(extrema(xinds_estim)...)
+        rxe = UnitRange(extrema(xinds_estim, init=(typemax(Int), typemin(Int)))...)
         xinds_estim == rxe && (xinds_estim = rxe)
         rxg = UnitRange(extrema(xinds_given, init=(typemax(Int), typemin(Int)))...)
         xinds_given == rxg && (xinds_given = rxg)
-        return new{T,typeof(yinds),typeof(xinds_estim),typeof(xinds_given)}(yinds, xinds_estim, xinds_given, args...)
+        return new{T,typeof(yinds),typeof(xinds_estim),typeof(xinds_given),
+            typeof(constraint),typeof(YTX),typeof(new_Λ),typeof(XTX),
+            typeof(XTX_ge),typeof(SY),typeof(SX)
+        }(
+            yinds, xinds_estim, xinds_given, mean_estim, orthogonal_factors_ics,
+            constraint, YTX, new_Λ, XTX, XTX_ge, SY, SX, inds_cb)
     end
 
 end
 
 
-function em_observed_block_loading_wks(on::Symbol, M::DFM, wks::DFMKalmanWks{T};
+function em_observed_block_loading_wks(on::Symbol, M::DFM, LM::KFLinearModel{T};
     orthogonal_factors_ics=true
 ) where {T}
     @unpack model, params = M
-    @unpack μ, Λ, R = wks
+    μ, Λ, R = LM.mu, LM.H, LM.Q
 
     observed_m = observed(model)
     states_m = states_with_lags(model)
@@ -110,29 +136,30 @@ function em_observed_block_loading_wks(on::Symbol, M::DFM, wks::DFMKalmanWks{T};
         xinds_estim, xinds_given,
         mean_estim, orthogonal_factors_ics,
         EM_MatrixConstraint(nest, W, q),
-        Matrix{T}(undef, nobs, nest),     # YTX
-        Matrix{T}(undef, nobs, nest),     # new_Λ
-        Matrix{T}(undef, nest, nest),     # XTX
-        Matrix{T}(undef, ngiv, nest),     # XTX_ge
-        Vector{T}(undef, nobs),           # SY
-        Vector{T}(undef, nest),           # SX
+        MMatrix{nobs,nest,T}(undef),        # YTX
+        MMatrix{nobs,nest,T}(undef),        # new_Λ
+        MMatrix{nest,nest,T}(undef),        # XTX
+        MMatrix{ngiv,nest,T}(undef),        # XTX_ge
+        MVector{nobs,T}(undef),             # SY
+        MVector{nest,T}(undef),             # SX
         inds_cb,
     )
 end
 
-@generated function em_update_observed_block_loading!(wks::DFMKalmanWks, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, em_wks::EM_Observed_Block_Loading_Wks, ::Val{anymissing}, ::Val{use_full_XTX}) where {anymissing,use_full_XTX}
+@generated function em_update_observed_block_loading!(LM::KFLinearModel, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, em_wks::EM_Observed_Block_Loading_Wks, ::Val{anymissing}, ::Val{use_full_XTX}) where {anymissing,use_full_XTX}
     if anymissing
         return quote
             have_nans = any(isnan, view(EY, :, em_wks.yinds))
-            _em_update_observed_block_loading!(wks, kfd, EY, em_wks, Val(have_nans), Val(use_full_XTX),)
+            _em_update_observed_block_loading!(LM, kfd, EY, em_wks, Val(have_nans), Val(use_full_XTX),)
         end
     else
         return quote
-            _em_update_observed_block_loading!(wks, kfd, EY, em_wks, Val(false), Val(use_full_XTX),)
+            _em_update_observed_block_loading!(LM, kfd, EY, em_wks, Val(false), Val(use_full_XTX),)
         end
     end
 end
 
+# internal function, computes C = alpha * C + beta * kron(A,B) updating C in place
 function _add_kron!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, alpha=1, beta=1)
     size(C) == LinearAlgebra._kronsize(A, B) || throw(DimensionMismatch("kron!"))
     m = firstindex(C)
@@ -148,10 +175,10 @@ end
 
 # method for missing values (one observed at a time, no Kronecker!)
 function _em_update_observed_block_loading!(
-    wks::DFMKalmanWks{T},
-    kfd::Kalman.AbstractKFData,
-    EY::AbstractMatrix,
-    em_wks::EM_Observed_Block_Loading_Wks,
+    LM::KFLinearModel{T},
+    kfd::Kalman.AbstractKFData{T},
+    EY::AbstractMatrix{T},
+    em_wks::EM_Observed_Block_Loading_Wks{T},
     ::Val{true},
     ::Val{use_full_XTX}, # controls whether to use the full XTX matrix when enforcing constraint
 ) where {T,use_full_XTX}
@@ -160,7 +187,7 @@ function _em_update_observed_block_loading!(
     @unpack mean_estim, orthogonal_factors_ics = em_wks
     @unpack new_Λ, YTX, XTX, XTX_ge, SX, SY = em_wks
     @unpack x_smooth, Px_smooth = kfd
-    @unpack μ, Λ, R = wks
+    μ, Λ, R = LM.mu, LM.H, LM.Q
 
     NT = size(EY, 1)
     NY = length(yinds)
@@ -226,9 +253,9 @@ function _em_update_observed_block_loading!(
                 YiTX[:] -= μi * SX
             end
         end
-        
+
         if constraint_and_missing_XTX
-            iR = invR[i,i]
+            iR = invR[i, i]
             A[i:NY:end, i:NY:end] .= XTX .* iR
         end
 
@@ -297,9 +324,9 @@ end
 
 # methods when there are no missing values (faster linalg)
 function _em_update_observed_block_loading!(
-    wks::DFMKalmanWks{T},
-    kfd::Kalman.AbstractKFData,
-    EY::AbstractMatrix,
+    LM::KFLinearModel{T},
+    kfd::Kalman.AbstractKFData{T},
+    EY::AbstractMatrix{T},
     em_wks::EM_Observed_Block_Loading_Wks,
     ::Val{false},
     ::Val, # {use_full_XTX} not relevant here, only when there are missing values
@@ -309,7 +336,7 @@ function _em_update_observed_block_loading!(
     @unpack mean_estim, orthogonal_factors_ics = em_wks
     @unpack new_Λ, YTX, XTX, XTX_ge, SX, SY = em_wks
     @unpack x_smooth, Px_smooth = kfd
-    @unpack μ, Λ, R = wks
+    μ, Λ, R = LM.mu, LM.H, LM.Q
 
     NT = size(EY, 1)
     i_NT = one(T) / NT
@@ -380,19 +407,22 @@ end
 
 
 
-struct EM_Observed_Covar_Wks{T}
+struct EM_Observed_Covar_Wks{T, TV, TLP}
     covar_estim::Bool
-    V::Vector{T}
-    LP::Matrix{T}
+    V::TV
+    LP::TLP
 end
 
-function em_observed_covar_wks(M::DFM, wks::DFMKalmanWks{T}) where {T}
-    covar_estim = any(isnan, wks.R)
-    NO = Kalman.kf_length_y(M)
-    NS = Kalman.kf_length_x(M)
-    LP = Matrix{T}(undef, NO, NS)
-    V = Vector{T}(undef, NO)
-    EM_Observed_Covar_Wks{T}(covar_estim, V, LP)
+function em_observed_covar_wks(M::DFM{T}, LM::KFLinearModel{T}) where {T}
+    covar_estim = any(isnan, LM.Q)
+    if covar_estim && !all(isnan, diag(LM.Q))
+        @error("Estimating some, but not all, entries in the observed covariance matrix is not supported. Will estimate all.")
+    end
+    NO = kf_length_y(M)
+    NS = kf_length_x(M)
+    LP = MMatrix{NO, NS, T}(undef)
+    V = MVector{NO, T}(undef)
+    EM_Observed_Covar_Wks{T,typeof(V),typeof(LP)}(covar_estim, V, LP)
 end
 
 function _em_update_observed_covar!(R::AbstractMatrix{T}, EY, EX, PX, μ, Λ, V, LP, anymissing::Val{true}) where {T}
@@ -498,10 +528,10 @@ function _em_update_observed_covar!(R::Diagonal{T}, EY, EX, PX, μ, Λ, V, LP, a
     return R
 end
 
-function em_update_observed_covar!(wks::DFMKalmanWks{T}, kfd::Kalman.AbstractKFData, EY::AbstractMatrix, em_wks::EM_Observed_Covar_Wks, anymissing::Val) where {T}
+function em_update_observed_covar!(LM::KFLinearModel{T}, kfd::Kalman.AbstractKFData{T}, EY::AbstractMatrix{T}, em_wks::EM_Observed_Covar_Wks{T}, anymissing::Val) where {T}
     @unpack covar_estim, V, LP = em_wks
-    @unpack μ, Λ, R = wks
-    covar_estim || return R
+    covar_estim || return LM.Q
+    μ, Λ, R = LM.mu, LM.H, LM.Q
     @unpack x_smooth, Px_smooth = kfd
     EX = transpose(x_smooth)
     PX = Px_smooth
@@ -513,12 +543,12 @@ end
 
 struct EM_Observed_Wks{T,LT}
     loadings::LT
-    covars::EM_Observed_Covar_Wks
+    covars::EM_Observed_Covar_Wks{T}
 end
-function em_observed_wks(M::DFM, wks::DFMKalmanWks{T}; orthogonal_factors_ics=true) where {T}
+function em_observed_wks(M::DFM{T}, LM::KFLinearModel{T}; orthogonal_factors_ics=true) where {T}
     @unpack model, params = M
-    loadings = (; (nm => em_observed_block_loading_wks(nm, M, wks; orthogonal_factors_ics) for nm in keys(model.observed))...)
-    covars = em_observed_covar_wks(M, wks)
+    loadings = (; (nm => em_observed_block_loading_wks(nm, M, LM; orthogonal_factors_ics) for nm in keys(model.observed))...)
+    covars = em_observed_covar_wks(M, LM)
     return EM_Observed_Wks{T,typeof(loadings)}(loadings, covars)
 end
 

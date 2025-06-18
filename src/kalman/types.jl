@@ -21,13 +21,13 @@ $(@__MODULE__).
 struct KFLinearModel{T<:Real,MT<:AbstractVector{T},HT<:AbstractMatrix{T},
     FT<:AbstractMatrix{T},GT<:NoiseShapingMatrix{T},
     QT<:AbstractMatrix{T},RT<:AbstractMatrix{T}}
-    mu::MT
-    H::HT
-    F::FT
-    G::GT
-    Q::QT
-    R::RT
-    function KFLinearModel(mu::AbstractVector, H::AbstractMatrix, F::AbstractMatrix,
+    mu::MT          # vector of observed means
+    H::HT           # loadings matrix
+    F::FT           # transition matrix
+    G::GT           # noise shaping matrix
+    Q::QT           # observed noise covariance
+    R::RT           # states noise covariance
+    function KFLinearModel(T::Type{<:Real}, mu::AbstractVector, H::AbstractMatrix, F::AbstractMatrix,
         G::NoiseShapingMatrix, Q::AbstractMatrix, R::AbstractMatrix)
         ny = length(mu)
         nx = size(H, 2)
@@ -36,7 +36,6 @@ struct KFLinearModel{T<:Real,MT<:AbstractVector{T},HT<:AbstractMatrix{T},
         G isa UniformScaling || size(G) == (nx, nx) || error("Incompatible size of G")
         size(Q) == (ny, ny) || error("Incompatible size of Q")
         size(R) == (nx, nx) || error("Incompatible size of R")
-        T = Base.promote_eltype(mu, H, F, G, Q, R)
         eltype(mu) == T || (mu = copyto!(similar(mu, T), mu))
         eltype(H) == T || (H = copyto!(similar(H, T), H))
         eltype(F) == T || (F = copyto!(similar(F, T), F))
@@ -46,6 +45,10 @@ struct KFLinearModel{T<:Real,MT<:AbstractVector{T},HT<:AbstractMatrix{T},
         new{T,typeof(mu),typeof(H),typeof(F),typeof(G),typeof(Q),typeof(R)}(mu, H, F, G, Q, R)
     end
 end
+
+KFLinearModel(mu::AbstractVector, H::AbstractMatrix, F::AbstractMatrix,
+    G::NoiseShapingMatrix, Q::AbstractMatrix, R::AbstractMatrix) =
+    KFLinearModel(Base.promote_eltype(mu, H, F, G, Q, R), mu, H, F, G, Q, R)
 
 KFLinearModel(model, user_data...) = KFLinearModel(Float64, model, user_data...)
 function KFLinearModel(T::Type{<:Real}, model, user_data...)
