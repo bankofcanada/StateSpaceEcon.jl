@@ -44,10 +44,10 @@ struct EM_MatrixConstraint{T<:Real, NCONS, NELS, NROWS, NCOLS,
     W::TW           #   == constraint matrix
     q::Tq           #   == constraint right-hand-side
     # pre-allocated work arrays used in the algorithms
-    Tc::MVector{NCONS, T}
-    Tcr::MMatrix{NCONS, NROWS, T}
-    Tcc::MMatrix{NCONS, NCONS, T}
-    BT::MMatrix{NCONS, NELS, T}
+    Tc::Vector{T}
+    Tcr::Matrix{T}
+    Tcc::Matrix{T}
+    BT::Matrix{T}
 
     # inner constructor allocates work arrays in the correct dimensions
     function EM_MatrixConstraint(ncols::Integer, W::AbstractMatrix{T}, q::AbstractVector{T}) where {T}
@@ -60,10 +60,10 @@ struct EM_MatrixConstraint{T<:Real, NCONS, NELS, NROWS, NCOLS,
         @assert rem == 0 "Inconsistent number of columns in W. Expected multiple of $ncols, got $nels"
         ncons == 0 && return nothing
         return new{T, ncons, nels, nrows, ncols, typeof(W), typeof(q)}(W, q, 
-            MVector{ncons, T}(undef), 
-            MMatrix{ncons, nrows, T}(undef), 
-            MMatrix{ncons, ncons, T}(undef),
-            MMatrix{ncons, nels, T}(undef))
+            Vector{T}(undef,ncons), 
+            Matrix{T}(undef,ncons, nrows), 
+            Matrix{T}(undef,ncons, ncons),
+            Matrix{T}(undef,ncons, nels))
     end
 end
 

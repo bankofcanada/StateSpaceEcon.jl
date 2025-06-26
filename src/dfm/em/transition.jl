@@ -56,10 +56,11 @@ function em_transition_block_wks(cn::Symbol, M::DFM, LM::KFLinearModel{T}) where
     end
     NS_1 = length(xinds_1)
     NS_2 = length(xinds_2)
-    new_A = MMatrix{NS_1, NS_2, T}(undef)
+    new_A = Matrix{T}(undef, NS_1, NS_2)
     new_Q = similar(get_covariance(cb, params[cn]))
-    XTX_22 = MMatrix{NS_2, NS_2, T}(undef)
-    XTX_12 = MMatrix{NS_1, NS_2, T}(undef)
+    # XTX_22 = Matrix{T}(undef, NS_2, NS_2)
+    XTX_22 = Matrix{T}(undef, NS_2, NS_2)
+    XTX_12 = Matrix{T}(undef, NS_1, NS_2)
     covar_estim = any(isnan, view(Q, xinds_1, xinds_1))
     constraint = EM_MatrixConstraint(length(xinds_2), W, q)
     return EM_Transition_Block_Wks{T}(
@@ -103,7 +104,7 @@ function em_update_transition_block!(LM::KFLinearModel{T}, kfd::Kalman.AbstractK
     end
 
     # solve for new_A
-    cXTX = cholesky!(Symmetric(XTX_22))
+    cXTX = _my_cholesky!(Symmetric(XTX_22))
     copyto!(new_A, XTX_12)
     rdiv!(new_A, cXTX)
 

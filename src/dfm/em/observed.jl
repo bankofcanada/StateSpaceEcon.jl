@@ -136,12 +136,12 @@ function em_observed_block_loading_wks(on::Symbol, M::DFM, LM::KFLinearModel{T};
         xinds_estim, xinds_given,
         mean_estim, orthogonal_factors_ics,
         EM_MatrixConstraint(nest, W, q),
-        MMatrix{nobs,nest,T}(undef),        # YTX
-        MMatrix{nobs,nest,T}(undef),        # new_Λ
-        MMatrix{nest,nest,T}(undef),        # XTX
-        MMatrix{ngiv,nest,T}(undef),        # XTX_ge
-        MVector{nobs,T}(undef),             # SY
-        MVector{nest,T}(undef),             # SX
+        Matrix{T}(undef, nobs, nest),        # YTX
+        Matrix{T}(undef, nobs, nest),        # new_Λ
+        Matrix{T}(undef, nest, nest),        # XTX 
+        Matrix{T}(undef, ngiv, nest),        # XTX_ge
+        Vector{T}(undef, nobs),              # SY
+        Vector{T}(undef, nest),              # SX
         inds_cb,
     )
 end
@@ -261,7 +261,7 @@ function _em_update_observed_block_loading!(
 
         # solve the system (using Cholesky factorization, since matrix is SPD)
         new_Λ[i, :] = YiTX
-        cXTX = cholesky!(Symmetric(XTX))  # overwrites XTX
+        cXTX = _my_cholesky!(Symmetric(XTX))  # overwrites XTX
         rdiv!(view(new_Λ, i:i, :), cXTX)
     end
 
@@ -383,7 +383,7 @@ function _em_update_observed_block_loading!(
 
     # solve the system (using Cholesky factorization, since matrix is SPD)
     copyto!(new_Λ, YTX)     # keep YTX safe, in case we need it below
-    cXTX = cholesky!(Symmetric(XTX))  # overwrites XTX
+    cXTX = _my_cholesky!(Symmetric(XTX))  # overwrites XTX
     rdiv!(new_Λ, cXTX)
 
     em_apply_constraint!(new_Λ, constraint, cXTX, view(R, yinds, yinds))
@@ -407,7 +407,7 @@ end
 
 
 
-struct EM_Observed_Covar_Wks{T, TV, TLP}
+struct EM_Observed_Covar_Wks{T,TV,TLP}
     covar_estim::Bool
     V::TV
     LP::TLP
@@ -420,8 +420,8 @@ function em_observed_covar_wks(M::DFM{T}, LM::KFLinearModel{T}) where {T}
     end
     NO = kf_length_y(M)
     NS = kf_length_x(M)
-    LP = MMatrix{NO, NS, T}(undef)
-    V = MVector{NO, T}(undef)
+    LP = Matrix{T}(undef, NO, NS)
+    V = Vector{T}(undef, NO)
     EM_Observed_Covar_Wks{T,typeof(V),typeof(LP)}(covar_estim, V, LP)
 end
 

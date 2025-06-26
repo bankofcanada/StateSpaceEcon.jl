@@ -5,6 +5,21 @@
 # All rights reserved.
 ##################################################################################
 
+_my_cholesky!(X, ::Val{:brave}) = cholesky!(Symmetric(X))
+_my_cholesky!(X, ::Val{:verbose}) = begin
+    try
+        cholesky!(Symmetric(X))
+    catch
+        ev = eigen(X).values
+        @error "Cholesky failed at "
+        println("X=", X)
+        println("ev=", ev)
+        rethrow()
+    end
+end
+_my_cholesky!(X) = _my_cholesky!(X, Val(:verbose))
+
+
 include("em/constraints.jl")
 include("em/interpolation.jl")
 include("em/observed.jl")
@@ -46,8 +61,8 @@ function EMstep!(LM::KFLinearModel{T}, x0::AbstractVector{T}, Px0::AbstractMatri
     for (cb, tr_wks) in zip(values(M.model.components), em_wks.transition.blocks)
         xinds = tr_wks.xinds
         if cb isa IdiosyncraticComponents
-            # each idiosyncratic component may be autocorrelated with its lags, 
-            # but they are independent of each other. 
+            # each idiosyncratic component may be autocorrelated with its lags,
+            # but they are independent of each other.
             # So, copy the blocks for the individual components only
             NS = nstates(cb)
             xinds = xinds[1:NS:end]
@@ -69,7 +84,7 @@ end
 
 function em_scale_model!(LM::KFLinearModel{T}, Mx, Wx, model::DFMModel, em_wks::EM_Wks) where {T}
     # IDEA: factors (CommonComponents) have loadings, so we scale the loadings
-    #       obs noise and idiosyncratic components figure in with fixed loadings, 
+    #       obs noise and idiosyncratic components figure in with fixed loadings,
     #       so we scale their noises covariances instead.
     # scale the loadings of factors
     μ, Λ, R, Q = LM.mu, LM.H, LM.Q, LM.R
@@ -111,7 +126,7 @@ end
     EMestimate!(M::DFM, Y, <args>; <options>)
 
 Main function to run DFM estimation by the EM algorithm. The DFM model instance
-will be updated in place and returned. 
+will be updated in place and returned.
 
 On input `M.params` must contain `NaN` for parameters that are to be estimated
 and numbers for parameters that are known and will not be estimated. On output
@@ -159,6 +174,10 @@ Named options
    each iteration of the EM estimation.
  * `use_max_norm` as opposed to root mean squared difference. Default is
    `false`.
+ * `strict` is set to `true` by default. If the requested tolerance is not
+   reached after `maxiter` iterations, this results in an error. Set to `false`
+   to simply return the best result so far.
+
 """
 function EMestimate!(M::DFM{T}, Y::AbstractMatrix,
     x0::AbstractVector{T}=zeros(kf_length_x(M)),
@@ -170,19 +189,20 @@ function EMestimate!(M::DFM{T}, Y::AbstractMatrix,
     ;
     fwdstate::Bool=false,
     initial_guess::Union{Nothing,AbstractVector}=nothing,
-    maxiter=100, rftol=1e-8, axtol=1e-8,
+    maxiter=150, rftol=1e-6, axtol=1e-6,
     verbose=false,
     impute_missing::Bool=false,  # true - use Kalman smoother to impute missing data, false - treat missing data as in Banbura & Modugno 2014
     use_x0_smooth::Bool=false, # true - use x0_smooth in the EMstep update (experimental). Set to `false` for normal operation.
-    use_full_XTX::Bool=true, # true (default) - use the full XTX matrix when enforcing the loadings constraint, `false` - use XTX assembled according to the missing values pattern in the observed. 
+    use_full_XTX::Bool=true, # true (default) - use the full XTX matrix when enforcing the loadings constraint, `false` - use XTX assembled according to the missing values pattern in the observed.
     use_max_norm::Bool=false,
-    anymissing::Bool=any(isnan, Y)
+    anymissing::Bool=any(isnan, Y),
+    strict::Bool=true,
 ) where {T}
     @unpack model, params = M
 
     if !any(isnan, params)
         @error "No parameters have been marked NaN for estimation."
-        return
+        return true
     end
 
     org_params = copy(params)
@@ -237,7 +257,7 @@ function EMestimate!(M::DFM{T}, Y::AbstractMatrix,
         ##############
         # E-step
 
-        # run the Kalman filter and smoother using the original data, 
+        # run the Kalman filter and smoother using the original data,
         # which possibly contains NaN values where data is missing
         kf_filter!(kf, Y, x0, Px0, LM; fwdstate, anymissing)
         kf_smoother!(kf, LM; fwdstate)
@@ -300,8 +320,13 @@ function EMestimate!(M::DFM{T}, Y::AbstractMatrix,
         end
     end
 
-    if verbose && (iter >= maxiter)
-        @info "EM reached maximum iterations: iter = $iter >= $maxiter"
+    if iter >= maxiter
+        if strict
+            error("EM failed to converge after `maxiter` iterations.")
+        end
+        if verbose 
+            @info "EM reached maximum iterations: iter = $iter >= $maxiter"
+        end
     end
 
     em_scale_model!(LM, Mx, map(inv, Wx), model, em_wks)
@@ -317,10 +342,11 @@ function EMestimate!(M::DFM{T}, Y::AbstractMatrix,
     end
 
     update_dfm_lm!(LM, model, params)
-
     Y .= Y .* Wx .+ Mx
-
-    return
+    kf_filter!(kf, Y, x0, Px0, LM; fwdstate, anymissing)
+    kf_smoother!(kf, LM; fwdstate)
+    
+    return iter < maxiter 
 end
 
 include("em/init.jl")

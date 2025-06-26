@@ -9,7 +9,6 @@
 module Kalman
 
 using LinearAlgebra
-using StaticArrays
 using SparseArrays
 
 using TimeSeriesEcon

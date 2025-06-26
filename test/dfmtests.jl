@@ -286,5 +286,58 @@ end
     m.params.F.covar .= 1.0
     DFMSolver.EMestimate!(m, Y)
     @test compare(m.params, td.dfm1.em_p2, quiet=true)
+    
+    # -----------------------
+    Y[td.dfm1.miss] .= NaN
+    
+    fill!(m.params, NaN)
+    m.params.F.covar .= 1.0
+    DFMSolver.EMestimate!(m, Y)
+    @test compare(m.params, td.dfm1.em_miss_p1, quiet=true)
+    
+    fill!(m.params, NaN)
+    m.params.observed.loadings.F[2,1] = 0.9
+    m.params.F.covar .= 1.0
+    DFMSolver.EMestimate!(m, Y)
+    @test compare(m.params, td.dfm1.em_miss_p2, quiet=true)
+end
+
+##
+
+@testset "DEM2 EM" begin
+    m = DFM2.newmodel()
+    true_p = copy(m.params)
+    Y = td.dfm2.sim[1U:end, observed(m)].values
+
+    fill!(m.params, NaN)
+    m.params.F.covar .= 1.0
+    m.params.G.covar .= 1.0
+    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+    @test compare(m.params, td.dfm2.em_p1, quiet=true)
+    
+    fill!(m.params, NaN)
+    m.params.observed.loadings.F[2] = 0.9
+    m.params.observed.loadings.G[1] = 1.1
+    m.params.F.covar .= 1.0
+    m.params.G.covar .= 1.0
+    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+    @test compare(m.params, td.dfm2.em_p2, quiet=true)
+    
+    # -----------------------
+    Y[td.dfm2.miss] .= NaN
+    
+    fill!(m.params, NaN)
+    m.params.F.covar .= 1.0
+    m.params.G.covar .= 1.0
+    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+    @test compare(m.params, td.dfm2.em_miss_p1, quiet=true)
+    
+    fill!(m.params, NaN)
+    m.params.observed.loadings.F[2] = 0.9
+    m.params.observed.loadings.G[1] = 1.1
+    m.params.F.covar .= 1.0
+    m.params.G.covar .= 1.0
+    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+    @test compare(m.params, td.dfm2.em_miss_p2, quiet=true)
 end
 

@@ -78,7 +78,7 @@ kf_state_noise_shaping(m::KFLinearModel) = m.G isa AbstractMatrix
 ###############################################################################
 
 """
-    struct KFilter{ET<:Real, NS, NO} 
+    struct KFilter{ET<:Real,NS,NO} 
         ... 
         kfd
     end
@@ -97,52 +97,52 @@ storage to be reused in multiple runs.
 struct KFilter{ET<:Real,NS,NO}
     # nx::Int
     # ny::Int
-    x::MVector{NS,ET}
-    Px::MMatrix{NS,NS,ET}
-    x_pred::MVector{NS,ET}
-    Px_pred::MMatrix{NS,NS,ET}
-    error_y::MVector{NO,ET}
-    y_pred::MVector{NO,ET}
-    Py_pred::MMatrix{NO,NO,ET}
-    Pxy_pred::MMatrix{NS,NO,ET}
-    # K::MMatrix{NS, NO, ET}
-    x_smooth::MVector{NS,ET}
-    Px_smooth::MMatrix{NS,NS,ET}
-    Pxx_smooth::MMatrix{NS,NS,ET}
-    y_smooth::MVector{NO,ET}
-    Py_smooth::MMatrix{NO,NO,ET}
-    # J::MMatrix{ET}
+    x::Vector{ET}
+    Px::Matrix{ET}
+    x_pred::Vector{ET}
+    Px_pred::Matrix{ET}
+    error_y::Vector{ET}
+    y_pred::Vector{ET}
+    Py_pred::Matrix{ET}
+    Pxy_pred::Matrix{ET}
+    # K::Matrix{ET}
+    x_smooth::Vector{ET}
+    Px_smooth::Matrix{ET}
+    Pxx_smooth::Matrix{ET}
+    y_smooth::Vector{ET}
+    Py_smooth::Matrix{ET}
+    # J::Matrix{ET}
     ###### general use storage
     A_x
-    A_xy::MMatrix{NS,NO,ET}
-    A_yx::MMatrix{NO,NS,ET}
-    A_xx::MMatrix{NS,NS,ET}
-    B_xx::MMatrix{NS,NS,ET}
+    A_xy::Matrix{ET}
+    A_yx::Matrix{ET}
+    A_xx::Matrix{ET}
+    B_xx::Matrix{ET}
     ###### Reference to the data collection we need to fill in
     kfd::Ref{AbstractKFData{ET,RANGE,NS,NO} where {RANGE}}
 end
 
 function KFilter(kfd::AbstractKFData{ET,RANGE,NS,NO}) where {ET,RANGE,NS,NO}
     return KFilter{ET,NS,NO}(
-        MVector{NS,ET}(undef),
-        MMatrix{NS,NS,ET}(undef),
-        MVector{NS,ET}(undef),
-        MMatrix{NS,NS,ET}(undef),
-        MVector{NO,ET}(undef),
-        MVector{NO,ET}(undef),
-        MMatrix{NO,NO,ET}(undef),
-        MMatrix{NS,NO,ET}(undef),
-        MVector{NS,ET}(undef),
-        MMatrix{NS,NS,ET}(undef),
-        MMatrix{NS,NS,ET}(undef),
-        MVector{NO,ET}(undef),
-        MMatrix{NO,NO,ET}(undef),
+        Vector{ET}(undef,NS),
+        Matrix{ET}(undef,NS,NS),
+        Vector{ET}(undef,NS),
+        Matrix{ET}(undef,NS,NS),
+        Vector{ET}(undef,NO),
+        Vector{ET}(undef,NO),
+        Matrix{ET}(undef,NO,NO),
+        Matrix{ET}(undef,NS,NO),
+        Vector{ET}(undef,NS),
+        Matrix{ET}(undef,NS,NS),
+        Matrix{ET}(undef,NS,NS),
+        Vector{ET}(undef,NO),
+        Matrix{ET}(undef,NO,NO),
         #############
-        MVector{NS,ET}(undef),
-        MMatrix{NS,NO,ET}(undef),
-        MMatrix{NO,NS,ET}(undef),
-        MMatrix{NS,NS,ET}(undef),
-        MMatrix{NS,NS,ET}(undef),
+        Vector{ET}(undef,NS),
+        Matrix{ET}(undef,NS,NO),
+        Matrix{ET}(undef,NO,NS),
+        Matrix{ET}(undef,NS,NS),
+        Matrix{ET}(undef,NS,NS),
         kfd
     )
 end
