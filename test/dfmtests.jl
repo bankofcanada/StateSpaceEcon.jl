@@ -329,6 +329,13 @@ end
     m.params.G.covar .= 1.0
     DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
     @test compare(m.params, td.dfm2.em_p3, quiet=true)
+    
+    fill!(m.params, NaN)
+    m.params.observed.mean = [2.3,-1.5,1.2,0.0]
+    m.params.F.covar .= 1.0
+    m.params.G.covar .= 1.0
+    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+    @test compare(m.params, td.dfm2.em_p4, quiet=true)
 
     # -----------------------
     Y[td.dfm2.miss] .= NaN
@@ -348,11 +355,26 @@ end
     @test compare(m.params, td.dfm2.em_miss_p2, quiet=true)
     
     fill!(m.params, NaN)
+    m.params.observed.loadings.F[2] = 0.9
+    m.params.observed.loadings.G[1] = 1.1
+    m.params.F.covar .= 1.0
+    m.params.G.covar .= 1.0
+    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false, use_full_XTX=false)
+    @test compare(m.params, td.dfm2.em_miss_p2f, quiet=true)
+    
+    fill!(m.params, NaN)
     m.params.observed.loadings.F[1] = -0.2
     m.params.observed.loadings.F[2] = 0.9
     m.params.G.covar .= 1.0
     DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
     @test compare(m.params, td.dfm2.em_miss_p3, quiet=true)
+    
+    fill!(m.params, NaN)
+    m.params.observed.mean = [2.3,-1.5,1.2,0.0]
+    m.params.F.covar .= 1.0
+    m.params.G.covar .= 1.0
+    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+    @test compare(m.params, td.dfm2.em_miss_p4, quiet=true)
 
 end
 

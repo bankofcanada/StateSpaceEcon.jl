@@ -159,19 +159,19 @@ end
     end
 end
 
-# internal function, computes C = alpha * C + beta * kron(A,B) updating C in place
-function _add_kron!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, alpha=1, beta=1)
-    size(C) == LinearAlgebra._kronsize(A, B) || throw(DimensionMismatch("kron!"))
-    m = firstindex(C)
-    for j in axes(A, 2), l in axes(B, 2), i in axes(A, 1)
-        @inbounds Aij = beta * A[i, j]
-        for k in axes(B, 1)
-            @inbounds C[m] = alpha * C[m] + Aij * B[k, l]
-            m += 1
-        end
-    end
-    return C
-end
+# # internal function, computes C = alpha * C + beta * kron(A,B) updating C in place
+# function _add_kron!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, alpha=1, beta=1)
+#     size(C) == LinearAlgebra._kronsize(A, B) || throw(DimensionMismatch("kron!"))
+#     m = firstindex(C)
+#     for j in axes(A, 2), l in axes(B, 2), i in axes(A, 1)
+#         @inbounds Aij = beta * A[i, j]
+#         for k in axes(B, 1)
+#             @inbounds C[m] = alpha * C[m] + Aij * B[k, l]
+#             m += 1
+#         end
+#     end
+#     return C
+# end
 
 # method for missing values (one observed at a time, no Kronecker!)
 function _em_update_observed_block_loading!(

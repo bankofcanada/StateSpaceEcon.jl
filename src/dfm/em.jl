@@ -193,7 +193,7 @@ function EMestimate!(M::DFM{T}, Y::AbstractMatrix,
     verbose=false,
     impute_missing::Bool=false,  # true - use Kalman smoother to impute missing data, false - treat missing data as in Banbura & Modugno 2014
     use_x0_smooth::Bool=false, # true - use x0_smooth in the EMstep update (experimental). Set to `false` for normal operation.
-    use_full_XTX::Bool=true, # true (default) - use the full XTX matrix when enforcing the loadings constraint, `false` - use XTX assembled according to the missing values pattern in the observed.
+    use_full_XTX::Bool=true, # true (default) - use the full XTX matrix when enforcing the loadings constraint, `false` - use XTX assembled according to the missing values pattern in the observed. The results are not the same, but should be close
     use_max_norm::Bool=false,
     anymissing::Bool=any(isnan, Y),
     strict::Bool=true,
