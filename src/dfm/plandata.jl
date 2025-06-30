@@ -35,21 +35,23 @@ end
 function steadystatedata(m::DFMModel, p::Plan, params::DFMParams; ref=0)
     data = zerodata(m, p)
     # all means are 0 except possibly observed variables
-    for (on, ob) in m.observed
-        ss = params.:($on).mean
-        for (var, val) in zip(keys(ss), values(ss))
-            fill!(data[var], val)
+    for on in keys(m.observed)
+        ss = params[on].mean
+        for var in keys(ss)
+            data[:, var] .= ss[var]
         end
     end
     return data
 end
 @inline steadystatearray(dfm::DFM, p::Plan; ref=0) = steadystatearray(dfm.model, p, dfm.params)
-function steadystatearray(m::DFMModel, p::Plan, params::DFMParams; ref=0) 
+function steadystatearray(m::DFMModel, p::Plan, params::DFMParams; ref=0)
     data = zeroarray(m, p)
-    ss = params.observed.mean
-    for (n, mv) = enumerate(varshks(m))
-        v = mv.name
-        hasproperty(ss, v) && fill!(view(data, :, n), getproperty(ss, v))
+    v2i = p.varshks
+    for on in keys(m.observed)
+        ss = params[on].mean
+        for vn in keys(ss)
+            data[:, v2i[vn]] .= ss[vn]
+        end
     end
     return data
 end
@@ -57,9 +59,11 @@ end
 @inline steadystateworkspace(m::DFM, p::Plan; ref=0) = steadystateworkspace(m.model, p, m.params)
 function steadystateworkspace(m::DFMModel, p::Plan, params::DFMParams; ref=0)
     wks = zeroworkspace(m, p)
-    ss = params.observed.mean
-    for (i, v) in enumerate(observed(m))
-        fill!(wks[v], getproperty(ss, v.name))
+    for on in keys(m.observed)
+        ss = params[on].mean
+        for var in keys(ss)
+            fill!(wks[var], ss[var])
+        end
     end
     return wks
 end
