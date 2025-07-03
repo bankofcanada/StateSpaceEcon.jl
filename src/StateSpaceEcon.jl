@@ -13,6 +13,8 @@ A package for Macroeconomic modelling.
 """
 module StateSpaceEcon
 
+using ComponentArrays
+
 using TimeSeriesEcon
 using ModelBaseEcon
 using ModelBaseEcon.OrderedCollections

@@ -1,15 +1,22 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
+
+import StateSpaceEcon: printc, printm
+using ComponentArrays
 
 @testset "printmatrix" begin
     io = IOBuffer()
     printmatrix(io, rand(3, 4))
     seekstart(io)
     @test length(readlines(io)) == 3
+    io = IOBuffer()
+    printc(io, ComponentVector(rand(4), Axis((;(Symbol.('a':'d').=>1:4)...))), rand(4), cols=["E1", "G2"])
+    seekstart(io)
+    @test length(readlines(io)) == 5
 end
 
 @testset "fcset" begin

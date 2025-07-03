@@ -83,3 +83,43 @@ function ModelBaseEcon.inverse_transform(data::AbstractMatrix{Float64}, m::Model
     end
     return idata
 end
+
+###################################################################################
+
+@generated function _auto_RW(rows, RW)
+    rows <: Nothing && return Val(20)
+    RW <: Integer && return :(Val(RW))
+    return :(Val(maximum(length ∘ string, rows)))
+end
+
+function printm(file::AbstractString, A::AbstractArray; fmt=20.14, g=:g, cols=nothing, rows=nothing, RW=nothing)
+    open(file, "w") do io
+        printmatrix(io, reshape(A, size(A, 1), :), Val(fmt), Val(g), cols, rows, _auto_RW(rows, RW))
+    end
+end
+
+printm(io::IO, A::AbstractArray; fmt=20.14, g=:g, cols=nothing, rows=nothing, RW=nothing) = printmatrix(io, reshape(A, size(A, 1), :), Val(fmt), Val(Symbol(g)), cols, rows, _auto_RW(rows, RW))
+printm(A::AbstractArray; kwargs...) = printm(Base.stdout, A; kwargs...)
+printshort(args...; fmt=10.5, kwargs...) = printm(args...; fmt=fmt, kwargs...)
+
+printc(io::IO, A::ComponentVector, B::AbstractVector...; kwargs...) = printm(io, [A B...]; rows=inames(A), kwargs...)
+printc(io::IO, A::AbstractVector...; kwargs...) = printm(io, hcat(A...); kwargs...)
+printc(A::AbstractVector...; kwargs...) = printc(Base.stdout, A...; kwargs...)
+
+
+_i_name(nm; prefix="") = isempty(prefix) ? string(nm) : string(prefix, ".", nm)
+inames(::Number, prefix) = String[string(prefix)]
+function inames(A::AbstractArray, prefix="")
+    map(CartesianIndices(A)) do I
+        _i_name(string("[", join(Tuple(I), ","), "]"); prefix)
+    end
+end
+function inames(p::ComponentArray, prefix="")
+    ret = String[]
+    for nm in propertynames(p)
+        pn = getproperty(p, nm)
+        nm_nms = inames(pn, _i_name(nm; prefix))
+        append!(ret, nm_nms)
+    end
+    return ret
+end
