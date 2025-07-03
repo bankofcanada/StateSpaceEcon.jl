@@ -8,6 +8,7 @@
 using UnPack
 using LinearAlgebra
 using Statistics
+using Random
 
 using ModelBaseEcon.DFMModels
 using StateSpaceEcon.DFMSolver
@@ -58,6 +59,7 @@ end
     @test length(ss) == 2
     nsamples = 10_000_000
     @test (X = rand(ss, nsamples); X isa AbstractMatrix && size(X) == (length(ss), nsamples))
+    Random.seed!(0x007)
     X = rand(ss, nsamples)
     @test norm(X * X' / nsamples - ss.cov, Inf) < 1e-4
 
