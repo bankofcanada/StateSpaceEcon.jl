@@ -179,12 +179,12 @@ Named options
    to simply return the best result so far.
 
 """
-function EMestimate!(M::DFM{T}, Y::AbstractMatrix,
+function EMestimate!(M::DFM{T}, YY::AbstractMatrix,
     x0::AbstractVector{T}=zeros(kf_length_x(M)),
     Px0::AbstractMatrix{T}=Matrix{T}(1e-10 * I(kf_length_x(M))),
     LM::KFLinearModel{T}=kf_linear_model(M),
     em_wks::EM_Wks{T}=em_workspace(M, LM),
-    kfd::Kalman.AbstractKFData{T}=KFDataSmoother(T, size(Y, 1), M, Y),
+    kfd::Kalman.AbstractKFData{T}=KFDataSmoother(T, size(YY, 1), M, YY),
     kf::KFilter{T}=KFilter(kfd)
     ;
     fwdstate::Bool=false,
@@ -195,7 +195,7 @@ function EMestimate!(M::DFM{T}, Y::AbstractMatrix,
     use_x0_smooth::Bool=false, # true - use x0_smooth in the EMstep update (experimental). Set to `false` for normal operation.
     use_full_XTX::Bool=true, # true (default) - use the full XTX matrix when enforcing the loadings constraint, `false` - use XTX assembled according to the missing values pattern in the observed. The results are not the same, but should be close
     use_max_norm::Bool=false,
-    anymissing::Bool=any(isnan, Y),
+    anymissing::Bool=any(isnan, YY),
     strict::Bool=true,
 ) where {T}
     @unpack model, params = M
@@ -209,13 +209,13 @@ function EMestimate!(M::DFM{T}, Y::AbstractMatrix,
     old_params = copy(params)
 
     # scale data
-    Mx = nanmean(Y, dims=1)
+    Mx = nanmean(YY, dims=1)
     for i = eachindex(Mx)
         v = LM.mu[i]
         isnan(v) || (Mx[i] = v)
     end
-    Wx = nanstd(Y, dims=1, mean=Mx)
-    Y .= (Y .- Mx) ./ Wx
+    Wx = nanstd(YY, dims=1, mean=Mx)
+    Y = (YY .- Mx) ./ Wx
 
 
     if anymissing
@@ -342,8 +342,7 @@ function EMestimate!(M::DFM{T}, Y::AbstractMatrix,
     end
 
     update_dfm_lm!(LM, model, params)
-    Y .= Y .* Wx .+ Mx
-    kf_filter!(kf, Y, x0, Px0, LM; fwdstate, anymissing)
+    kf_filter!(kf, YY, x0, Px0, LM; fwdstate, anymissing)
     kf_smoother!(kf, LM; fwdstate)
     
     return iter < maxiter 

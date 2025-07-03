@@ -23,7 +23,7 @@ using TimeSeriesEcon.DataEcon
 if !isdefined(@__MODULE__, :dfm_check_steadystatedata)
     function dfm_check_steadystatedata(dfm, data, has_rand_shks)
         @unpack model, params = dfm
-        @test (size(data,2) == nvarshks(dfm))
+        @test (size(data, 2) == nvarshks(dfm))
         c = 0
         for on in keys(model.observed)
             pp = params[on].mean
@@ -40,7 +40,7 @@ if !isdefined(@__MODULE__, :dfm_check_steadystatedata)
             @test iszero(data[v]) != has_rand_shks
             c = c + 1
         end
-        @test c == size(data,2)
+        @test c == size(data, 2)
     end
 end
 
@@ -76,7 +76,7 @@ if !isdefined(@__MODULE__, :do_test_dfm)
         dfm = MOD.newmodel()
         @unpack model, params = dfm
         @test !any(isnan, params) && lags(dfm) == nlags
-    
+
         rng = 1U:300U
         @test (Plan(dfm, rng); true)
         pl = Plan(dfm, rng)
@@ -85,31 +85,31 @@ if !isdefined(@__MODULE__, :do_test_dfm)
         shks = [i for (i, v) in enumerate(varshks(dfm)) if v ∈ shocks(dfm)]
         @test all(pl.exogenous[:, shks])
         @test !any(pl.exogenous[:, vars])
-    
+
         @test (steadystatedata(dfm, pl) isa MVTSeries)
         @test (steadystatearray(dfm, pl) isa Matrix)
         @test (steadystateworkspace(dfm, pl) isa Workspace)
-    
+
         @test (z = zerodata(dfm, pl); z isa MVTSeries && iszero(z))
         @test (z = zeroarray(dfm, pl); z isa Matrix && iszero(z))
         @test (z = zeroworkspace(dfm, pl); z isa Workspace && all(iszero, values(z)))
-    
+
         data = steadystatedata(dfm, pl)
         dfm_check_steadystatedata(dfm, data, false)
         @test (rand_shocks!(dfm, pl, data); true)
         dfm_check_steadystatedata(dfm, data, true)
-    
+
         data = steadystatedata(dfm, pl)
         ss = ShocksSampler(dfm)
         rand_shocks!(ss, 1U:10U, data)
         dfm_check_steadystatedata(dfm, data, true)
         @test iszero(data[11U:end, shocks(dfm)])
-    
+
         @test (simulate(dfm, pl, data); true)
-    
+
         exog_endo!(pl, [:a], [:a_shk], rng[1:5])
         @test_throws "Non-empty plan" simulate(dfm, pl, data)
-    
+
     end
 end
 
@@ -133,7 +133,7 @@ if !isdefined(@__MODULE__, :do_test_filter)
         data[rng, :] = TD.shks
         sim = simulate(dfm, p, data)
         @test @compare sim TD.sim quiet
-    
+
         Y = sim[rng, observed(dfm)].values
         x0 = zeros(nstates_with_lags(dfm))
         Px0 = I(nstates_with_lags(dfm))
@@ -142,7 +142,7 @@ if !isdefined(@__MODULE__, :do_test_filter)
         @test @compare kfd2data(kfd, :pred, dfm, rng) TD.pred quiet
         kfd = kf_smoother(Y, x0, Px0, dfm)
         @test @compare kfd2data(kfd, :smooth, dfm, rng) TD.smooth quiet
-    
+
         for which in (:update, :pred, :smooth)
             a1 = kfd2data(kfd, which, dfm, rng; states_with_lags=false)
             a2 = kfd2data(kfd, which, dfm, rng; states_with_lags=true)
@@ -184,14 +184,14 @@ end
     # Don't overwrite missing values pattern in original data
     @test DFMSolver.em_impute_kalman!(Y, Y, kfd) === Y
     @test DFMSolver.em_impute_interpolation!(Y, Y) === Y
-    
+
     # Interpolate by fetching missing values from the smoother results
     EY = copy(Y)
     DFMSolver.em_impute_kalman!(EY, Y, kfd)
     @test compare(EY[.!miss], Y[.!miss], quiet=true)
     SY = kfd2data(kfd, :smooth, dfm, rng; states_with_lags=true)[:, observed(dfm)]
     @test compare(EY[miss], SY[miss], quiet=true)
-    
+
     # Interpolate by cubic interpolation
     DFMSolver.em_impute_interpolation!(EY, Y)
     @test compare(EY[.!miss], Y[.!miss], quiet=true)
@@ -217,136 +217,228 @@ end
     mc = DFMSolver.EM_MatrixConstraint(2, W, q)
     cXTX = cholesky(Matrix{Float64}(I(3)))
     Σ = Matrix{Float64}(I(3))
-    
+
     B = DFMSolver.em_apply_constraint!(copy(A), nothing, cXTX, Σ)
     @test norm(B - A) < 1e-14
-    
+
     same = [true, true, false, true, false, false]
     B = DFMSolver.em_apply_constraint!(B, mc, cXTX, Σ)
     @test compare(A[same], B[same], quiet=true)
-    @test compare(B[2,2], q[1], quiet=true)
-    @test compare(5B[3,1], B[3,2]+q[2], quiet=true)
+    @test compare(B[2, 2], q[1], quiet=true)
+    @test compare(5B[3, 1], B[3, 2] + q[2], quiet=true)
 
+end
+
+##
+
+if !isdefined(@__MODULE__, :test_dfm_em)
+    function test_dfm_em(MOD, TD; kwargs...)
+        m = MOD.newmodel()
+
+        Y = TD.sim[1U:end, observed(m)].values
+        for i = 1:10
+            pis = Symbol(:em_p, i, :i)
+            haskey(TD, pis) || break
+            copyto!(m.params, TD[pis])
+            DFMSolver.EMestimate!(m, Y; verbose=false, kwargs...)
+            @test compare(m.params, TD[Symbol(:em_p, i)], quiet=true)
+            pif = Symbol(:em_p, i, :f)
+            if haskey(TD, pif)
+                copyto!(m.params, TD[pis])
+                DFMSolver.EMestimate!(m, Y; verbose=false, kwargs..., use_full_XTX=false)
+                @test compare(m.params, TD[pif], quiet=true)
+            end
+        end
+
+        haskey(TD, :miss) || return
+        Y[TD.miss] .= NaN
+        for i = 1:10
+            pis = Symbol(:em_p, i, :i)
+            haskey(TD, pis) || break
+            copyto!(m.params, TD[pis])
+            DFMSolver.EMestimate!(m, Y; verbose=false, kwargs...)
+            @test compare(m.params, TD[Symbol(:em_miss_p, i)], quiet=true)
+            pif = Symbol(:em_miss_p, i, :f)
+            if haskey(TD, pif)
+                copyto!(m.params, TD[pis])
+                DFMSolver.EMestimate!(m, Y; verbose=false, kwargs..., use_full_XTX=false)
+                @test compare(m.params, TD[pif], quiet=true)
+            end
+        end
+    end
 end
 
 ##
 
 @testset "DFM1 EM" begin
-    m = DFM1.newmodel()
-    true_p = copy(m.params)
-    Y = td.dfm1.sim[1U:end, observed(m)].values
+    test_dfm_em(DFM1, td.dfm1)
+end
 
-    fill!(m.params, NaN)
-    m.params.F.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y)
-    @test compare(m.params, td.dfm1.em_p1, quiet=true)
-    
-    fill!(m.params, NaN)
-    m.params.observed.loadings.F[2,1] = 0.9
-    m.params.F.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y)
-    @test compare(m.params, td.dfm1.em_p2, quiet=true)
-    
-    # -----------------------
-    Y[td.dfm1.miss] .= NaN
-    
-    fill!(m.params, NaN)
-    m.params.F.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y)
-    @test compare(m.params, td.dfm1.em_miss_p1, quiet=true)
-    
-    fill!(m.params, NaN)
-    m.params.observed.loadings.F[2,1] = 0.9
-    m.params.F.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y)
-    @test compare(m.params, td.dfm1.em_miss_p2, quiet=true)
+@testset "DFM2 EM" begin
+    test_dfm_em(DFM2, td.dfm2; rftol=2e-5)
+end
+
+@testset "DFM3 EM" begin
+    test_dfm_em(DFM3, td.dfm3; rftol=1e-5, maxiter=1000)
+end
+
+@testset "DFM3MQ EM" begin
+    test_dfm_em(DFM3MQ, td.dfm3mq; rftol=1e-5, maxiter=1000)
 end
 
 ##
 
-@testset "DFM2 EM" begin
-    m = DFM2.newmodel()
-    true_p = copy(m.params)
-    Y = td.dfm2.sim[1U:end, observed(m)].values
+# @testset "DFM2 EM" begin
+#     m = DFM2.newmodel()
+#     true_p = copy(m.params)
+#     Y = td.dfm2.sim[1U:end, observed(m)].values
 
-    fill!(m.params, NaN)
-    m.params.F.covar .= 1.0
-    m.params.G.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
-    @test compare(m.params, td.dfm2.em_p1, quiet=true)
-    
-    fill!(m.params, NaN)
-    m.params.observed.loadings.F[2] = 0.9
-    m.params.observed.loadings.G[1] = 1.1
-    m.params.F.covar .= 1.0
-    m.params.G.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
-    @test compare(m.params, td.dfm2.em_p2, quiet=true)
-    
-    fill!(m.params, NaN)
-    m.params.observed.loadings.F[1] = -0.2
-    m.params.observed.loadings.F[2] = 0.9
-    m.params.G.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
-    @test compare(m.params, td.dfm2.em_p3, quiet=true)
-    
-    fill!(m.params, NaN)
-    m.params.observed.mean = [2.3,-1.5,1.2,0.0]
-    m.params.F.covar .= 1.0
-    m.params.G.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
-    @test compare(m.params, td.dfm2.em_p4, quiet=true)
+#     fill!(m.params, NaN)
+#     m.params.F.covar .= 1.0
+#     m.params.G.covar .= 1.0
+#     DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+#     @test compare(m.params, td.dfm2.em_p1, quiet=true)
 
-    # -----------------------
-    Y[td.dfm2.miss] .= NaN
-    
-    fill!(m.params, NaN)
-    m.params.F.covar .= 1.0
-    m.params.G.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
-    @test compare(m.params, td.dfm2.em_miss_p1, quiet=true)
-    
-    fill!(m.params, NaN)
-    m.params.observed.loadings.F[2] = 0.9
-    m.params.observed.loadings.G[1] = 1.1
-    m.params.F.covar .= 1.0
-    m.params.G.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
-    @test compare(m.params, td.dfm2.em_miss_p2, quiet=true)
-    
-    fill!(m.params, NaN)
-    m.params.observed.loadings.F[2] = 0.9
-    m.params.observed.loadings.G[1] = 1.1
-    m.params.F.covar .= 1.0
-    m.params.G.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false, use_full_XTX=false)
-    @test compare(m.params, td.dfm2.em_miss_p2f, quiet=true)
-    
-    fill!(m.params, NaN)
-    m.params.observed.loadings.F[1] = -0.2
-    m.params.observed.loadings.F[2] = 0.9
-    m.params.G.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
-    @test compare(m.params, td.dfm2.em_miss_p3, quiet=true)
-    
-    fill!(m.params, NaN)
-    m.params.observed.mean = [2.3,-1.5,1.2,0.0]
-    m.params.F.covar .= 1.0
-    m.params.G.covar .= 1.0
-    DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
-    @test compare(m.params, td.dfm2.em_miss_p4, quiet=true)
+#     fill!(m.params, NaN)
+#     m.params.observed.loadings.F[2] = 0.9
+#     m.params.observed.loadings.G[1] = 1.1
+#     m.params.F.covar .= 1.0
+#     m.params.G.covar .= 1.0
+#     DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+#     @test compare(m.params, td.dfm2.em_p2, quiet=true)
 
-end
+#     fill!(m.params, NaN)
+#     m.params.observed.loadings.F[1] = -0.2
+#     m.params.observed.loadings.F[2] = 0.9
+#     m.params.G.covar .= 1.0
+#     DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+#     @test compare(m.params, td.dfm2.em_p3, quiet=true)
+
+#     fill!(m.params, NaN)
+#     m.params.observed.mean = [2.3, -1.5, 1.2, 0.0]
+#     m.params.F.covar .= 1.0
+#     m.params.G.covar .= 1.0
+#     DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+#     @test compare(m.params, td.dfm2.em_p4, quiet=true)
+
+#     # -----------------------
+#     Y[td.dfm2.miss] .= NaN
+
+#     fill!(m.params, NaN)
+#     m.params.F.covar .= 1.0
+#     m.params.G.covar .= 1.0
+#     DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+#     @test compare(m.params, td.dfm2.em_miss_p1, quiet=true)
+
+#     fill!(m.params, NaN)
+#     m.params.observed.loadings.F[2] = 0.9
+#     m.params.observed.loadings.G[1] = 1.1
+#     m.params.F.covar .= 1.0
+#     m.params.G.covar .= 1.0
+#     DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+#     @test compare(m.params, td.dfm2.em_miss_p2, quiet=true)
+
+#     fill!(m.params, NaN)
+#     m.params.observed.loadings.F[2] = 0.9
+#     m.params.observed.loadings.G[1] = 1.1
+#     m.params.F.covar .= 1.0
+#     m.params.G.covar .= 1.0
+#     DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false, use_full_XTX=false)
+#     @test compare(m.params, td.dfm2.em_miss_p2f, quiet=true)
+
+#     fill!(m.params, NaN)
+#     m.params.observed.loadings.F[1] = -0.2
+#     m.params.observed.loadings.F[2] = 0.9
+#     m.params.G.covar .= 1.0
+#     DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+#     @test compare(m.params, td.dfm2.em_miss_p3, quiet=true)
+
+#     fill!(m.params, NaN)
+#     m.params.observed.mean = [2.3, -1.5, 1.2, 0.0]
+#     m.params.F.covar .= 1.0
+#     m.params.G.covar .= 1.0
+#     DFMSolver.EMestimate!(m, Y, rftol=2e-5, verbose=false)
+#     @test compare(m.params, td.dfm2.em_miss_p4, quiet=true)
+
+# end
 
 ## 
 
-@testset "DFM3 EM" begin
-    m = DFM3.newmodel()
-    true_p = copy(m.params)
-    Y = td.dfm3.sim[1U:end, observed(m)].values
+# @testset "DFM3 EM" begin
+#     m = DFM3.newmodel()
+#     true_p = copy(m.params)
+#     Y = td.dfm3.sim[1U:end, observed(m)].values
 
-    fill!(m.params, NaN)
-    DFMSolver.EMestimate!(m, Y, rftol=1e-5, verbose=false)
-    @test compare(m.params, td.dfm3.em_p1, quiet=true)
-    
-end
+#     fill!(m.params, NaN)
+#     DFMSolver.EMestimate!(m, Y, rftol=1e-5, verbose=false)
+#     @test compare(m.params, td.dfm3.em_p1, quiet=true)
+
+#     fill!(m.params, NaN)
+#     m.params.obsM.loadings.F[3] = 1.0
+#     m.params.obsQ.loadings.F[1] = 1.0
+#     m.params.F.covar .= 0.7 * I(2)
+#     m.params.corM.covar .= 0.015
+#     m.params.corQ.covar .= 0.015
+#     DFMSolver.EMestimate!(m, Y, rftol=1e-5, maxiter=1000, verbose=false)
+#     @test compare(m.params, td.dfm3.em_p2, quiet=true)
+
+#     fill!(m.params, NaN)
+#     m.params.F.coefs[:,:,2] = NaN*I(2)
+#     m.params.obsM.covar .= 0.001
+#     m.params.obsQ.covar .= 0.001
+#     DFMSolver.EMestimate!(m, Y, rftol=1e-5, maxiter=1000, verbose=false)
+#     @test compare(m.params, td.dfm3.em_p3, quiet=true)
+
+#     # -----------------------
+#     Y[td.dfm3.miss] .= NaN
+
+#     fill!(m.params, NaN)
+#     DFMSolver.EMestimate!(m, Y, rftol=1e-5, verbose=false)
+#     @test compare(m.params, td.dfm3.em_miss_p1, quiet=true)
+
+#     fill!(m.params, NaN)
+#     m.params.obsM.loadings.F[3] = 1.0
+#     m.params.obsQ.loadings.F[1] = 1.0
+#     m.params.F.covar .= 0.7 * I(2)
+#     m.params.corM.covar .= 0.015
+#     m.params.corQ.covar .= 0.015
+#     DFMSolver.EMestimate!(m, Y, rftol=1e-5, maxiter=1000, verbose=false)
+#     @test compare(m.params, td.dfm3.em_miss_p2, quiet=true)
+
+#     fill!(m.params, NaN)
+#     m.params.F.coefs[:,:,2] = NaN*I(2)
+#     m.params.obsM.covar .= 0.001
+#     m.params.obsQ.covar .= 0.001
+#     DFMSolver.EMestimate!(m, Y, rftol=1e-5, maxiter=1000, verbose=false)
+#     @test compare(m.params, td.dfm3.em_miss_p3, quiet=true)
+
+# end
+
+## 
+
+# @testset "DFM3MQ EM" begin
+#     m = DFM3MQ.newmodel()
+#     true_p = copy(m.params)
+#     Y = td.dfm3mq.sim[1U:end, observed(m)].values
+
+#     fill!(m.params, NaN)
+#     DFMSolver.EMestimate!(m, Y, rftol=1e-5, verbose=false)
+#     @test compare(m.params, td.dfm3mq.em_p1, quiet=true)
+
+#     fill!(m.params, NaN)
+#     m.params.obsM.loadings.F[3] = 1.0
+#     m.params.obsQ.loadings.F[1] = 1.0
+#     m.params.F.covar .= 0.7 * I(2)
+#     m.params.corM.covar .= 0.015
+#     m.params.corQ.covar .= 0.015
+#     DFMSolver.EMestimate!(m, Y, rftol=1e-5, maxiter=1000, verbose=false)
+#     @test compare(m.params, td.dfm3mq.em_p2, quiet=true)
+
+#     fill!(m.params, NaN)
+#     m.params.F.coefs[:,:,2] = NaN*I(2)
+#     m.params.obsM.covar .= 0.001
+#     m.params.obsQ.covar .= 0.001
+#     DFMSolver.EMestimate!(m, Y, rftol=1e-5, maxiter=1000, verbose=false)
+#     @test compare(m.params, td.dfm3mq.em_p3, quiet=true)
+
+# end
