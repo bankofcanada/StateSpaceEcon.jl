@@ -250,19 +250,19 @@ end
     end
 end
 
-module DiagnoseSState
-using ModelBaseEcon
-model = Model()
-@steadyvariables model a b
-@variables model c
-@equations model begin
-    a[t] = (a[t-1] + 10)^2
-    b[t] = b[t-1] + 10
-    b[t] = (a[t-1] + 10)^2
-    c[t] = a[t] + b[t]
-end
-@initialize model
-end
+# module DiagnoseSState
+# using ModelBaseEcon
+# model = Model()
+# @steadyvariables model a b
+# @variables model c
+# @equations model begin
+#     a[t] = (a[t-1] + 10)^2
+#     b[t] = b[t-1] + 10
+#     b[t] = (a[t-1] + 10)^2
+#     c[t] = a[t] + b[t]
+# end
+# @initialize model
+# end
 
 @testset "DiagnoseSState" begin
     let m = Model()
@@ -274,7 +274,7 @@ end
             b[t] = (a[t-1] + 10)^2
             c[t] = a[t] + b[t]
         end
-        @initialize m
+        @test_warn r"Model contains different numbers of equations .* and endogenous variables .*" @initialize m
 
         # tests
         @test sum(issteady.(m.allvars)) == 2
@@ -301,7 +301,7 @@ end
             b[t] = (a[t-1] + 10)^2
             c[t] = a[t] + b[t]
         end
-        @initialize m
+        @test_warn r"Model contains different numbers of equations .* and endogenous variables .*" @initialize m
 
         # tests
         @test sum(issteady.(m.allvars)) == 2

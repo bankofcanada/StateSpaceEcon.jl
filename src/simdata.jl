@@ -24,22 +24,24 @@ export SimData
 # same constructors as should work for SimData
 SimData(args...) = MVTSeries(args...)
 
-const _getname = Base.Fix2(getfield, :name)
+_getname(::ModelVariable{NAME}) where {NAME} = NAME
 
 const _MVCollection = Union{Vector{ModelVariable},NTuple{N,ModelVariable}} where {N}
 # we should allow indexing with model variables
-Base.getindex(sd::SimData, vars::_MVCollection) = getindex(sd, map(_getname, vars))
-Base.getindex(sd::SimData, vars::ModelVariable) = getindex(sd, vars.name)
-Base.setindex!(sd::SimData, val, vars::_MVCollection) = setindex!(sd, val, map(_getname, vars))
-Base.setindex!(sd::SimData, val, vars::ModelVariable) = setindex!(sd, val, vars.name)
+Base.getindex(sd::MVTSeries, vars::_MVCollection) = getindex(sd, _getname.(vars))
+Base.getindex(sd::MVTSeries, vars::ModelVariable) = getindex(sd, _getname(vars))
+Base.setindex!(sd::MVTSeries, val, vars::_MVCollection) = setindex!(sd, val, _getname.(vars))
+Base.setindex!(sd::MVTSeries, val, vars::ModelVariable) = setindex!(sd, val, _getname(vars))
 
-Base.getindex(sd::SimData, rows, vars::_MVCollection) = getindex(sd, rows, map(_getname, vars))
-Base.getindex(sd::SimData, rows, vars::ModelVariable) = getindex(sd, rows, vars.name)
-Base.setindex!(sd::SimData, val, rows, vars::_MVCollection) = setindex!(sd, val, rows, map(_getname, vars))
-Base.setindex!(sd::SimData, val, rows, vars::ModelVariable) = setindex!(sd, val, rows, vars.name)
+Base.getindex(sd::MVTSeries, rows, vars::_MVCollection) = getindex(sd, rows, _getname.(vars))
+Base.getindex(sd::MVTSeries, rows, vars::ModelVariable) = getindex(sd, rows, _getname(vars))
+Base.setindex!(sd::MVTSeries, val, rows, vars::_MVCollection) = setindex!(sd, val, rows, _getname.(vars))
+Base.setindex!(sd::MVTSeries, val, rows, vars::ModelVariable) = setindex!(sd, val, rows, _getname(vars))
 
-Base.view(sd::SimData, rows, vars::_MVCollection) = view(sd, rows, map(_getname, vars))
-Base.view(sd::SimData, rows, vars::ModelVariable) = view(sd, rows, vars.name)
+Base.view(sd::MVTSeries, vars::_MVCollection) = view(sd, :, _getname.(vars))
+Base.view(sd::MVTSeries, vars::ModelVariable) = view(sd, :, _getname(vars))
+Base.view(sd::MVTSeries, rows, vars::_MVCollection) = view(sd, rows, _getname.(vars))
+Base.view(sd::MVTSeries, rows, vars::ModelVariable) = view(sd, rows, _getname(vars))
 
 #######################################################
 
@@ -110,7 +112,7 @@ workspace2array(w::Workspace, model::Model, plan::Plan; copy=false) = workspace2
     workspace2data(w, model, plan; copy=false)
     workspace2data(w, vars, plan; copy=false)
 
-Convert a [`SimData`](@ref) to a [`Workspace`](@ref TimeSeriesEcon.Workspace)
+Convert a [`Workspace`](@ref TimeSeriesEcon.Workspace) to a [`SimData`](@ref)
 """
 function workspace2data end
 

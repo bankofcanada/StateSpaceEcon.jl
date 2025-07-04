@@ -1,3 +1,11 @@
+##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020-2025, Bank of Canada
+# All rights reserved.
+##################################################################################
+
+
 # This set of tests reruns the existing test, but uses example models which have been constructed 
 # from the existing sample models.
 
@@ -510,15 +518,15 @@ end
 
 for i in 1:3
     @info "Model change variations $i"
-    global getE1() = constructE1!(deconstructedModel())
-    global getE2() = constructE2!(deconstructedModel())
-    global getE3() = constructE3!(deconstructedModel())
-    global getE3nl() = constructE3nl!(deconstructedModel())
-    global getE6() = constructE6!(deconstructedModel())
-    global getE7() = constructE7!(deconstructedModel())
-    global getE7A() = constructE7A!(deconstructedModel())
-    global getS1() = constructS1!(deconstructedModel())
-    global getS2() = constructS2!(deconstructedModel())
+    global getE1 = () -> constructE1!(deconstructedModel())
+    global getE2 = () -> constructE2!(deconstructedModel())
+    global getE3 = () -> constructE3!(deconstructedModel())
+    global getE3nl = () -> constructE3nl!(deconstructedModel())
+    global getE6 = () -> constructE6!(deconstructedModel())
+    global getE7 = () -> constructE7!(deconstructedModel())
+    global getE7A = () -> constructE7A!(deconstructedModel())
+    global getS1 = () -> constructS1!(deconstructedModel())
+    global getS2 = () -> constructS2!(deconstructedModel())
 
     include("simtests.jl")
     include("sim_fo.jl")

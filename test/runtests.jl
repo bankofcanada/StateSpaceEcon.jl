@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -19,21 +19,26 @@ using ModelBaseEcon
 @using_example E7A
 @using_example S1
 @using_example S2
+@using_example DFM1
+@using_example DFM2
 
-getE1() = E1.newmodel()
-getE2() = E2.newmodel()
-getE3() = E3.newmodel()
-getE3nl() = E3nl.newmodel()
-getE6() = E6.newmodel()
-getE7() = E7.newmodel()
-getE7A() = E7A.newmodel()
-getS1() = S1.newmodel()
-getS2() = S2.newmodel()
+getE1 = E1.newmodel
+getE2 = E2.newmodel
+getE3 = E3.newmodel
+getE3nl = E3nl.newmodel
+getE6 = E6.newmodel
+getE7 = E7.newmodel
+getE7A = E7A.newmodel
+getS1 = S1.newmodel
+getS2 = S2.newmodel
+getDFM1 = DFM1.newmodel
+getDFM2 = DFM2.newmodel
 
 using Test
 using Random
 using Suppressor
 import Pardiso
+
 
 @testset "1dsolvers" begin
     # f(x) = (x-2)*(x-3) = a x^2 + b x + c with vals = [a, x, b, c]
@@ -408,6 +413,11 @@ for sfdef = Iterators.map(QuoteNode, StateSpaceEcon.StackedTimeSolver.sf_libs)
 end
 
 include("sim_solver.jl")
+
+
+include("kalman.jl")
+include("dfmtests.jl")
+
 
 # keep this one last because it overwrites getE?()
 include("modelchanges.jl")
