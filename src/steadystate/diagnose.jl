@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -28,7 +28,7 @@ Standard options (default values from `model.options`)
 function check_sstate(model::Model; verbose::Bool = model.options.verbose, tol::Float64 = model.options.tol)
     # if parameters changed, see that constraints use the latest
     for eqn in values(model.sstate.constraints)
-        ModelBaseEcon._update_eqn_params!(eqn.eval_resid, model.parameters)
+        ModelBaseEcon._update_eqn_params!(eqn, model.parameters)
     end
     R, J = global_SS_RJ(model.sstate.values, model)
     bad_eqn = 0
