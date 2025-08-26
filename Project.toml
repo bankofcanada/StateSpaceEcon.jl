@@ -1,7 +1,7 @@
 name = "StateSpaceEcon"
 uuid = "e4c825b0-b65c-11ea-0b5a-6176b64e7b7f"
 authors = ["Atai Akunov <aakunov@bankofcanada.ca>", "Boyan Bejanov <bbejanov@bankofcanada.ca>", "Nicholas Labelle St-Pierre <labs@bankofcanada.ca>"]
-version = "0.6.1"
+version = "0.6.2"
 
 [deps]
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
