@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -24,24 +24,24 @@ export SimData
 # same constructors as should work for SimData
 SimData(args...) = MVTSeries(args...)
 
-_getname(::ModelVariable{NAME}) where {NAME} = NAME
+_getname(v::ModelVariable) = (@nospecialize(v); v.name)
 
 const _MVCollection = Union{Vector{ModelVariable},NTuple{N,ModelVariable}} where {N}
 # we should allow indexing with model variables
 Base.getindex(sd::MVTSeries, vars::_MVCollection) = getindex(sd, _getname.(vars))
-Base.getindex(sd::MVTSeries, vars::ModelVariable) = getindex(sd, _getname(vars))
+Base.getindex(sd::MVTSeries, vars::ModelVariable) = (@nospecialize(vars); getindex(sd, _getname(vars)))
 Base.setindex!(sd::MVTSeries, val, vars::_MVCollection) = setindex!(sd, val, _getname.(vars))
-Base.setindex!(sd::MVTSeries, val, vars::ModelVariable) = setindex!(sd, val, _getname(vars))
+Base.setindex!(sd::MVTSeries, val, vars::ModelVariable) = (@nospecialize(vars); setindex!(sd, val, _getname(vars)))
 
 Base.getindex(sd::MVTSeries, rows, vars::_MVCollection) = getindex(sd, rows, _getname.(vars))
-Base.getindex(sd::MVTSeries, rows, vars::ModelVariable) = getindex(sd, rows, _getname(vars))
+Base.getindex(sd::MVTSeries, rows, vars::ModelVariable) = (@nospecialize(vars); getindex(sd, rows, _getname(vars)))
 Base.setindex!(sd::MVTSeries, val, rows, vars::_MVCollection) = setindex!(sd, val, rows, _getname.(vars))
-Base.setindex!(sd::MVTSeries, val, rows, vars::ModelVariable) = setindex!(sd, val, rows, _getname(vars))
+Base.setindex!(sd::MVTSeries, val, rows, vars::ModelVariable) = (@nospecialize(vars); setindex!(sd, val, rows, _getname(vars)))
 
 Base.view(sd::MVTSeries, vars::_MVCollection) = view(sd, :, _getname.(vars))
-Base.view(sd::MVTSeries, vars::ModelVariable) = view(sd, :, _getname(vars))
+Base.view(sd::MVTSeries, vars::ModelVariable) = (@nospecialize(vars); view(sd, :, _getname(vars)))
 Base.view(sd::MVTSeries, rows, vars::_MVCollection) = view(sd, rows, _getname.(vars))
-Base.view(sd::MVTSeries, rows, vars::ModelVariable) = view(sd, rows, _getname(vars))
+Base.view(sd::MVTSeries, rows, vars::ModelVariable) = (@nospecialize(vars); view(sd, rows, _getname(vars)))
 
 #######################################################
 
