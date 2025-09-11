@@ -99,6 +99,8 @@ function simulate(m::Model,
         error("Incorrect dimensions of initial_guess. Expected $((NT, nvarshks)), got $(size(initial_guess)).")
     end
 
+    data_axes = axes(exog_ant)
+
     if deviation_ant
         exog_ant = copy(exog_ant)
         if isempty(baseline)
@@ -314,7 +316,7 @@ function simulate(m::Model,
         end
     end
 
-    x = x[axes(exog_ant)...]
+    x = x[data_axes...]
     x .= inverse_transform(x, m)
     if deviation
         @views x[:, logvars] ./= baseline[:, logvars]

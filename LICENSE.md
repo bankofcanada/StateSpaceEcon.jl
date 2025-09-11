@@ -1,6 +1,6 @@
 BSD 3-Clause License
 
-Copyright (c) 2020, Bank of Canada
+Copyright (c) 2020-2025, Bank of Canada
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
