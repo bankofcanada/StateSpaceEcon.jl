@@ -146,7 +146,7 @@ See also [`zeroarray`](@ref) and [`zeroworkspace`](@ref)
 function steadystatedata end
 @deprecate zerodata(m::Model, rng::AbstractUnitRange) zerodata(m, Plan(m, rng))
 @inline zerodata(m::Model, p::Plan) = SimData(p.range, m.varshks, zeroarray(m, p))
-@deprecate steadystatedata(m::Model, rng::AbstractUnitRange; ref = firstdate(p) + m.maxlag) steadystatedata(m, Plan(m, rng); ref = ref)
+@deprecate steadystatedata(m::Model, rng::AbstractUnitRange; ref = first(rng) + m.maxlag) steadystatedata(m, Plan(m, rng); ref = ref)
 @inline steadystatedata(m::Model, p::Plan; ref = firstdate(p) + m.maxlag) = SimData(p.range, m.varshks, steadystatearray(m, p; ref = ref))
 
 ##################
