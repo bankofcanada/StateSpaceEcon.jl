@@ -20,9 +20,13 @@ jobs:
   # This workflow contains a single job called "build"
   build:
 
-    strategy: 
+    strategy:
       matrix:
-        julia-version: ["1.9", "lts", "1"]
+        # NOTE: [sources] in Project.toml requires Julia 1.11+.
+        # "1.9" and "lts" (1.10) are excluded until ModelBaseEcon PR #76
+        # is merged into master and the [sources] override is removed.
+        # julia-version: ["1.9", "lts", "1"]
+        julia-version: ["1.11", "1"]
         julia-arch: [x64]
         os: [ubuntu-latest, windows-latest, macOS-latest]
 
