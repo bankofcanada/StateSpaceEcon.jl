@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -60,7 +60,7 @@ function newton1!(F::Function, vals::AbstractVector{T}, ind::Integer; maxiter=5,
     fval, Jval = F(vals)
     err = tol * abs(fval) + tol
     for iter = 1:maxiter
-        if abs(Jval[ind]) < tol
+        if abs(Jval[ind]) < tol || !isfinite(Jval[ind])
             return false
         end
         if abs(fval) < err
@@ -155,7 +155,7 @@ function bisect!(F::Function, vals::AbstractVector{T}, ind::Int64, deriv::T; max
     # in the direction in which the function approaches zero.)
     # if the derivative is zero at the initial point, that's an argument error
     abs(deriv) < 1e-10 && return false
-    isnan(deriv) && return false
+    !isfinite(deriv) && return false
 
     # First point - that's easy
     x0 = vals[ind]

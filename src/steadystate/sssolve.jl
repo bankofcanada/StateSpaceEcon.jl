@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -44,7 +44,7 @@ function sssolve!(model::Model;
     # !! make sure constraints use the latest parameter values
     # !! before calling SolverData constructor, because it computes the initial residual
     for eqn in values(ss.constraints)
-        ModelBaseEcon._update_eqn_params!(eqn.eval_resid, model.parameters)
+        ModelBaseEcon._update_eqn_params!(eqn, model.parameters)
     end
 
     sd = SolverData(model; presolve = presolve)

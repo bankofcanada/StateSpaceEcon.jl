@@ -1,7 +1,7 @@
 ##################################################################################
 # This file is part of StateSpaceEcon.jl
 # BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
+# Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
 
@@ -76,7 +76,7 @@ function _do_update_auxvars_presolve!(model::Model, verbose::Bool, method::Symbo
     # presolve only the steady state constraints (to apply the values of exog variables)
     if !isempty(ss.constraints)
         for eqn in values(ss.constraints)
-            ModelBaseEcon._update_eqn_params!(eqn.eval_resid, model.parameters)
+            ModelBaseEcon._update_eqn_params!(eqn, model.parameters)
         end
         presolve_sstate!(ss.constraints, ss.mask, ss.values; model.tol, verbose, method)
     end

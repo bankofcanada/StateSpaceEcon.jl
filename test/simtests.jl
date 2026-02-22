@@ -80,7 +80,7 @@ function test_simulation(m_in, path; atol=1.0e-9)
     data01_dev = deepcopy(data01)
     data_chk_dev = deepcopy(data_chk)
     sssolve!(m)
-    for (i, var) in enumerate(m.allvars)
+    for (i, var) in enumerate(m.varshks)
         data01_dev[:, i] .-= m.sstate[var].level
         data_chk_dev[:, i] .-= m.sstate[var].level
         if m.sstate[var].slope != 0
@@ -111,6 +111,14 @@ end
 
 @testset "E6.sim" begin
     test_simulation(getE6(), joinpath(@__DIR__, "data", "M6_TestData.csv"))
+end
+
+@testset "E7.sim" begin
+    test_simulation(getE7(), joinpath(@__DIR__, "data", "M7_TestData.csv"))
+end
+
+@testset "E7A.sim" begin
+    test_simulation(getE7(), joinpath(@__DIR__, "data", "M7_TestData.csv"))
 end
 
 #############################################################

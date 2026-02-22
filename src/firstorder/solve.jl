@@ -165,7 +165,7 @@ function fill_fosystem!(sys::FirstOrderSystem, JAC::SparseMatrixCSC, model::Mode
                 # prefer to treat it as bck_var, if both
                 FWD[eqind, bck_i] = val
             else
-                # not bck_fwd, must be fwd_fwd
+                # not bck_var, must be fwd_var
                 fwd_i = get(vm.fwd_inds, (var, 0), nothing)
                 BCK[eqind, fwd_i] = val
             end

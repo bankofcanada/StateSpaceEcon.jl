@@ -36,7 +36,7 @@ function global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Floa
     end
     for (eqind, eqn) in enumerate(eqns)
         rr = try
-            eqn.eval_resid(point[eqn.vinds])
+            invokelatest(eqn.eval_resid, point[eqn.vinds])
         catch
             NaN64
         end
@@ -79,7 +79,7 @@ function global_SS_RJ(point::AbstractVector{Float64}, eqns::EqnIter) where {EqnI
     J = zeros(neqns, nvars)
     for (eqind, eqn) in enumerate(eqns)
         rr, jj = try
-            eqn.eval_RJ(point[eqn.vinds])
+            invokelatest(eqn.eval_RJ, point[eqn.vinds])
         catch
             NaN64, fill(NaN64, size(eqn.vinds))
         end

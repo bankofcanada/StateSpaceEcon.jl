@@ -38,18 +38,18 @@ function presolve_sstate! end
 
 function solve1d(sseqn, vals, ind, ::Val{:bisect}, tol = 1e-12, maxiter = 1000)
     R, J = try
-        sseqn.eval_RJ(vals)
+        invokelatest(sseqn.eval_RJ, vals)
     catch
         return false
     end
     if abs(R) < tol && abs(J[ind]) > tol
         return true
     end
-    return bisect!(sseqn.eval_resid, vals, ind, J[ind]; tol, maxiter)
+    return bisect!(x -> invokelatest(sseqn.eval_resid, x), vals, ind, J[ind]; tol, maxiter)
 end
 
 function solve1d(sseqn, vals, ind, ::Val{:newton}, tol = 1e-12, maxiter = 5)
-    return newton1!(sseqn.eval_RJ, vals, ind; tol, maxiter)
+    return newton1!(x -> invokelatest(sseqn.eval_RJ, x), vals, ind; tol, maxiter)
 end
 
 function _presolve_equations!(eqns, mask, values, method, verbose, tol)
@@ -67,7 +67,7 @@ function _presolve_equations!(eqns, mask, values, method, verbose, tol)
             if nunsolved == 0
                 # all variables are solved, yet equation is not marked solved. 
                 # check if equation is satisfied
-                eqns_resid[eqn_idx] = R = sseqn.eval_resid(values[sseqn.vinds])
+                eqns_resid[eqn_idx] = R = invokelatest(sseqn.eval_resid, values[sseqn.vinds])
                 # mark it solved either way, but issue a warning if residual is not zero
                 eqns_solved[eqn_idx] = true
                 if verbose && abs(R) > 100tol
