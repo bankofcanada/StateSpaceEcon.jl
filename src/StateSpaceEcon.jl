@@ -18,6 +18,7 @@ include("Kalman.jl")
 include("FirstOrderSolver.jl")
 include("DFMSolver.jl")
 include("stackedtime/stoch_simulate.jl")
+include("compat.jl")
 
 using .SteadyStateSolver
 using .StackedTimeSolver
@@ -27,6 +28,7 @@ using .Kalman
 using .FirstOrderSolver
 using .DFMSolver
 using .StochSimulate
+using .Compat
 
 export SteadyStateProblem, sssolve!, ss_residual!, ss_RJ!
 export SteadyStateDiagnosis, diagnose_sstate
@@ -50,6 +52,9 @@ export FirstOrderShockDecompResult, first_order_shockdecomp
 export DFMSolver, EMestimate!
 # Stochastic (multi-path) simulation.
 export stoch_simulate, StochResult, SimFailed, isfailed
+# Compatibility aliases.
+export Plan, simulate, solve!, use_pardiso, use_umfpack
+export FinalCondition, FCNone, FCGiven, FCMatchSSLevel, fclevel, setfc!
 
 # ---------------------------------------------------------------------------
 # Precompile workload (DFM EM)
