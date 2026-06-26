@@ -1,4 +1,11 @@
 ##################################################################################
+# This file is part of StateSpaceEcon.jl
+# BSD 3-Clause License
+# Copyright (c) 2020-2025, Bank of Canada
+# All rights reserved.
+##################################################################################
+
+##################################################################################
 # DFM solver subsystem.
 #
 # The EM core works on plain matrices and reuses the generic `Kalman`
