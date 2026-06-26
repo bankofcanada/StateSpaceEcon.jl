@@ -1,158 +1,229 @@
-##################################################################################
-# This file is part of StateSpaceEcon.jl
-# BSD 3-Clause License
-# Copyright (c) 2020-2024, Bank of Canada
-# All rights reserved.
-##################################################################################
+module StochSimulate
 
-# version of simulate for stochastic simulations 
+# ----------------------------------------------------------------------
+# Stochastic (Monte-Carlo / multi-path) simulation on the unified-column
+# SimData/SimPlan surface. This is a *wrapper* around
+# `Plans.plan_simulate!` - it adds no new Newton kernel.
+#
+# Semantics: UNANTICIPATED shocks. A baseline (control) path - typically
+# the steady state spread over the plan range, or any deterministic
+# anticipated solution - is perturbed, per realisation, by innovations
+# that are revealed one period at a time. The recursion is:
+#
+#   for each period t in the shock range (ascending):
+#       build a sub-plan over [t-maxlag .. last], solve it forward with the
+#       innovation at t injected into each path's running result, which is a
+#       view into the accumulated path matrix so the next period's solve
+#       starts from this period's solution.
+#
+# Because the agent re-solves from t forward knowing only the shocks up to
+# and including t, future innovations do not move earlier periods - that is
+# exactly what "unanticipated" means and is the property the timing test
+# enforces.
+#
+# Shock API: a 3D matrix `shocks[t, shock, path]` over the model's shock
+# columns, where `t` is the 1-based interior simulation period.
+# `shock_start` shifts the first shock row to a later interior period so a
+# shock range can start mid-horizon.
+# ----------------------------------------------------------------------
 
-#  NOTE: This requires TimeSeriesEcon v0.5.1 where map(func, ::Workspace) returns a Workspace.
-_make_result_container(shocks::Workspace, basedata)::Workspace = map(_ -> copy(basedata), shocks)
-_make_result_container(shocks::Vector, basedata)::Vector{MaybeSimData} = convert(Vector{MaybeSimData}, map(_ -> copy(basedata), shocks))
+using ..Plans: SimData, SimPlan, plan_simulate!
+using ModelBaseEcon: CompiledModel
 
-function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
-    check::Bool=false,
-    #= Solver options =#
-    variant::Symbol=m.options.variant,
-    verbose::Bool=m.options.verbose,
-    tol::Float64=m.options.tol,
-    maxiter::Int=m.options.maxiter,
-    fctype=getoption(m, :fctype, fcgiven),
-    #= Newton-Raphson options =#
-    warn_maxiter=getoption(getoption(m, :warn, Options()), :maxiter, false),
-    linesearch::Bool=getoption(m, :linesearch, false),
-    sim_solver=:sim_nr,
-    damping=nothing
-)
+export stoch_simulate, StochResult, SimFailed, isfailed
 
-    sim_solve!, damping = _get_solver_damping(linesearch, sim_solver, damping)
+# ----------------------------------------------------------------------
+# Failed-path marker.
+# ----------------------------------------------------------------------
+"""
+    SimFailed(period)
 
-    if isempty(shocks)
-        return _make_result_container(shocks, baseline)
-    end
-
-    # get the range of all shocks realizations (this will be the full simulation range)
-    shkrng = mapreduce(rangeof, union, values(shocks))
-
-    # are all shocks in the same range
-    same_range = all(==(shkrng) ∘ rangeof, values(shocks))
-
-    # make sure the plan range contains shkrng 
-    if firstdate(p) + m.maxlag > first(shkrng)
-        throw(ArgumentError("Simulation starts too late for the given shocks realizations."))
-    end
-    if last(shkrng) > lastdate(p) - m.maxlead
-        throw(ArgumentError("Simulation ends too early for the given shocks realizations."))
-    end
-    if last(shkrng) > lastdate(p) - m.maxlead - 20  # why 20? 
-        @warn "Simulation may be too short - allow at least 20 periods after the last shock."
-    end
-
-    # make sure all given stochastic shocks are exogenous during their stochastic ranges
-    for (key, value) in pairs(shocks)
-        for (shk, val) in pairs(value)
-            tinds = Plans._offset(p, rangeof(val))
-            vind = p.varshks[shk]
-            if !all(p.exogenous[tinds, vind])
-                @warn "$shk in shocks[$key] is endogenous in the given plan."
-            end
-        end
-    end
-
-    # make sure the model evaluation data is up to date
-    refresh_med!(m, variant)
-
-    # range for the result
-    resrng = first(shkrng)-m.maxlag:last(p.range)
-
-    # prepare the baseline data
-    e₀ = ModelBaseEcon.update_auxvars(transform(baseline[resrng, m.varshks], m), m)
-
-    if check
-        ### Anticipated run
-        # the plan
-        local p₀ = copy(p[resrng])
-        # the solver data
-        local d₀ = StackedTimeSolverData(m, p₀, fctype, variant)
-
-        # we assume that baseline is the anticipated solution. let's check 
-        local res = Vector{Float64}(undef, size(d₀.J, 1))
-        stackedtime_R!(res, e₀, e₀, d₀)
-        local nres = norm(res, Inf)
-        if nres >= tol
-            throw(ArgumentError("The given baseline is not a solution: residual $nres > tolerance $tol."))
-        end
-    end
-
-    ### Unanticipated stochastic shocks
-
-    # allocate results 
-    results = _make_result_container(shocks, e₀)
-
-    # last simulation period, excluding final conditions periods
-    sim_end = lastdate(p) - m.maxlead
-
-    # the time loop
-    for i = eachindex(shkrng)
-        t = shkrng[i]
-
-        # simulation range for this period
-        # rₜ = t:sim_end
-
-        # simulation plan is a view into the full plan
-        pₜ = let
-            i1 = Plans._offset(p, t) - m.maxlag
-            i2 = lastindex(p.exogenous, 1)
-            Plan{typeof(t)}(t-m.maxlag:lastdate(p), p.varshks, view(p.exogenous, i1:i2, :))
-        end
-
-        # solver data 
-        dₜ = StackedTimeSolverData(m, pₜ, fctype, variant)
-
-        # the shocks realizations loop
-        for ((skey, shock), (rkey, result)) in zip(pairs(shocks), pairs(results))
-            @assert skey == rkey
-
-            # skip if this simulation has already failed
-            isfailed(result) && continue
-
-            # skip if t is outside the range of shock
-            same_range || (firstdate(shock) ≤ t ≤ lastdate(shock)) || continue
-
-            verbose && @info "Simulating $skey over $(t:sim_end)."
-
-            # create a view into the result for this period
-            eₜ = view(result, pₜ.range, :)
-
-            # assign unanticipated shocks
-            eₜ[t, axes(shock, 2)] .+= shock[t, :]   # 
-
-            # solve 
-            try
-                converged = sim_solve!(eₜ, dₜ, maxiter, tol, verbose, damping)
-                check_converged(converged, warn_maxiter)
-            catch
-                # marked as failed 
-                results[rkey] = SimFailed(t)
-                continue
-            end
-
-        end # shocks loop 
-
-    end # time loop
-
-    # strip auxvar columns and inverse transform
-    have_auxs = (m.nauxs > 0)
-    for (key, result) in pairs(results)
-        isfailed(result) && continue
-        if have_auxs
-            result = result[:, m.varshks]
-        end
-        results[key] = inverse_transform(result, m)
-    end
-
-    return results
+Marks a realisation whose Newton solve failed to converge at simulation
+period `period`. Stored in place of that path's `SimData` in the result.
+"""
+struct SimFailed
+    period::Int
 end
 
+isfailed(::SimFailed) = true
+isfailed(::SimData) = false
 
+# ----------------------------------------------------------------------
+# Result container.
+# ----------------------------------------------------------------------
+"""
+    StochResult
+
+Holds the per-path results of `stoch_simulate`. Index it like a vector
+(`res[p]`) to get path `p`'s `SimData` (or a `SimFailed` marker). Fields:
+
+- `paths :: Vector{Union{SimData, SimFailed}}` - one entry per realisation.
+- `n_path :: Int`
+- `shock_start :: Int` - interior period of the first shock row.
+- `n_shock_period :: Int` - number of shock rows (the shock range length).
+"""
+struct StochResult
+    paths::Vector{Union{SimData, SimFailed}}
+    n_path::Int
+    shock_start::Int
+    n_shock_period::Int
+end
+
+Base.length(r::StochResult) = r.n_path
+Base.getindex(r::StochResult, i::Int) = r.paths[i]
+Base.iterate(r::StochResult, s=1) = s > r.n_path ? nothing : (r.paths[s], s + 1)
+Base.eachindex(r::StochResult) = Base.OneTo(r.n_path)
+nfailed(r::StochResult) = count(isfailed, r.paths)
+
+# ----------------------------------------------------------------------
+# Sub-window solve with copy-in / copy-out.
+#
+# A sub-plan that starts at interior period `t` and runs to the horizon is
+# the faithful unanticipated step: periods before `t` are the sub-plan's
+# fixed lag/initial rows, so injecting the shock at `t` cannot propagate
+# backward through a lead reference (that is exactly what "unanticipated"
+# forbids). We materialise a dense `SimData` over the window
+# `[t-maxlag .. T+maxlead]` of the parent, solve it, then copy the solved
+# interior rows back into the parent so the next period builds on this one.
+#
+# (We copy rather than `view` because `SimData.values` is a concrete
+# `Matrix{Float64}`; a `SubArray` would be densified on construction,
+# silently breaking write-through. Copy-in/out keeps the field concrete -
+# and type-stable in the Newton hot loop - at the cost of one window-sized
+# copy per period.)
+#
+# Returns `(converged::Bool)`; on success the parent's interior rows
+# `t .. T` carry the updated solution.
+# ----------------------------------------------------------------------
+function _solve_subwindow!(parent::SimData, model, first_interior::Int,
+                           T_sub::Int; tol, maxiter, verbose, linsolve)
+    maxlag = parent.maxlag
+    maxlead = parent.maxlead
+    nrow_sub = maxlag + T_sub + maxlead
+    # Parent matrix rows for this window: lag rows `first_interior .. ` map so
+    # that parent interior period `first_interior` is the sub's interior 1.
+    # Parent interior `t` lives at parent row `maxlag + t`; the sub's lag row 1
+    # is parent row `maxlag + first_interior - maxlag = first_interior`.
+    r0 = first_interior
+    rows = r0:(r0 + nrow_sub - 1)
+
+    sub = SimData(model, maxlag, T_sub; maxlead = maxlead)
+    # copy-in
+    @inbounds copyto!(sub.values, @view parent.values[rows, :])
+
+    subplan = SimPlan(model, T_sub)            # default mask: vars unknown
+    _, conv, _ = plan_simulate!(subplan, sub;
+                                tol = tol, maxiter = maxiter,
+                                verbose = verbose, linsolve = linsolve)
+    conv || return false
+
+    # copy-out: write the solved interior + terminal rows back into the parent
+    # (lag rows are unchanged; copying them back is harmless and keeps it simple).
+    @inbounds copyto!((@view parent.values[rows, :]), sub.values)
+    return true
+end
+
+# ----------------------------------------------------------------------
+# stoch_simulate
+# ----------------------------------------------------------------------
+"""
+    stoch_simulate(model, baseline::SimData, shocks::Array{Float64,3};
+                   shock_start=1, tol=1e-9, maxiter=50, verbose=false,
+                   linsolve=:umfpack) -> StochResult
+
+Run `size(shocks, 3)` unanticipated stochastic simulations of `model`
+about the `baseline` (control) path.
+
+- `baseline` is the anticipated solution spanning the full plan range
+  (`maxlag` lag rows + `T` interior rows + `maxlead` terminal rows), in
+  solver space. It is typically the steady state spread over the range.
+- `shocks[t, k, p]` is the innovation added to shock column `k` at interior
+  period `shock_start + t - 1` for realisation `p`. Shocks are injected
+  unanticipated: revealed at their period, not before.
+- Each realisation re-solves the stacked-time system forward from each shock
+  period, accumulating the response - so the result is the baseline plus the
+  cumulative effect of that path's innovations.
+
+Returns a [`StochResult`](@ref); `res[p]` is path `p`'s `SimData` or a
+[`SimFailed`](@ref) marker if its Newton solve diverged.
+
+`stoch_simulate` is embarrassingly parallel across paths (each writes its own
+`SimData`, no shared mutable state) and may be wrapped in `Threads.@spawn`;
+the current implementation runs them sequentially. The loop is path-outer, so
+the per-period sparse-Jacobian structure is rebuilt for every (path, period).
+Reordering to period-outer with shared sparsity is the obvious thing to try
+first if large-fleet stochastic runs ever become a bottleneck.
+"""
+function stoch_simulate(model::CompiledModel, baseline::SimData,
+                        shocks::Array{Float64,3};
+                        shock_start::Int = 1,
+                        tol::Float64 = 1e-9,
+                        maxiter::Int = 50,
+                        verbose::Bool = false,
+                        linsolve::Symbol = :umfpack)
+    baseline.model === model ||
+        error("stoch_simulate: baseline and model differ")
+
+    T_shk, n_shk_col, n_path = size(shocks)
+    T = baseline.T
+
+    n_shk_col == baseline.n_shock ||
+        error("stoch_simulate: shocks has $(n_shk_col) shock columns, " *
+              "model has $(baseline.n_shock)")
+    shock_start >= 1 ||
+        error("stoch_simulate: shock_start must be >= 1")
+    shock_start + T_shk - 1 <= T ||
+        error("stoch_simulate: shock range [$(shock_start) .. " *
+              "$(shock_start + T_shk - 1)] exceeds the baseline horizon T=$T")
+
+    # Early return: no realisations requested.
+    if n_path == 0
+        return StochResult(Union{SimData,SimFailed}[], 0, shock_start, T_shk)
+    end
+    # Early return: empty shock range => every path is the baseline.
+    if T_shk == 0
+        paths = Union{SimData,SimFailed}[copy(baseline) for _ in 1:n_path]
+        return StochResult(paths, n_path, shock_start, 0)
+    end
+
+    n_var = baseline.n_var
+    paths = Vector{Union{SimData,SimFailed}}(undef, n_path)
+
+    for p in 1:n_path
+        # Each path starts from the baseline (control).
+        path = copy(baseline)
+        failed = false
+
+        # Unanticipated recursion: reveal one shock period at a time.
+        for i in 1:T_shk
+            t = shock_start + i - 1               # interior period of this shock
+            # Inject this period's unanticipated innovation into the running
+            # result at interior period t (shock columns are n_var+1 .. end).
+            for k in 1:n_shk_col
+                path.values[path.maxlag + t, n_var + k] += shocks[i, k, p]
+            end
+
+            # Sub-window: solve [t .. T] forward (T_sub interior periods),
+            # copying the solution back into the accumulated path.
+            T_sub = T - t + 1
+            ok = try
+                _solve_subwindow!(path, model, t, T_sub;
+                                  tol = tol, maxiter = maxiter,
+                                  verbose = verbose, linsolve = linsolve)
+            catch
+                false
+            end
+            if !ok
+                paths[p] = SimFailed(t)
+                failed = true
+                break
+            end
+        end
+
+        failed || (paths[p] = path)
+    end
+
+    return StochResult(paths, n_path, shock_start, T_shk)
+end
+
+end # module StochSimulate

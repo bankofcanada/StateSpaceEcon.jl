@@ -1,329 +1,181 @@
-##################################################################################
-# This file is part of StateSpaceEcon.jl
-# BSD 3-Clause License
-# Copyright (c) 2020-2023, Bank of Canada
-# All rights reserved.
-##################################################################################
+# ----------------------------------------------------------------------
+# Boundary clamping helpers
+# ----------------------------------------------------------------------
+#
+# `x_full` is a (T + maxlag + maxlead) x n_var matrix; row `t+maxlag` is
+# simulation period t. Initial conditions live in rows 1..maxlag and are
+# fixed. Terminal conditions live in rows maxlag+T+1..end and are fixed
+# (typically set to steady state). The "unknowns" are the rows
+# maxlag+1..maxlag+T, which we view-into as a length-`T*n_var` vector.
 
-@inline function solve!(model::Model)
-    return model
-end
+@inline _row(t::Int, plan::StackedTimePlan) = t + plan.maxlag
 
-function check_converged(converged, warn_maxiter)
-    if !converged
-        if warn_maxiter == :error
-            error("Non-linear solver reached maximum number of iterations (`maxiter`).")
-        elseif warn_maxiter != false
-            @warn("Non-linear solver reached maximum number of iterations (`maxiter`).")
+# ----------------------------------------------------------------------
+# Residual + Jacobian assembly
+# ----------------------------------------------------------------------
+
+"""
+    stacked_residual!(R, x_full, e_full, plan) -> R
+
+Compute the global stacked residual vector. `x_full` and `e_full` are
+the (T+maxlag+maxlead)xn matrices including boundary rows. `R` has
+length `T * n_eq`.
+"""
+function stacked_residual!(R::AbstractVector{Float64},
+                            x_full::AbstractMatrix{Float64},
+                            e_full::AbstractMatrix{Float64},
+                            plan::StackedTimePlan)
+    p = plan.param_values
+    T = plan.T
+    n_eq = plan.n_eq
+    @inbounds for t in 1:T
+        for i in 1:n_eq
+            eqn = plan.model[i]
+            sm = plan.slot_maps[i]
+            x_eqn = _gather_x(x_full, e_full, sm, t, plan)
+            R[(t - 1) * n_eq + i] = eqn.eval_resid(x_eqn, p)
         end
     end
+    return R
 end
 
+"""
+    stacked_RJ!(R, J, x_full, e_full, plan) -> (R, J)
 
-function _get_solver_damping(linesearch::Bool, sim_solver=:sim_nr, damping=nothing)
-    sim_solve! =
-        sim_solver isa Function ? sim_solver :
-        sim_solver == :sim_nr ? sim_nr! :
-        sim_solver == :sim_lm ? sim_lm! :
-        sim_solver == :sim_gn ? sim_gn! :
-        error("Unknown solver $sim_solver.")
-    if sim_solve! != sim_nr! && !isnothing(damping)
-        @warn "Damping is used only with sim_solver=:sim_nr"
+Compute residual and refresh the sparse Jacobian's nzvals. `J` must be
+`plan.J` (the prebuilt sparsity pattern); we mutate its nzval in place.
+"""
+function stacked_RJ!(R::AbstractVector{Float64},
+                      x_full::AbstractMatrix{Float64},
+                      e_full::AbstractMatrix{Float64},
+                      plan::StackedTimePlan)
+    p = plan.param_values
+    T = plan.T
+    n_eq = plan.n_eq
+    nz = nonzeros(plan.J)
+    fill!(nz, 0.0)
+    grad_buf = Vector{Float64}(undef, 0)
+    @inbounds for t in 1:T
+        for i in 1:n_eq
+            eqn = plan.model[i]
+            sm = plan.slot_maps[i]
+            if length(grad_buf) != eqn.n_x
+                resize!(grad_buf, eqn.n_x)
+            end
+            x_eqn = _gather_x(x_full, e_full, sm, t, plan)
+            R[(t - 1) * n_eq + i] = eqn.eval_RJ!(grad_buf, x_eqn, p)
+            block = (t - 1) * n_eq + i
+            bi = plan.BI[block]
+            for k in 1:length(bi)
+                nz_idx = bi[k]
+                nz_idx == 0 && continue              # boundary slot
+                nz[nz_idx] += grad_buf[k]
+            end
+        end
     end
-    damping =
-        damping isa Function ? damping :
-        damping isa Number ? damping_schedule(damping) :
-        damping isa AbstractVector ? damping_schedule(damping) :
-        damping == :br81 ? damping_br81() :
-        damping isa Tuple && damping[1] == :br81 ? damping_br81(; Base.tail(damping)...) :
-        damping == :linesearch || damping == :armijo ? damping_armijo() :
-        damping isa Tuple && damping[1] == :armijo ? damping_armijo(; Base.tail(damping)...) :
-        linesearch ? damping_armijo() :  # compatibility with old code
-        damping isa Nothing ? damping_none :
-        error("Invalid damping specification")
-    return sim_solve!, damping
+    return R, plan.J
 end
 
-
-function simulate(m::Model,
-    p_ant::Plan,
-    exog_ant::AbstractArray{Float64,2},
-    p_unant::Plan=Plan(1U:0U, (;), falses(0, 0)),
-    exog_unant::AbstractArray{Float64,2}=zeros(0, 0);
-    #= Options =#
-    anticipate::Bool=isempty(exog_unant),
-    initial_guess::AbstractArray{Float64,2}=zeros(0, 0),
-    #= Deviation options =#
-    deviation::Bool=false,
-    baseline::AbstractArray{Float64,2}=zeros(0, 0),
-    deviation_ant=deviation,
-    deviation_unant=deviation,
-    #= Solver options =#
-    variant::Symbol=m.options.variant,
-    verbose::Bool=m.options.verbose,
-    tol::Float64=m.options.tol,
-    maxiter::Int=m.options.maxiter,
-    fctype=getoption(m, :fctype, fcgiven),
-    expectation_horizon::Union{Nothing,Int64}=nothing,
-    #= Newton-Raphson options =#
-    warn_maxiter=getoption(getoption(m, :warn, Options()), :maxiter, false),
-    linesearch::Bool=getoption(m, :linesearch, false),
-    sim_solver=:sim_nr,
-    damping=nothing
-)
-
-    sim_solve!, damping = _get_solver_damping(linesearch, sim_solver, damping)
-
-    unant_given = !isempty(exog_unant)
-
-    if isempty(p_unant) == unant_given
-        error("Invalid `unanticipated` inputs: either plan and data must both be given, or both must be left empty.")
+# Build x_eqn from x_full / e_full according to slot map.
+@inline function _gather_x(x_full::AbstractMatrix{Float64},
+                            e_full::AbstractMatrix{Float64},
+                            sm::StackedSlotMap, t::Int,
+                            plan::StackedTimePlan)
+    n = length(sm)
+    x_eqn = Vector{Float64}(undef, n)
+    @inbounds for k in 1:n
+        kind, idx, off = sm[k]
+        row = t + off + plan.maxlag
+        x_eqn[k] = kind === :var ? x_full[row, idx] : e_full[row, idx]
     end
+    return x_eqn
+end
 
-    if anticipate && unant_given
-        error("Conflicting arguments: non-empty `exog_unanticipated` with `anticipate=true`.")
+# ----------------------------------------------------------------------
+# Newton solver
+# ----------------------------------------------------------------------
+
+"""
+    simulate!(plan; x_init, x_term, e_full, x_guess=nothing,
+              tol=1e-10, maxiter=50, verbose=false)
+        -> (x_full, converged, iters)
+
+Solve the stacked-time system. Inputs:
+- `x_init :: Matrix{Float64}` - `maxlag x n_var` initial conditions
+- `x_term :: Matrix{Float64}` - `maxlead x n_var` terminal conditions (typically ss)
+- `e_full :: Matrix{Float64}` - `(T + maxlag + maxlead) x n_shock` exogenous shocks
+- `x_guess :: Matrix{Float64}` (optional) - `T x n_var` starting guess for unknowns
+
+Returns `x_full` of size `(T + maxlag + maxlead) x n_var` with the boundary
+rows filled in and the interior solved.
+"""
+function simulate!(plan::StackedTimePlan;
+                   x_init::AbstractMatrix{Float64},
+                   x_term::AbstractMatrix{Float64},
+                   e_full::AbstractMatrix{Float64},
+                   x_guess::Union{AbstractMatrix{Float64}, Nothing} = nothing,
+                   tol::Float64 = 1e-10,
+                   maxiter::Int = 50,
+                   verbose::Bool = false,
+                   linsolve::Symbol = :umfpack)
+    T, n_var = plan.T, plan.n_var
+    maxlag, maxlead = plan.maxlag, plan.maxlead
+    size(x_init) == (maxlag, n_var) ||
+        error("x_init must be $(maxlag)x$(n_var)")
+    size(x_term) == (maxlead, n_var) ||
+        error("x_term must be $(maxlead)x$(n_var)")
+    size(e_full) == (T + maxlag + maxlead, plan.n_shock) ||
+        error("e_full must be $(T+maxlag+maxlead)x$(plan.n_shock)")
+
+    x_full = zeros(T + maxlag + maxlead, n_var)
+    if maxlag > 0
+        x_full[1:maxlag, :] .= x_init
     end
-
-    # make sure the model evaluation data is up to date
-    refresh_med!(m, variant)
-
-    NT = length(p_ant.range)
-    nauxs = length(m.auxvars)
-    nvarshks = length(m.varshks)
-    logvars = islog.(m.varshks) .| isneglog.(m.varshks)
-
-    if size(exog_ant) != (NT, nvarshks)
-        error("Incorrect dimensions of exog_data. Expected $((NT, nvarshks)), got $(size(exog_ant)).")
+    if maxlead > 0
+        x_full[maxlag+T+1:end, :] .= x_term
     end
-    if !isempty(initial_guess) && size(initial_guess) != (NT, nvarshks)
-        error("Incorrect dimensions of initial_guess. Expected $((NT, nvarshks)), got $(size(initial_guess)).")
-    end
-
-    data_axes = axes(exog_ant)
-
-    if deviation_ant
-        exog_ant = copy(exog_ant)
-        if isempty(baseline)
-            baseline = steadystatearray(m, p_ant)
-        end
-        if size(baseline) != (NT, nvarshks)
-            error("Incorrect dimensions of baseline. Expected $((NT, nvarshks)), got $(size(baseline)).")
-        end
-        @views exog_ant[:, logvars] .*= baseline[:, logvars]
-        @views exog_ant[:, .!logvars] .+= baseline[:, .!logvars]
-    end
-    exog_ant = ModelBaseEcon.update_auxvars(transform(exog_ant, m), m)
-
-    if !isempty(initial_guess)
-        x = ModelBaseEcon.update_auxvars(transform(initial_guess, m), m)
+    if x_guess !== nothing
+        size(x_guess) == (T, n_var) ||
+            error("x_guess must be $(T)x$(n_var)")
+        x_full[maxlag+1:maxlag+T, :] .= x_guess
     else
-        x = copy(exog_ant)
-    end
-
-    if anticipate
-        gdata = StackedTimeSolverData(m, p_ant, fctype, variant)
-        assign_exog_data!(x, exog_ant, gdata)
-        if verbose
-            @info "Simulating $(p_ant.range[1 + m.maxlag:NT - m.maxlead])" # anticipate gdata.FC
-        end
-        converged = sim_solve!(x, gdata, maxiter, tol, verbose, damping)
-        check_converged(converged, warn_maxiter)
-    else # unanticipated shocks
-
-        #=== prepare sub-ranges ===#
-        init = 1:m.maxlag
-        term = NT .+ (1-m.maxlead:0)
-        sim = 1+m.maxlag:NT-m.maxlead
-
-        #=== prepare lists of indices according to types of variables ===#
-        shkinds = findall(isshock, m.varshks)
-        nshks = length(shkinds)
-
-        varinds = findall(!isshock, m.varshks)
-        nvars = length(varinds)
-
-        # auxiliary vars are always last
-        nvarshks = nvars + nshks
-        varshkinds = 1:nvarshks
-
-        nauxs = length(m.auxvars)
-        auxinds = nvarshks .+ (1:nauxs)
-
-        nallvars = nvarshks + nauxs
-        allvarinds = 1:nallvars
-
-        if unant_given
-            #=== check compatibility of unanticipated inputs (data and plan) ===#
-            if p_unant.range != p_ant.range
-                error("Anticipated and unanticipated ranges don't match.")
+        # Default guess: linear interpolation initial -> terminal.
+        for v in 1:n_var
+            a = maxlag > 0 ? x_init[end, v] : (maxlead > 0 ? x_term[1, v] : 0.0)
+            b = maxlead > 0 ? x_term[1, v] : a
+            for t in 1:T
+                x_full[maxlag + t, v] = a + (b - a) * (t / (T + 1))
             end
-            if deviation_unant
-                @views exog_unant[:, logvars] .*= baseline[:, logvars]
-                @views exog_unant[:, .!logvars] .+= baseline[:, .!logvars]
-            end
-            exog_unant = ModelBaseEcon.update_auxvars(transform(exog_unant, m), m)
-            if size(exog_unant) != size(exog_ant)
-                error("Anticipated and unanticipated data  don't match.")
-            end
-        else
-            #=== prepare unanticipated data and plan (backward compatibility) ===#
-            p_unant = p_ant
-            p_ant = Plan(m, p_unant.range[sim])
-            exog_unant = copy(exog_ant)
-            exog_ant[sim, shkinds] .= 0
-            x[sim, shkinds] .= 0
-        end
-
-        x[init, allvarinds] = exog_ant[init, allvarinds]
-        t0 = first(sim)
-        T = last(sim)
-        if expectation_horizon === nothing
-            # when expectation_horizon is not given, we simulate each iteration until the end and with the true final condition
-            last_run = Workspace(; t=t0)
-            for t in sim
-                exog_inds = p_unant[t, Val(:inds)]
-                psim = Plan(m, t:T)
-                psim.exogenous .= p_ant.exogenous[begin+Int(t - t0):end, :]
-                if t !== t0 && (maximum(abs, x[t, exog_inds] - exog_unant[t, exog_inds]) < tol) #= && (psim[t0, Val(:inds)] == exog_inds) =#
-                    continue
-                end
-                setexog!(psim, t0, exog_inds)
-                gdata = StackedTimeSolverData(m, psim, fctype, variant)
-                x[t, exog_inds] = exog_unant[t, exog_inds]
-                # assign_exog_data!(x[psim.range,:], exog_data[psim.range,:], gdata)
-                sim_range = UnitRange{Int}(psim.range)
-                xx = view(x, sim_range, :)
-                assign_final_condition!(xx, exog_unant[sim_range, :], gdata)
-                if verbose
-                    @info "Simulating $(p_ant.range[t:T]) with $((tol, maxiter))" # anticipate expectation_horizon gdata.FC
-                end
-                converged = sim_solve!(xx, gdata, maxiter, tol, verbose, damping)
-                check_converged(converged, warn_maxiter)
-                last_run = Workspace(; t, xx, gdata)
-            end
-            if last_run.t > t0
-                local t = last_run.t
-                xx = last_run.xx
-                gdata = last_run.gdata
-                if verbose
-                    @info "Simulating $(p_ant.range[t:T]) with $((tol, maxiter))" # anticipate expectation_horizon gdata.FC
-                end
-                converged = sim_solve!(xx, gdata, maxiter, tol, verbose, damping)
-                check_converged(converged, warn_maxiter)
-            end
-        else
-            # when expectation_horizon is given,
-            # the first and last simulations use the true 
-            # simulation range and final condition, while the intermediate 
-            # simulations use expectation_horizon steps with fcnatural
-            if expectation_horizon == 0
-                expectation_horizon = length(sim)
-            elseif expectation_horizon < 10 * m.maxlead
-                @warn "Expectation horizon may be too short for this model. Consider setting it to at least $(10 * m.maxlead)."
-            end
-            x = [x; zeros(expectation_horizon, size(x, 2))]
-            ninit = length(init)
-            nterm = length(term)
-            # first simulation
-            let t = t0
-                # first run is with the full range, the true fctype, 
-                # and only the first period is imposed
-                exog_inds = p_unant[t, Val(:inds)]
-                psim = Plan(m, t:T)
-                psim.exogenous .= p_ant.exogenous[begin+Int(t - t0):end, :]
-                setexog!(psim, t0, exog_inds)
-                sdata = StackedTimeSolverData(m, psim, fctype, variant)
-                x[t, exog_inds] = exog_unant[t, exog_inds]
-                sim_range = UnitRange{Int}(psim.range)
-                xx = view(x, sim_range, :)
-                assign_final_condition!(xx, exog_unant[sim_range, :], sdata)
-                if verbose
-                    @info "Simulating $(p_ant.range[t:T])" # anticipate expectation_horizon sdata.FC
-                end
-                converged = sim_solve!(xx, sdata, maxiter, tol, verbose, damping)
-                check_converged(converged, warn_maxiter)
-            end
-            # intermediate simulations
-            last_t::Int64 = t0
-            psim = Plan(m, 0:expectation_horizon-1)
-            sdata = StackedTimeSolverData(m, psim, fcnatural, variant)
-            for t in sim[2:end]
-                exog_inds = p_unant[t, Val(:inds)]
-                # we need to run a simulation if a variable is exogenous, or if a shock value is not zero
-                # these intermediate simulations are always with fcnatural, 
-                #       have length equal to expectation_horizon and 
-                #       only the first period is imposed
-                if (maximum(abs, x[t, exog_inds] - exog_unant[t, exog_inds]) < tol) #= && (exog_inds == shkinds) =#
-                    continue
-                end
-                psim1 = copy(psim)
-                # the range of psim1 might extend beyond the range of p_ant.
-                # we copy from p_ant as far as we have and copy the last line beyond that
-                tmp_rng = t:min(t + expectation_horizon - 1, T)
-                psim1.exogenous[t0.+(0:length(tmp_rng)-1), :] = p_ant.exogenous[tmp_rng, :]
-
-                # ===> must leave the psim1 plan empty beyond the end of p_ant
-                # becasue we don't have data in exog_and for any exogenized
-                # variables.
-                # #=
-                # for tt = length(tmp_rng)+1:expectation_horizon
-                #     psim1.exogenous[t0+tt, :] .= p_ant.exogenous[T, :]
-                # end
-                # =#
-
-                setexog!(psim1, t0, exog_inds)
-                update_plan!(sdata, m, psim1)
-                # note that the range always goes from 0 to expectation_horizon-1, 
-                # so we need to add t in order to get the correct set of rows of x
-                sim_range = t .+ UnitRange{Int}(psim.range)
-                xx = view(x, sim_range, :)
-                # The initial conditions are already set
-                # The exogenous values are already set as well, except for the first period
-                # In other words, we only need to impose the first period here
-                xx[t0, exog_inds] = exog_unant[t, exog_inds]
-                # Update the final conditions (the second argument is not used with fcnatural)
-                assign_final_condition!(xx, zeros(0, nallvars), sdata)
-                if verbose
-                    @info("Simulating $(p_ant.range[t] .+ (0:expectation_horizon - 1))") # anticipate expectation_horizon sdata.FC
-                end
-                converged = sim_solve!(xx, sdata, maxiter, tol, verbose, damping)
-                check_converged(converged, warn_maxiter)
-                last_t = t  # keep track of last simulation time
-            end
-            # last simulation
-            if last_t > t0
-                # do we need to re-run the last simulation?
-                # if it didn't reach T, then yes
-                # if the final condition is not fcnatural, then yes
-                if (last_t + expectation_horizon != T) || (fctype != fcnatural)
-                    psim = Plan(m, min(last_t + 1, T):T)
-                    psim.exogenous .= p_ant.exogenous[end.+(1-length(psim.range):0), :]
-                    # there are no unanticipated shocks in this simulation
-                    sdata = StackedTimeSolverData(m, psim, fctype, variant)
-                    # the initial conditions and the exogenous data are already in x
-                    # we only need the final conditions
-                    sim_range = UnitRange{Int}(psim.range)
-                    xx = view(x, sim_range, :)
-                    assign_final_condition!(xx, exog_unant[sim_range, :], sdata)
-                    if verbose
-                        @info "Simulating $(p_ant.range[last_t + 1:T])" # anticipate expectation_horizon sdata.FC
-                    end
-                    converged = sim_solve!(xx, sdata, maxiter, tol, verbose, damping)
-                    check_converged(converged, warn_maxiter)
-                end
-            end
-            # x = x[begin:end-expectation_horizon, :]
         end
     end
 
-    x = x[data_axes...]
-    x .= inverse_transform(x, m)
-    if deviation
-        @views x[:, logvars] ./= baseline[:, logvars]
-        @views x[:, .!logvars] .-= baseline[:, .!logvars]
+    R = Vector{Float64}(undef, T * plan.n_eq)
+    iter = 0
+    converged = false
+    lv = Val(linsolve)
+    lstate = _init_linsolve(lv)
+    try
+        while iter < maxiter
+            iter += 1
+            stacked_RJ!(R, x_full, e_full, plan)
+            rnorm = norm(R, Inf)
+            verbose && @info "stacked iter $iter" rnorm
+            if rnorm < tol
+                converged = true
+                break
+            end
+            Δ, lstate = _solve_jacobian(lv, plan.J, R, lstate)
+            @inbounds for v in 1:n_var, t in 1:T
+                x_full[maxlag + t, v] -= Δ[_xidx(t, v, T)]
+            end
+            if norm(Δ, Inf) < tol
+                stacked_residual!(R, x_full, e_full, plan)
+                converged = norm(R, Inf) < tol
+                break
+            end
+        end
+    finally
+        _finalize_linsolve!(lv, lstate)
     end
-
-    return x
+    return x_full, converged, iter
 end
-
-

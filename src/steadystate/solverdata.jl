@@ -1,242 +1,127 @@
-##################################################################################
-# This file is part of StateSpaceEcon.jl
-# BSD 3-Clause License
-# Copyright (c) 2020-2022, Bank of Canada
-# All rights reserved.
-##################################################################################
-
-
-"""
-    SolverData
-
-A data structure used during the solution of the steady state problem.
-It contains some current state information and some buffers.
-
-!!! warning
-    This is an internal data structure. Do not use directly.
-
-### Why is this necessary?
-The solution of the steady state problem is done in steps:
-  1. The user sets the initial guess. This can be done with either
-     `initial_sstate!` or `clear_sstate!`
-  2. Pre-solve step. In this step we look for equations that have only one
-     unknown and attempt to solve it. If successful, the unknown is marked as
-     "solved" and is not an unknown anymore, also the equation is marked as
-     "solved" and is not considered anymore. The process repeats for as long as
-     it keeps solving.
-  3. Solve step. This is where we solve the non-linear system composed of the
-     remaining equations for the remaining variables.
-
-This data structure keeps track of which unknowns and equations are solved and
-which remain to be solved. It also holds an indexing map that translates the
-indexes of the variables and equations we solve for to their original indexes in
-the full steady state system.
-
-### Fields
-  * `point` - a buffer for the current solution values. Some of these may be
-    presolved, which are kept fixed while solving the system, while the rest are
-    updated during solver iterations. The length equals the total number of
-    steady state variables.
-  * `resid` - a buffer for the current residual vector. The entries
-    corresponding to presolved equations would normally be all zeros, while the
-    ones corresponding to "active" equations would be updated during solver
-    iterations. Lentgh equals the total number of steady state equations.
-  * `solve_var` - a Boolean vector, same size as `point`. Value of `true` means
-    that the unknown is "active", while `false` indicates that it has been
-    pre-solved.
-  * `solve_eqn` - a Boolean vector, same size as `resid`. Value of `true` means
-    that the equation is "active", while `false` indicates that it has been
-    pre-solved.
-  * `vars_index` - an Integer vector, same length as `point`. Entries
-    corresponding to pre-solved variables hold zeros. Entries for active vars
-    are numbered sequentially from 1 to `nvars`
-  * `eqns_index` - an Integer vector, same length as `resid`. Presolved
-    equations have a zero here, while active equations are numbered sequentially
-    from 1 to `neqns`.
+# ----------------------------------------------------------------------
+# SteadyStateProblem - precomputed wiring from a model to the SS Newton
+#
+# At steady state every variable is time-invariant: x[t-k] = x[t] = x[t+k]
+# = x_ss[i]. Shocks are zero. So for each equation we evaluate
+#     R_i(x_ss, p) = eq.eval_resid(x_eqn, p)
+# where x_eqn[k] = x_ss[var_idx[k]] if tsrefs[k].name is a variable, else 0.0.
+#
+# The Jacobian row in the global `n_eq x n_var` system is built by
+# summing gradient entries across offsets of the same variable.
+# ----------------------------------------------------------------------
 
 """
-struct SolverData
-    "Buffer holding the current solution."
-    point::Vector{Float64}
-    resid::Vector{Float64}
-    "`true` for active vars and `false` for pre-solved vars."
-    solve_var::Vector{Bool}
-    "`true` for active equations and `false` for pre-solved equations."
-    solve_eqn::Vector{Bool}
-    "Sequential indexes of active vars. Pre-solved vars have index 0."
-    vars_index::Vector{Int64}
-    "Sequential indexes of active equations. Pre-solved equations have index 0."
-    eqns_index::Vector{Int64}
-    "The model equations to solve"
-    alleqns::Vector{SteadyStateEquation}
+Mapping from per-equation `x` slot to global variable index. `nothing`
+means this slot is a shock (held at zero in SS).
+"""
+const SlotMap = Vector{Union{Int, Nothing}}
+
+struct SteadyStateProblem
+    model::ModelBaseEcon.CompiledModel
+    n_var::Int
+    n_eq::Int                                 # auto-derived equation count
+    n_ss_user::Int                            # user-supplied SS equation count
+    var_index::Dict{Symbol, Int}              # variable name -> index in x_ss
+    slot_maps::Vector{SlotMap}                # per-(auto)equation: x slot -> var index
+    ss_user_slot_maps::Vector{SlotMap}        # per-user-SS-eqn: x slot -> var index
+    param_values::Vector{Float64}             # flat root-param vector
 end
 
-function Base.getproperty(sd::SolverData, pname::Symbol)
-    if pname == :nvars
-        return sum(getfield(sd, :solve_var))
-    elseif pname == :neqns
-        return sum(getfield(sd, :solve_eqn))
-    else
-        return getfield(sd, pname)
+"""
+    n_total_eq(prob) -> Int
+
+Total row count in the augmented SS system (auto-derived equations +
+user-supplied `@steadystate` constraints). When this exceeds `n_var`,
+the system is over-determined and `sssolve!` drops to a least-squares
+step.
+"""
+n_total_eq(prob::SteadyStateProblem) = prob.n_eq + prob.n_ss_user
+
+"""
+    SteadyStateProblem(compiled::CompiledModel)
+
+Build the precomputed mapping. Parameter values are read from the
+underlying `ModelDef` (via `compiled.defs.params`) and resolved through
+the link table. `compiled.param_layout` defines the canonical order.
+"""
+function SteadyStateProblem(compiled::ModelBaseEcon.CompiledModel)
+    def = compiled.defs
+    n_var = length(def.vars)
+    n_eq = length(compiled)
+
+    var_index = Dict{Symbol, Int}()
+    for (i, v) in pairs(def.vars)
+        var_index[v.name] = i
     end
+    shock_names = Set(s.name for s in def.shocks)
+
+    slot_maps = SlotMap[]
+    for eqn in compiled.eqns
+        sm = SlotMap(undef, eqn.n_x)
+        for (k, ref) in pairs(eqn.tsrefs)
+            if haskey(var_index, ref.name)
+                sm[k] = var_index[ref.name]
+            elseif ref.name in shock_names
+                sm[k] = nothing
+            else
+                error("steady-state: equation references unknown name `$(ref.name)`")
+            end
+        end
+        push!(slot_maps, sm)
+    end
+
+    # User-supplied @steadystate constraints. The kernel slot order
+    # matches the same tsrefs convention as dynamic equations.
+    ss_user_slot_maps = SlotMap[]
+    for sseq in compiled.ss_eqns
+        sm = SlotMap(undef, sseq.eqn.n_x)
+        for (k, ref) in pairs(sseq.eqn.tsrefs)
+            if haskey(var_index, ref.name)
+                sm[k] = var_index[ref.name]
+            elseif ref.name in shock_names
+                sm[k] = nothing
+            else
+                error("steady-state: @steadystate equation $(sseq.name) " *
+                      "references unknown name `$(ref.name)`")
+            end
+        end
+        push!(ss_user_slot_maps, sm)
+    end
+    n_ss_user = length(ss_user_slot_maps)
+
+    param_values = _resolve_param_values(def, compiled.param_layout)
+
+    total_eq = n_eq + n_ss_user
+    if total_eq < n_var
+        error("steady-state: under-determined system (n_eq=$n_eq, n_ss_user=$n_ss_user, " *
+              "n_var=$n_var). Add @steadystate constraints to close the system.")
+    end
+
+    return SteadyStateProblem(compiled, n_var, n_eq, n_ss_user, var_index,
+                               slot_maps, ss_user_slot_maps, param_values)
 end
 
-Base.propertynames(::SolverData) = (:nvars, :neqns, fieldnames(SolverData)...)
-
-"""
-    SolverData(model, presolve=Val(false); <options>)
-
-Construct a SolverData instance from all variables and equations in the model,
-ignoring anything pre-solved.
-
-### Options
-  * `verbose::Bool` - if not specified it's taken from the model options.
-  * `tol::Float64` - desired tolerance when checking the residual of presolved
-    equation.
-  * `presolve::Bool` - if `false`, any pre-solved information is ignored and the
-    solver data is set up to solve all equations for all variables.
-"""
-function SolverData(model::Model; presolve::Bool=true, 
-            verbose::Bool=model.options.verbose,
-            tol::Float64=model.options.tol
-)
-    # constructor where we're solving all equations for all variables
-    local sstate = model.sstate
-    local alleqns = collect(values(ModelBaseEcon.alleqns(sstate)))
-    local neqns = length(alleqns)
-    local nvars = length(sstate.values)
-    sd = SolverData(copy(model.sstate.values), Vector{Float64}(undef, neqns),   # point and resid
-                    Vector{Bool}(undef, nvars), Vector{Bool}(undef, neqns),     # solve_var and solve_eqn
-                    Vector{Int64}(undef, nvars), Vector{Bool}(undef, neqns),    # vars_index and eqns_index
-                    alleqns
-    )
-    if presolve
-        # active vars are the ones with `sstate.mask` equal to `false`
-        sd.solve_var .= .! sstate.mask
-        # active equations are the ones that have any active vars
-        for (i, eqn) in enumerate(sd.alleqns)
-            sd.solve_eqn[i] = any(sd.solve_var[eqn.vinds])
-        end
-        # compute the residual at the initial point.
-        global_SS_R!(sd.resid, sd.point, sd.alleqns)
-        # collect the indexes of pre-solved equation with non-zero residuals.
-        bad_eqn_inds = findall(@. (!sd.solve_eqn) & (abs(sd.resid) > tol))
-        if !isempty(bad_eqn_inds)
-            # Sort so that largest residuals are at the top
-            sort!(bad_eqn_inds, lt=(l, r) -> abs(sd.resid[l]) > abs(sd.resid[r]))
-            if verbose
-                # print the list of bad equations
-                sep = "\n    "
-                bad_eqn_str = join(("E$i  res=$(sd.resid[i])  $(geteqn(i, sstate))" for i in bad_eqn_inds), sep)
-                @warn "The following presolved equations are not satisfied.$(sep)$(bad_eqn_str)"
-            end
-
-            # Mark all bad equations and *all* their variables as active
-            sd.solve_eqn[bad_eqn_inds] .= true
-            for eqn in sd.alleqns[bad_eqn_inds]
-                sd.solve_var[eqn.vinds] .= true
-            end
-
-            # Equations that are still pre-solved must have only pre-solved variables
-            for eqn in sd.alleqns[.!sd.solve_eqn]
-                sd.solve_var[eqn.vinds] .= false
-            end
-
-            # All masked variables (where sstate.mask == true) are still inactive as well
-            sd.solve_var[sstate.mask] .= false
-
-            # # if ssZeroSlope, make sure any slopes that were marked as active are restored.
-            # if model.flags.ssZeroSlope
-            #     sd.solve_var[2:2:end] .= false
-            # end
-        end
-    else
-        if model.flags.ssZeroSlope
-            # ssZeroSlope means that all slopes are 0, so only the levels are active.
-            sd.solve_var[1:2:end] .= true
-            sd.solve_var[2:2:end] .= false
+# Resolve every root parameter to a Float64 by walking the link table
+# numerically. Linked params have already been substituted away from
+# the root layout (they don't appear), but their *values* don't matter
+# for SS because the kernel residual was rewritten to reference root
+# params only. We need the numeric values of the root params here.
+function _resolve_param_values(def::IR.ModelDef,
+                                layout::Vector{Symbolic.ParamRef})
+    by_name = Dict{Symbol, IR.ParamDecl}()
+    for p in def.params
+        by_name[p.name] = p
+    end
+    vals = Vector{Float64}(undef, length(layout))
+    for (i, ref) in pairs(layout)
+        p = by_name[ref.name]
+        if p.kind === IR.PARAM_SCALAR
+            vals[i] = Float64(p.value)
+        elseif p.kind === IR.PARAM_ARRAY
+            vals[i] = Float64(p.value[ref.index])
         else
-            sd.solve_var .= true
+            error("root layout should only hold scalar/array params, got $(p.kind)")
         end
-        # all shocks and exogenous are pre-solved
-        for (i,v) in enumerate(model.allvars)
-            if isshock(v) || isexog(v)
-                sd.solve_var[2i .+ (-1:0)] .= false
-            elseif issteady(v)
-                # steady have presolved slopes
-                sd.solve_var[2i] = false
-            end
-        end
-        # all equations are active regardless.
-        sd.solve_eqn .= true
-        # compute the residual at the initial point.
-        global_SS_R!(sd.resid, sd.point, sd.alleqns)
     end
-    sd.vars_index .= 0
-    sd.vars_index[sd.solve_var] .= 1:sum(sd.solve_var)
-    sd.eqns_index .= 0
-    sd.eqns_index[sd.solve_eqn] .= 1:sum(sd.solve_eqn)
-    return sd
+    return vals
 end
-@assert precompile(SolverData, (Model,))
-
-
-"""
-    R, J = global_SS_RJ(point, sd::SolverData)
-
-When applied to a solver data, computes the residual and Jacobian of the active
-set of equations with respect to the active set of variables.
-"""
-function global_SS_RJ(point::AbstractVector{Float64}, sd::SolverData)
-    sd.point[sd.solve_var] .= point
-    R = zeros(sd.neqns)
-    J = zeros(sd.neqns, sd.nvars)
-    if sd.neqns == 0
-        if sd.nvars > 0
-            # Show an error message, but no exception is thrown
-            @error "System is underdetermined"
-        end
-        return R, J
-    end
-    for (i, (solve, ind, eqn)) in enumerate(zip(sd.solve_eqn, sd.eqns_index, sd.alleqns))
-        solve || continue
-        rr, jj = try
-            invokelatest(eqn.eval_RJ, sd.point[eqn.vinds])
-        catch
-            (NaN64, fill(NaN64, size(eqn.vinds)))
-        end
-        (isnan(rr) || isinf(rr)) && inadmissible_error(i, eqn, sd.point, rr)
-        any(@. isnan(jj) | isinf(jj)) && inadmissible_error(i, eqn, sd.point, jj)
-        R[ind] = rr
-        # assign jj to the `ind`-th row in J.
-        # jj contains the entire gradient. we need only the partials w.r.t. the active variables
-        l_active = sd.solve_var[eqn.vinds]  # local mask the active variables
-        l_index = sd.vars_index[eqn.vinds]  # local set of indexes (only active are valid, pre-solved are zero)
-        J[ind, l_index[l_active]] .= jj[l_active]
-    end
-    return R, J
-end
-@assert precompile(global_SS_RJ, (Vector{Float64}, SolverData))
-
-"""
-    R, J = global_SS_RJ(point, sd::SolverData)
-
-When a solver data is given, we compute the residual of the active equations
-only.
-"""
-function global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64},  sd::SolverData)
-    sd.point[sd.solve_var] .= point
-    for (i, (solve, ind, eqn)) in enumerate(zip(sd.solve_eqn, sd.eqns_index, sd.alleqns))
-        solve || continue
-        rr = try
-            invokelatest(eqn.eval_resid, sd.point[eqn.vinds])
-        catch
-            NaN64
-        end
-        (isnan(rr) || isinf(rr)) && inadmissible_error(i, eqn, sd.point, rr)
-        resid[ind] = rr
-    end
-    return nothing
-end
-@assert precompile(global_SS_R!, (Vector{Float64}, Vector{Float64}, SolverData))
-

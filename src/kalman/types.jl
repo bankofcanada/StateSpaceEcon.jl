@@ -1,9 +1,6 @@
-##################################################################################
-# This file is part of StateSpaceEcon.jl
-# BSD 3-Clause License
-# Copyright (c) 2020-2025, Bank of Canada
-# All rights reserved.
-##################################################################################
+# ----------------------------------------------------------------------
+# Kalman model + workspace types.
+# ----------------------------------------------------------------------
 
 ###############################################################################
 #    KFLinearModel
@@ -74,12 +71,12 @@ kf_linear_model(m::KFLinearModel) = deepcopy(m)
 kf_state_noise_shaping(m::KFLinearModel) = m.G isa AbstractMatrix
 
 ###############################################################################
-#    KFLinearModel
+#    KFilter
 ###############################################################################
 
 """
-    struct KFilter{ET<:Real,NS,NO} 
-        ... 
+    struct KFilter{ET<:Real,NS,NO}
+        ...
         kfd
     end
     kf = KFilter(kdf::AbstractKFData)
@@ -95,8 +92,6 @@ storage to be reused in multiple runs.
 
 """
 struct KFilter{ET<:Real,NS,NO}
-    # nx::Int
-    # ny::Int
     x::Vector{ET}
     Px::Matrix{ET}
     x_pred::Vector{ET}
@@ -105,13 +100,11 @@ struct KFilter{ET<:Real,NS,NO}
     y_pred::Vector{ET}
     Py_pred::Matrix{ET}
     Pxy_pred::Matrix{ET}
-    # K::Matrix{ET}
     x_smooth::Vector{ET}
     Px_smooth::Matrix{ET}
     Pxx_smooth::Matrix{ET}
     y_smooth::Vector{ET}
     Py_smooth::Matrix{ET}
-    # J::Matrix{ET}
     ###### general use storage
     A_x
     A_xy::Matrix{ET}
@@ -150,10 +143,10 @@ end
 Base.eltype(::KFilter{ET}) where {ET} = ET
 function Base.getproperty(kf::KFilter, name::Symbol)
     if name == :J
-        name = Pxx_smooth   # J and Pxx_smooth occupy the same memory because Pxx_pred is only used to compute J
+        name = :Pxx_smooth   # J and Pxx_smooth occupy the same memory because Pxx_pred is only used to compute J
     end
     if name == :K
-        name = :Pxy_pred    # K abd Pxy_pred occupy the same memory because Pxy_pred is only used to compute K
+        name = :Pxy_pred    # K and Pxy_pred occupy the same memory because Pxy_pred is only used to compute K
     end
     if name == :kfd
         # unpack the Ref
@@ -170,11 +163,10 @@ kf_time_periods(kf::KFilter) = kf_time_periods(kf.kfd)
 
 function Base.setproperty!(kf::KFilter, name::Symbol, val)
     if name == :kfd && val isa AbstractKFData
-        # we're allowed to change the data reference. 
+        # we're allowed to change the data reference.
         setindex!(getfield(kf, :kfd), val)
     else
         # the rest is immutable, so let Julia handle the error message
         setfield!(kf, name, val)
     end
 end
-

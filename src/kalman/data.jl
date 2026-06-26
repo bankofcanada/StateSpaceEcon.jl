@@ -1,18 +1,16 @@
-##################################################################################
-# This file is part of StateSpaceEcon.jl
-# BSD 3-Clause License
-# Copyright (c) 2020-2025, Bank of Canada
-# All rights reserved.
-##################################################################################
-
-# this file declares the data structures used by the
-# Kalman filter algorithms in this module
-
+# ----------------------------------------------------------------------
+# Kalman data containers.
+#
+# Container equality is directly testable with `≈` on the result arrays.
+#
+# This file declares the data structures used by the Kalman filter
+# algorithms in this module.
+# ----------------------------------------------------------------------
 
 """
     AbstractKFData{T,RANGE,NS,NO}
 
-The parent class for all Kalman filter data containers. 
+The parent class for all Kalman filter data containers.
 
 `T<:Real` - type of values, typically `Float64`.
 
@@ -41,7 +39,7 @@ following fields:
 * `y_smooth` - smoothed observation, i.e. E[yₜ | all y]
 * `Py_smooth` - covariance of smoothed observation
 * `J` - Kalman smoother matrix
-* `loglik` - log likelihood based on Kalman filter 
+* `loglik` - log likelihood based on Kalman filter
 * `res2` - sum of squared observation residuals (error_y' * error_y)
 
 """
@@ -57,35 +55,10 @@ end
 
 Base.eltype(::Type{<:AbstractKFData{T}}) where {T} = @isdefined(T) ? T : Real
 
-
-function TimeSeriesEcon.compare_equal(x::KFD, y::KFD; kwargs...) where {KFD<:AbstractKFData}
-    equal = true
-    for prop in propertynames(x)
-        if !compare(getproperty(x, prop), getproperty(y, prop), prop; kwargs...)
-            equal = false
-            break
-        end
-    end
-    return equal
-end
-
-function TimeSeriesEcon.compare_equal(x::AbstractKFData, y::AbstractKFData; kwargs...)
-    equal = true
-    for prop in union(propertynames(x), propertynames(y))
-        propx = hasproperty(x, prop) ? getproperty(x, prop) : missing
-        propy = hasproperty(y, prop) ? getproperty(y, prop) : missing
-        if !compare(propx, propy, prop; kwargs...)
-            equal = false
-            break
-        end
-    end
-    return equal
-end
-
 """
     struct _KFValueInfo ... end
 
-Internal struct - holds information about a given filed, such as dimensions and
+Internal struct - holds information about a given field, such as dimensions and
 description.
 """
 struct _KFValueInfo
@@ -272,7 +245,6 @@ end
     Py_pred
     x
     Px
-    # Ly_pred
     aux_ZᵀPy⁻¹
     K
     error_y
@@ -294,7 +266,6 @@ end
     Px_pred
     y_pred
     Py_pred
-    # Ly_pred
     aux_ZᵀPy⁻¹
     Pxy_pred
     x
@@ -338,4 +309,3 @@ macro kfd_view(kfd, t, value::Symbol)
         view($kfd, $t, Val($(Meta.quot(value))))
     ))
 end
-

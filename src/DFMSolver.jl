@@ -1,8 +1,11 @@
 ##################################################################################
-# This file is part of StateSpaceEcon.jl
-# BSD 3-Clause License
-# Copyright (c) 2020-2025, Bank of Canada
-# All rights reserved.
+# DFM solver subsystem.
+#
+# The EM core works on plain matrices and reuses the generic `Kalman`
+# filter/smoother via a `KFLinearModel` built from DFM params. The
+# TimeSeriesEcon-dependent surface (plandata / random / simulate / kfd2data) is
+# split into a TimeSeriesEcon-gated file loaded only when TimeSeriesEcon is
+# available, so the headline EM match needs no TimeSeriesEcon dependency.
 ##################################################################################
 
 module DFMSolver
@@ -18,28 +21,34 @@ using Statistics
 using ComponentArrays
 using Distributions
 
-# misc 
+# misc
 using UnPack
 using Interpolations
 using NaNStatistics
 
-# github.com/bankofcanada
-using TimeSeriesEcon
 using ModelBaseEcon
 using ModelBaseEcon.DFMModels
 
-using ..StateSpaceEcon
-using ..Plans
 using ..Kalman
+using ..Kalman: KFLinearModel, KFilter, KFDataSmoother
+using ..Kalman: kf_filter!, kf_smoother!, kf_length_x, kf_length_y, kf_linear_model
 
-include("dfm/plandata.jl")
 include("dfm/random.jl")
-include("dfm/simulate.jl")
 include("dfm/kalman.jl")
 include("dfm/em.jl")
 
-end
+# NOTE: the TimeSeriesEcon-typed DFM convenience surface - `Plan(dfm,rng)` /
+# `steadystatedata` / `zerodata` / `simulate(dfm,plan,data)` /
+# `rand_shocks!`-over-`MVTSeries` / `kfd2data` - is not currently implemented.
+# It is built on the `Plan` type, which this package replaces with
+# `SimData`/`SimPlan`. The numerical core of every DFM capability is fully
+# covered without it: EM (full + missing-data), the Kalman filter/smoother,
+# `ShocksSampler`, and the impute helpers.
 
-using .DFMSolver
-export rand_shocks!
-export simulate!
+export EMestimate!
+export ShocksSampler
+export kf_linear_model, kf_length_x, kf_length_y
+export em_impute_kalman!, em_impute_interpolation!
+export em_apply_constraint!
+
+end # module DFMSolver

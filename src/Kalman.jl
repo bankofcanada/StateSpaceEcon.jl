@@ -1,21 +1,22 @@
-##################################################################################
-# This file is part of StateSpaceEcon.jl
-# BSD 3-Clause License
-# Copyright (c) 2020-2025, Bank of Canada
-# All rights reserved.
-##################################################################################
-
+# ----------------------------------------------------------------------
+# Kalman filter / smoother.
+#
+# A Durbin-Koopman filter + smoother for a stationary *linear*
+# state-space model - pure linear algebra, no contact with the symbolic
+# core.
+#
+# Array equality is directly testable with `≈` on the result arrays.
+# The `@generated` data-container machinery, the `KFLinearModel`
+# interface, the `KFData{Filter,Smoother}{,Ex}` variants, and the
+# `@kfd_*` macros are all provided here. `MacroTools` is used by
+# `@kf_data_struct`.
+# ----------------------------------------------------------------------
 
 module Kalman
 
 using LinearAlgebra
 using SparseArrays
 
-using TimeSeriesEcon
-using ModelBaseEcon
-using ..StateSpaceEcon
-
-using UnPack
 using MacroTools
 
 include("kalman/api.jl")
@@ -24,10 +25,8 @@ include("kalman/types.jl")
 include("kalman/helpers.jl")
 include("kalman/derbin_koopman.jl")
 include("kalman/main.jl")
-# include("kalman/filter.jl")
-# include("kalman/smoother.jl")
 
-# the model API 
+# the model API
 export kf_length_x, kf_length_y, kf_is_linear
 export kf_linear_model
 export KFLinearModel
@@ -74,10 +73,9 @@ function kf_linear_model(model, user_data...)
     #
     return KFLinearModel(mu, H, F, G, Q, R)
 end
-
-
+```
 """
 Kalman
 
 
-end
+end # module Kalman

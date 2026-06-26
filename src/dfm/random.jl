@@ -4,8 +4,15 @@
 # Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
+# The TimeSeriesEcon-free part of the DFM random surface - the `ShocksSampler`
+# (a Distributions.Sampleable over the model shocks) and its constructors /
+# `_rand!` / `_scale`. The `rand!`/`rand_shocks!` methods that write into a
+# TimeSeriesEcon `SimData`/`MVTSeries` over a calendar range live in a
+# TimeSeriesEcon-gated file (loaded only when TimeSeriesEcon is available), since
+# this package works in plain matrices and does not mirror the `Plan` API.
+##################################################################################
 
-import ModelBaseEcon.DFMModels.SymVec
+import ModelBaseEcon.DFMModels: SymVec
 
 export ShocksSampler
 struct ShocksSampler{M,F} <: Distributions.Sampleable{Multivariate,Continuous}
@@ -16,7 +23,7 @@ end
 
 ShocksSampler(names::SymVec, Sigma::AbstractVecOrMat) = ShocksSampler(Symbol[Symbol(n) for n in names], Sigma)
 ShocksSampler(names::Vector{Symbol}, variances::AbstractVector) = ShocksSampler(names, Diagonal(variances))
-function ShocksSampler(names::Vector{Symbol}, Sigma::AbstractMatrix) 
+function ShocksSampler(names::Vector{Symbol}, Sigma::AbstractMatrix)
     isdiag(Sigma) && return ShocksSampler(names, Diagonal(diag(Sigma)))
     issymmetric(Sigma) && return ShocksSampler(names, Symmetric(Sigma))
     # ? should this be an ArgumentError?
@@ -63,40 +70,3 @@ function Distributions._rand!(rng::AbstractRNG, s::ShocksSampler, x::AbstractVec
     _scale(s, randn!(rng, x))
     return x
 end
-
-Distributions.rand!(rng::AbstractRNG, s::ShocksSampler, data::SimData) = Distributions.rand!(rng, s, :, data)
-function Distributions.rand!(rng::AbstractRNG, s::ShocksSampler, range::Union{Colon,AbstractUnitRange{<:MIT}}, data::SimData)
-    Distributions.rand!(rng, s, transpose(view(data, range, s.names).values))
-    return data
-end
-
-
-##################################################################################
-
-
-"""
-    rand_shocks!(dfm::DFM, plan, data)
-    rand_shocks!(dfm::DFM, range, data)
-
-Draw random values for the stochastic shocks in the model. The given `data` is
-modified in place. The random draws are written in `data` (columns corresponding
-to shocks and the rows corresponding to `range`) overwriting any data that may
-be in there already.
-
-If plan is given, then the effective range is the simulation portion of the
-plan, i.e. random value are not drawn over the periods for initial and final
-conditions.
-
-Return `data`.
-"""
-rand_shocks!
-export rand_shocks!
-
-rand_shocks!(dfm::DFM, args...) = rand_shocks!(Random.default_rng(), dfm, args...)
-rand_shocks!(s::ShocksSampler, args...) = rand_shocks!(Random.default_rng(), s, args...)
-rand_shocks!(rng::AbstractRNG, dfm::DFM, args...) = rand_shocks!(rng, ShocksSampler(dfm), args...)
-rand_shocks!(rng::AbstractRNG, dfm::DFM, plan::Plan, data::MVTSeries) = rand_shocks!(rng, ShocksSampler(dfm), firstdate(plan)+lags(dfm):lastdate(plan)-leads(dfm), data)
-function rand_shocks!(rng::AbstractRNG, s::ShocksSampler, range::AbstractUnitRange, data::MVTSeries)
-    Distributions.rand!(rng, s, range, data)
-end
-

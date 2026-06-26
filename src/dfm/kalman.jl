@@ -4,11 +4,12 @@
 # Copyright (c) 2020-2025, Bank of Canada
 # All rights reserved.
 ##################################################################################
-
-# this file contains implementation of the api of ..Kalman for 
-# DFMModels
-
-##
+# The bridge that implements the `..Kalman` API for `DFM` models and builds a
+# `KFLinearModel` from the DFM parameters. The `kfd2data` MVTSeries converter
+# (the only TimeSeriesEcon-dependent part) lives in a TimeSeriesEcon-gated file;
+# everything here is matrix-level and TimeSeriesEcon-free, which is all the EM
+# core needs.
+##################################################################################
 
 Kalman.kf_is_linear(M::DFM, args...) = true
 
@@ -27,21 +28,14 @@ Kalman.kf_state_noise_shaping(::DFM, user_data...) = false
 function Kalman.kf_linear_model(dfm::DFM{T}, args...) where {T}
     model = dfm.model
     params = dfm.params
-    return KFLinearModel(T, 
+    return KFLinearModel(T,
         DFMModels.get_mean(model, params),
         DFMModels.get_loading(model, params),
         DFMModels.get_transition(model, params),
-        one(T)*I,
+        one(T) * I,
         Diagonal(DFMModels.get_covariance(model, params, Val(:Observed))),
         DFMModels.get_covariance(model, params, Val(:State))
     )
-    # m = KFLinearModel(T, dfm, args...)
-    # DFMModels.get_mean!(m.mu, model, params)
-    # DFMModels.get_loading!(m.H, model, params)
-    # DFMModels.get_transition!(m.F, model, params)
-    # DFMModels.get_covariance!(m.Q, model, params, Val(:Observed))
-    # DFMModels.get_covariance!(m.R, model, params, Val(:State))
-    # return m
 end
 
 update_dfm_lm!(LM::KFLinearModel, M::DFM) = update_dfm_lm!(LM, M.model, M.params)
@@ -64,9 +58,9 @@ function update_dfm_params!(params::DFMParams, model::DFMModel, LM::KFLinearMode
     return params
 end
 
-
 #############################################################################
-# The following functions provide conversion from KFData to SimData
+# contemporaneous-state index extraction (used by kfd2data, and reusable for
+# factor-estimate extraction without the TimeSeriesEcon dependency).
 
 _dfm_contemp_states_inds(dfm::DFM) = _dfm_contemp_states_inds(dfm.model)
 function _dfm_contemp_states_inds(model::DFMModel)
@@ -81,35 +75,3 @@ function _dfm_contemp_states_inds(model::DFMModel)
     end
     return inds
 end
-
-export kfd2data
-function kfd2data(kfd::Kalman.AbstractKFData, which::Symbol,
-    dfm::DFM, range::AbstractUnitRange{<:MIT};
-    states_with_lags::Bool=true)
-
-    wstr = lowercase(string(which))
-    if startswith(wstr, "update") || startswith(wstr, "filter")
-        y = :y_pred  # we don't really have an updated y
-        x = :x
-    elseif startswith(wstr, "pred")
-        y = :y_pred
-        x = :x_pred
-    elseif startswith(wstr, "smooth")
-        y = :y_smooth 
-        x = :x_smooth
-    else
-        error("Unknown :$(which); try one of :updated, :predicted, :smoothed.")
-    end
-    if states_with_lags
-        data = hcat(transpose(getproperty(kfd, y)),
-            transpose(getproperty(kfd, x)))
-        return MVTSeries(range, [observed(dfm); DFMModels.states_with_lags(dfm)], data)
-    else
-        inds = _dfm_contemp_states_inds(dfm)
-        data = hcat(transpose(getproperty(kfd, y)),
-            transpose(getproperty(kfd, x)[inds, :]))
-        return MVTSeries(range, [observed(dfm); DFMModels.states(dfm)], data)
-    end
-end
-
-
