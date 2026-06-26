@@ -16,25 +16,25 @@
 # structure from the stacked-time `shock_decomp.jl` - no code is shared.
 #
 # Decomposition recursion: where the shocked path solves
-#     sol_t = MAT_n \ (RHS − MAT_x · e_t),
+#     sol_t = MAT_n \ (RHS - MAT_x * e_t),
 # the contributions matrix SD (rows = endog unknowns, cols = sources) is
 # propagated by the same linear operator:
-#     SD_RHS  = RbyZbb · SD_{t-1}              (state contributions roll forward)
-#     SD_RHS[:, shock_cols] −= MAT_x · diag(e_t − control_t)   (new shock input)
+#     SD_RHS  = RbyZbb * SD_{t-1}              (state contributions roll forward)
+#     SD_RHS[:, shock_cols] -= MAT_x * diag(e_t - control_t)   (new shock input)
 #     SD_t    = MAT_n \ SD_RHS
 # Initial conditions seed the `:init` column. By linearity the per-source
-# columns sum to the total shocked−control deviation; `:nonlinear` captures
+# columns sum to the total shocked-control deviation; `:nonlinear` captures
 # whatever residual the linear approximation leaves (zero here).
 # ----------------------------------------------------------------------
 
 """
 Result of a first-order shock decomposition. `source_names` lists the
-contribution columns in order `[:init, shocks…, :nonlinear]`. `contrib`
-maps each endogenous variable name to a `(maxlag + T + maxlead) × nsource`
+contribution columns in order `[:init, shocks..., :nonlinear]`. `contrib`
+maps each endogenous variable name to a `(maxlag + T + maxlead) x nsource`
 matrix; row `maxlag + t` holds period-`t` contributions. `shocked` and
 `control` are the two solver-space simulation arrays (level space after the
 caller's boundary conversion). For every variable `v` and period `t`,
-`sum(contrib[v][maxlag+t, :]) ≈ shocked[v_col][maxlag+t] − control[...]`.
+`sum(contrib[v][maxlag+t, :]) ≈ shocked[v_col][maxlag+t] - control[...]`.
 """
 struct FirstOrderShockDecompResult
     source_names::Vector{Symbol}
@@ -75,7 +75,7 @@ function first_order_shockdecomp(fom::FirstOrderModel,
     nendo = vm.nbck + vm.nfwd
     nex = vm.nex
 
-    # source columns: [:init, ex_vars at offset 0 (= shock names)…, :nonlinear]
+    # source columns: [:init, ex_vars at offset 0 (= shock names)..., :nonlinear]
     shock_sources = [v for (v, t) in vm.ex_vars if t == 0]
     source_names = Symbol[:init, shock_sources..., :nonlinear]
     nsrc = length(source_names)
@@ -102,7 +102,7 @@ function first_order_shockdecomp(fom::FirstOrderModel,
     for ind in ibck
         (gi, tt) = vm.inds_map[ind]
         sol_t[ind] = s_dev[tnow0 + tt, gi]
-        # init contribution = shocked − control at the initial period
+        # init contribution = shocked - control at the initial period
         SD_t[ind, 1] = s_dev[tnow0 + tt, gi] - c_dev[tnow0 + tt, gi]
     end
     # record the init seeds in the per-variable matrices (rows 1:maxlag)
@@ -158,7 +158,7 @@ function first_order_shockdecomp(fom::FirstOrderModel,
         end
     end
 
-    # nonlinear column = total deviation − sum of attributed sources
+    # nonlinear column = total deviation - sum of attributed sources
     for v in fom.model.defs.vars
         name = v.name
         gi = vm.vi[name]

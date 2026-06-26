@@ -182,7 +182,7 @@ function run_stoch_simulate_tests!()
     # ------------------------------------------------------------------
     # Seed/innovation reproducibility - same inputs => identical paths.
     # ------------------------------------------------------------------
-    @testset "reproducibility: same innovations ⇒ identical paths" begin
+    @testset "reproducibility: same innovations => identical paths" begin
         T = 20
         baseline, _ = _stoch_ss_baseline(compiled, ssvals, T, 1)
         shocks = zeros(3, 1, 5)
@@ -203,7 +203,7 @@ function run_stoch_simulate_tests!()
     # ------------------------------------------------------------------
     # Zero-shock determinism - every path equals the baseline exactly.
     # ------------------------------------------------------------------
-    @testset "zero shocks ⇒ paths equal baseline" begin
+    @testset "zero shocks => paths equal baseline" begin
         T = 15
         baseline, _ = _stoch_ss_baseline(compiled, ssvals, T, 1)
         shocks = zeros(2, 1, 4)            # all-zero innovations

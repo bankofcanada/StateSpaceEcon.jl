@@ -9,8 +9,8 @@
 # First-order simulation.
 #
 # The recursion works in deviation from the steady state. Per period t:
-#   RHS   = RbyZbb · bck_{t-1}                       (contribution of the state)
-#   sol_t = MAT_n \ (RHS − MAT_x · e_t)              (solve for the unknowns)
+#   RHS   = RbyZbb * bck_{t-1}                       (contribution of the state)
+#   sol_t = MAT_n \ (RHS - MAT_x * e_t)              (solve for the unknowns)
 # and the `(var, 0)` entries of sol_t are written back to the output.
 #
 # The simulation array `values` is in solver space and the unified
@@ -30,7 +30,7 @@
     first_order_simulate(fom::FirstOrderModel, values::AbstractMatrix) -> Matrix
 
 Simulate the first-order model forward. `values` is a `(maxlag + T + maxlead)
-× n_col` matrix in solver space and `[vars; shocks]` column order: rows
+x n_col` matrix in solver space and `[vars; shocks]` column order: rows
 `1:maxlag` are initial conditions, rows `maxlag+1 : maxlag+T` carry the
 exogenous shock data for the simulation periods, and (when `maxlead > 0`)
 the trailing rows hold the terminal exogenous data. Returns a new matrix of

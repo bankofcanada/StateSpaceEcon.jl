@@ -35,7 +35,7 @@ function run_timeseries_e2e!()
 
     if !_HAS_TSE
         @testset "TimeSeriesEcon unavailable" begin
-            @test_skip "TimeSeriesEcon not available — extension tests skipped"
+            @test_skip "TimeSeriesEcon not available - extension tests skipped"
         end
         return
     end

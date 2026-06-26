@@ -148,7 +148,7 @@ function run_frbus_var_e2e!()
 
     # Relative-aware cell comparison: FRBUS levels span interest rates
     # O(1) up to nominal GDP O(1e4), so an absolute bound alone is
-    # meaningless. Pass if |Δ| <= atol + rtol·|want|.
+    # meaningless. Pass if |Δ| <= atol + rtol*|want|.
     function compare(sol, ref_rows, label)
         worst_rel = 0.0; wt = 0; wj = 0; worst_abs = 0.0
         for t in 1:sim_T

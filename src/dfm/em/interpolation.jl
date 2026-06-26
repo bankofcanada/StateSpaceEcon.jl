@@ -24,7 +24,7 @@ however, this is neither checked nor enforced.
 function em_impute_kalman!(EY::AbstractMatrix{T}, Y::AbstractMatrix{T}, kfd::Kalman.AbstractKFData) where {T<:AbstractFloat}
     EY === Y && return EY
     # @assert EY[.!isnan.(Y)] == Y[.!isnan.(Y)]
-    YS = kfd.y_smooth  # this one is transposed (NO × NT)
+    YS = kfd.y_smooth  # this one is transposed (NO x NT)
     for i = axes(Y, 1)
         for j = axes(Y, 2)
             @inbounds yij = Y[i, j]

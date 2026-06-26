@@ -204,7 +204,7 @@ function dk_smoother!(kf::KFilter, mu, Z, T, H, Q, R, fwdstate::Bool)
     #    rₙ = 0,  Nₙ = 0
 
     # From Table 4.4 on p. 104
-    # Cov(aˢₜ, aˢⱼ) = Pₜ Lₜᵀ Lₜ₊₁ᵀ … Lⱼ₋₁ᵀ ( I - Nⱼ₋₁ Pⱼ) for j = t+1, ..., n
+    # Cov(aˢₜ, aˢⱼ) = Pₜ Lₜᵀ Lₜ₊₁ᵀ ... Lⱼ₋₁ᵀ ( I - Nⱼ₋₁ Pⱼ) for j = t+1, ..., n
     # for j = t + 1, we have
     #        Cov(aˢₜ, aˢₜ₊₁) = Pₜ Lₜᵀ ( I - Nₜ Pₜ₊₁ )
 

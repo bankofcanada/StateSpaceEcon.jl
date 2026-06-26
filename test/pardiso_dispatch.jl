@@ -105,7 +105,7 @@ function run_pardiso_dispatch_tests!()
     end
 
     if _HAS_PARDISO
-        @testset "Pardiso ↔ UMFPACK numerical match (gated)" begin
+        @testset "Pardiso <-> UMFPACK numerical match (gated)" begin
             _, plan = _build_ar1_plan(20)
             y_ss = 1.0 / (1 - 0.5)
             x_init = reshape([y_ss], 1, 1)

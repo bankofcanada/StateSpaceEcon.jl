@@ -97,7 +97,7 @@ function em_observed_block_loading_wks(on::Symbol, M::DFM, LM::KFLinearModel{T};
         if any(isnan, view(Λ, :, xinds[bcols]))
             NS = nstates(cb)
             # we take all columns of the components block;
-            # we assume lags(cb) ≥ NC (check is done before calling us); 
+            # we assume lags(cb) >= NC (check is done before calling us); 
             # we take NC lags 
             xinds_cb_estim = xinds[bcols[end-NS*NC+1:end]]
             Wb, qb = DFMModels.loadingcons(view(Λ, yinds, xinds_cb_estim), ob, cb)

@@ -35,7 +35,7 @@ struct QZResult
 end
 
 # `_diffg`: >0 for "stable" (|λ|>1 in this proxy), <0 otherwise.
-# Note the proxy is α_re² + α_im² − β², i.e. compares |α|² vs |β|², which
+# Note the proxy is α_re² + α_im² - β², i.e. compares |α|² vs |β|², which
 # sorts by the generalized eigenvalue magnitude |λ|² = |α|²/β².
 _diffg(qz::QZResult) = @. qz.α_re^2 + qz.α_im^2 - qz.β^2
 
@@ -44,7 +44,7 @@ _diffg(qz::QZResult) = @. qz.α_re^2 + qz.α_im^2 - qz.β^2
 
 Compute the QZ factorization of the pencil `(A, B)`. When `want_stable < 0`
 no reordering is done. When `want_stable >= 0`, the eigenvalues are sorted
-so the `want_stable` with the largest `|α|² − β²` (i.e. largest magnitude)
+so the `want_stable` with the largest `|α|² - β²` (i.e. largest magnitude)
 go into the top-left block and the rest into the bottom-right.
 
 `want_stable == 0` sorts strictly by sign of the proxy (cutoff at 0); a

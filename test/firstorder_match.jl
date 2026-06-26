@@ -83,7 +83,7 @@ function run_firstorder_match_tests!()
     # Internal consistency (no reference data needed): M solves, the
     # decision rule reproduces the published scalar recursion.
     # ------------------------------------------------------------------
-    @testset "M — solve + internal invariants" begin
+    @testset "M - solve + internal invariants" begin
         m = build_fo_M()
         prob = SteadyStateProblem(m)
         x_ss, conv, _ = sssolve!(prob; x0 = zeros(prob.n_var), tol = 1e-12)
@@ -103,7 +103,7 @@ function run_firstorder_match_tests!()
     # and the :nonlinear column is ~0. (No legacy capture for the fo
     # shockdecomp; the invariant is the correctness check.)
     # ------------------------------------------------------------------
-    @testset "E2 — shock-decomp invariants" begin
+    @testset "E2 - shock-decomp invariants" begin
         m = build_fo_E2()
         prob = SteadyStateProblem(m)
         x_ss, _, _ = sssolve!(prob; x0 = zeros(prob.n_var))
@@ -137,7 +137,7 @@ function run_firstorder_match_tests!()
     # Fuzz guard: a tiny parameter perturbation
     # must not flip the Blanchard-Kahn stable/unstable counts.
     # ------------------------------------------------------------------
-    @testset "M — QZ count stability under perturbation" begin
+    @testset "M - QZ count stability under perturbation" begin
         m = build_fo_M()
         prob = SteadyStateProblem(m)
         x_ss, _, _ = sssolve!(prob; x0 = zeros(prob.n_var))
@@ -170,7 +170,7 @@ function run_firstorder_match_tests!()
                  (build_fo_E2, "E2", Int[])]
 
         for (build, key, log_cols) in cases
-            @testset "$key — legacy match" begin
+            @testset "$key - legacy match" begin
                 refm = ref[key]
                 m = build()
                 prob = SteadyStateProblem(m)

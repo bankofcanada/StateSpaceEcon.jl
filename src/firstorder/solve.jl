@@ -8,7 +8,7 @@
 # ----------------------------------------------------------------------
 # First-order system assembly + solve.
 #
-# Builds the linearised system FWD·x[t+1] + BCK·x[t] + EX·e[t] = 0 from the
+# Builds the linearised system FWD*x[t+1] + BCK*x[t] + EX*e[t] = 0 from the
 # model's Jacobian at the steady state, runs the QZ decomposition, and
 # assembles the decision-rule matrices (RbyZbb, MAT) that drive the
 # per-period recursion in simulate.jl.
@@ -34,7 +34,7 @@ Global indexing (`vi`) is over the unified `[vars; shocks]` space, matching
 the SimData/SimPlan column order.
 """
 struct VarMaps
-    vi::Dict{Symbol, Int}            # var/shock name → global column index
+    vi::Dict{Symbol, Int}            # var/shock name -> global column index
     nfwd::Int
     nbck::Int
     nex::Int
@@ -45,7 +45,7 @@ struct VarMaps
     bck_inds::Dict{_VarLag, Int}
     fwd_inds::Dict{_VarLag, Int}     # indices continue from nbck
     ex_inds::Dict{_VarLag, Int}      # indices restart from 1
-    inds_map::Vector{Tuple{Int, Int}}  # fo-index → (global col, lag)
+    inds_map::Vector{Tuple{Int, Int}}  # fo-index -> (global col, lag)
 end
 
 function VarMaps(model::ModelBaseEcon.CompiledModel)
@@ -86,7 +86,7 @@ function VarMaps(model::ModelBaseEcon.CompiledModel)
         end
     end
 
-    # genuine variables → bck / fwd
+    # genuine variables -> bck / fwd
     for v in def.vars
         var = v.name
         lags  = get(lag_of,  var, 0)
@@ -153,7 +153,7 @@ function _assemble_jacobian(model::ModelBaseEcon.CompiledModel,
         if length(grad) != eqn.n_x
             resize!(grad, eqn.n_x)
         end
-        # per-slot SS point: var → its SS value, shock → 0
+        # per-slot SS point: var -> its SS value, shock -> 0
         x_eqn = Vector{Float64}(undef, eqn.n_x)
         for (k, ref) in pairs(eqn.tsrefs)
             gi = var_index[ref.name]
@@ -197,7 +197,7 @@ function fill_fosystem!(sys::FirstOrderSystem, JAC::SparseArrays.SparseMatrixCSC
     win = 1 + maxlag + maxlead
 
     n_var = length(model.defs.vars)
-    # inverse global-index → name
+    # inverse global-index -> name
     name_of = Vector{Symbol}(undef, n_var + length(model.defs.shocks))
     for (i, v) in pairs(model.defs.vars);   name_of[i] = v.name;          end
     for (i, s) in pairs(model.defs.shocks); name_of[n_var + i] = s.name;  end
@@ -230,7 +230,7 @@ function fill_fosystem!(sys::FirstOrderSystem, JAC::SparseArrays.SparseMatrixCSC
         end
     end
 
-    # auxiliary "link" rows tying multi-lag/lead copies + fwd↔bck cross-link
+    # auxiliary "link" rows tying multi-lag/lead copies + fwd<->bck cross-link
     eqn = length(model.eqns)
     for (var, tt) in vm.fwd_vars
         if tt == 0
@@ -340,7 +340,7 @@ end
 Solve the linear rational-expectations model around the steady state
 `x_ss_vars` (length `length(model.defs.vars)`, in solver space - i.e. the
 `@log`-variable entries are `log(level)`). Builds the canonical
-`FWD·x[t+1] + BCK·x[t] + EX·e[t] = 0` system from the model Jacobian at the
+`FWD*x[t+1] + BCK*x[t] + EX*e[t] = 0` system from the model Jacobian at the
 SS, runs QZ, and returns the decision rule.
 
 `p` (resolved parameter values) is taken from the model's `param_layout`.

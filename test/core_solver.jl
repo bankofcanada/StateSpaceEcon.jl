@@ -24,9 +24,9 @@ function run_core_solver!()
     # Steady-state Newton on tiny analytic models.
     # ------------------------------------------------------------------
 
-    @testset "sssolve: scalar AR(1) — analytic SS" begin
+    @testset "sssolve: scalar AR(1) - analytic SS" begin
         # y[t] = α*y[t-1] + c
-        # SS: y_ss = α*y_ss + c → y_ss = c/(1-α).
+        # SS: y_ss = α*y_ss + c -> y_ss = c/(1-α).
         m = ModelDef(:ar1)
         @parameters m begin; α = 0.5; c = 1.0; end
         @variables m begin; y; end
@@ -72,7 +72,7 @@ function run_core_solver!()
     end
 
     @testset "sssolve: nonlinear scalar (Newton convergence)" begin
-        # y[t]^2 = c → y_ss = √c (positive root if x0 > 0).
+        # y[t]^2 = c -> y_ss = √c (positive root if x0 > 0).
         m = ModelDef(:sq)
         @parameters m begin; c = 4.0; end
         @variables m begin; y; end
@@ -106,7 +106,7 @@ function run_core_solver!()
 
     @testset "sssolve: lead/lag time refs collapse correctly at SS" begin
         # y[t+1] - β*y[t] - β*y[t-1] - c = 0
-        # SS: y - β*y - β*y - c = 0 → y(1 - 2β) = c → y = c/(1-2β)
+        # SS: y - β*y - β*y - c = 0 -> y(1 - 2β) = c -> y = c/(1-2β)
         m = ModelDef(:lead_lag)
         @parameters m begin; β = 0.3; c = 1.0; end
         @variables m begin; y; end
@@ -122,7 +122,7 @@ function run_core_solver!()
 
     @testset "sssolve: link parameter resolves through SS" begin
         # β = @link 1/(1+ρ); equation: y[t] = β*y[t-1] + c
-        # SS: y = β*y + c → y = c/(1-β) = c*(1+ρ)/ρ
+        # SS: y = β*y + c -> y = c/(1-β) = c*(1+ρ)/ρ
         m = ModelDef(:linked)
         @parameters m begin
             ρ = 0.05
@@ -142,7 +142,7 @@ function run_core_solver!()
     end
 
     @testset "sssolve: rejects non-square system" begin
-        # 2 vars, 1 equation → underdetermined.
+        # 2 vars, 1 equation -> underdetermined.
         m = ModelDef()
         @parameters m begin; α = 0.5; end
         @variables m begin; y; z; end
@@ -174,13 +174,13 @@ function run_core_solver!()
 
         y_ss = 1.0 / (1 - 0.5)
         y_0 = 0.0
-        # No leads → no terminal condition needed.
+        # No leads -> no terminal condition needed.
         x_init = reshape([y_0], 1, 1)
         x_term = zeros(0, 1)
         e_full = zeros(T + 1, 0)        # no shocks declared
         x_full, converged, iters = simulate!(plan; x_init, x_term, e_full)
         @test converged
-        @test iters <= 3                # linear → 1 Newton step (+ check)
+        @test iters <= 3                # linear -> 1 Newton step (+ check)
         # Compare against closed form.
         for t in 1:T
             expected = 0.5^t * (y_0 - y_ss) + y_ss
@@ -217,7 +217,7 @@ function run_core_solver!()
 
     @testset "simulate: forward-looking equation needs terminal condition" begin
         # Pure forward: y[t] = β * y[t+1] + c.
-        # SS: y = β*y + c → y_ss = c/(1-β).
+        # SS: y = β*y + c -> y_ss = c/(1-β).
         # With y[T+1] = y_ss as terminal condition, every interior y = y_ss.
         m = ModelDef(:fwd)
         @parameters m begin; β = 0.5; c = 1.0; end
@@ -280,7 +280,7 @@ function run_core_solver!()
 
     @testset "simulate: nonlinear convergence" begin
         # y[t]^2 = α * y[t-1] + c, with y > 0.
-        # SS: y_ss^2 = α*y_ss + c → y_ss = (α + √(α²+4c))/2.
+        # SS: y_ss^2 = α*y_ss + c -> y_ss = (α + √(α²+4c))/2.
         m = ModelDef(:nlin)
         @parameters m begin; α = 0.3; c = 1.0; end
         @variables m begin; y; end
@@ -340,10 +340,10 @@ function run_core_solver!()
         x = [1.0, 1.0]
         R = zeros(2); J = zeros(2, 2)
         ss_RJ!(R, J, x, prob)
-        # F1 has y[t-1] (∂=−a) and y[t] (∂=1) → row 1 col 1 = 1 - a = 0.7
-        # F1 also has z[t] → row 1 col 2 = -b = -0.4
-        # F2 has z[t-1] (∂=−c) and z[t] (∂=1) → row 2 col 2 = 1 - c = 0.4
-        # F2 has nothing in y → row 2 col 1 = 0
+        # F1 has y[t-1] (∂=-a) and y[t] (∂=1) -> row 1 col 1 = 1 - a = 0.7
+        # F1 also has z[t] -> row 1 col 2 = -b = -0.4
+        # F2 has z[t-1] (∂=-c) and z[t] (∂=1) -> row 2 col 2 = 1 - c = 0.4
+        # F2 has nothing in y -> row 2 col 1 = 0
         @test J[1, 1] ≈ 0.7  atol=1e-12
         @test J[1, 2] ≈ -0.4 atol=1e-12
         @test J[2, 1] ≈ 0.0  atol=1e-12
@@ -381,7 +381,7 @@ function run_core_solver!()
 
         old = get(ENV, "RW_MBE_TUPLE_THRESHOLD", nothing)
         try
-            ENV["RW_MBE_TUPLE_THRESHOLD"] = "50"   # 200 eqs → Vector path
+            ENV["RW_MBE_TUPLE_THRESHOLD"] = "50"   # 200 eqs -> Vector path
             n = 200
             t0 = time()
             compiled = initialize_model(synthetic_def(n))
@@ -405,7 +405,7 @@ function run_core_solver!()
             x_full, converged, iters = simulate!(plan; x_init, x_term, e_full)
             sim_time = time() - t1
             @test converged
-            @test iters <= 3          # linear system → 1 Newton step + check
+            @test iters <= 3          # linear system -> 1 Newton step + check
             # 200 x 12 = 2400 cells against an analytic closed form;
             # collapse to one assertion on max |Δ|.
             max_synth_diff = 0.0
