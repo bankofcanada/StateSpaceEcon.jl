@@ -5,420 +5,106 @@
 # All rights reserved.
 ##################################################################################
 
-using StateSpaceEcon
-using TimeSeriesEcon
+# TimeSeriesEcon is in [extras] + [targets].test, so the test driver
+# resolves it from the General registry and the TimeSeriesEconExt
+# extension activates automatically. If TimeSeriesEcon is unavailable in
+# the resolved environment (e.g. CI without registry access), the
+# TS-dependent tests fall through to `@test_skip` via the `_HAS_TSE`
+# guard at the top of `timeseries_e2e.jl`.
+
 using ModelBaseEcon
-
-@info "Loading Model examples. Might take some time to pre-compile."
-@using_example E1
-@using_example E2
-@using_example E3
-@using_example E3nl
-@using_example E6
-@using_example E7
-@using_example E7A
-@using_example S1
-@using_example S2
-@using_example DFM1
-@using_example DFM2
-
-getE1 = E1.newmodel
-getE2 = E2.newmodel
-getE3 = E3.newmodel
-getE3nl = E3nl.newmodel
-getE6 = E6.newmodel
-getE7 = E7.newmodel
-getE7A = E7A.newmodel
-getS1 = S1.newmodel
-getS2 = S2.newmodel
-getDFM1 = DFM1.newmodel
-getDFM2 = DFM2.newmodel
-
+using StateSpaceEcon
+using LinearAlgebra: norm
+using SparseArrays: nnz
 using Test
-using Random
-using Suppressor
-import Pardiso
 
+# ----------------------------------------------------------------------
+# The suite runs two correctness witnesses:
+#
+#   1. "parity" - solver match tests on the symbolic-core internals:
+#      steady-state, stacked-time, first-order, DFM EM, Kalman, shock
+#      decomposition, stochastic simulation, plus end-to-end model builds.
+#      Several of these assert per-cell agreement against a committed
+#      numerical reference and self-skip when the reference data is absent.
+#
+#   2. "legacy compatibility" - behavioural claims on the public
+#      compatibility surface (the `Plan` alias, the `simulate`/`solve!`
+#      router, level final conditions, the linear-solver selector), so
+#      existing call sites are exercised against the current internals.
+#
+# A third group, "@slope (red)", carries the steady-state slope/growth
+# surface as `@test_broken` until that axis is implemented.
+# ----------------------------------------------------------------------
 
-@testset "1dsolvers" begin
-    # f(x) = (x-2)*(x-3) = a x^2 + b x + c with vals = [a, x, b, c]
-    let f(v) = v[1] * v[2]^2 + v[3] * v[2] + v[4],
-        fdf(v) = (f(v), [v[2]^2, v[1] * v[2] * 2 + v[3], v[2], 1.0]),
-        vals = [1.0, NaN, -5.0, 6.0]
+@testset "StateSpaceEcon" begin
 
-        vals[2] = 0.0
-        @test StateSpaceEcon.SteadyStateSolver.newton1!(fdf, vals, 2; tol=eps(), maxiter=8)
-        @test vals ≈ [1.0, 2.0, -5.0, 6.0] atol = 1e3 * eps()
+    @testset "parity" begin
+        include("core_solver.jl")
+        include("simple_rbc_e2e.jl")
+        include("small_nk_e2e.jl")
+        include("legacy_reference_match.jl")
+        include("plansim.jl")
+        include("sw07_e2e.jl")          # defines build_sw07 + e2e
+        include("sw07_legacy_match.jl") # uses build_sw07
+        include("timeseries_e2e.jl")    # TimeSeriesEcon extension
+        include("pardiso_dispatch.jl")  # Pardiso extension dispatch
+        include("diagnose_sstate.jl")   # SS convergence diagnostics
+        include("steadystate_user_eqns_e2e.jl")
+        include("firstorder_match.jl")  # first-order (QZ) solver
+        include("dfm_match.jl")         # DFM EM solver legacy-match
+        include("stoch_simulate.jl")    # stochastic simulation
+        include("frbus_var_build.jl")   # defines build_frbus_var
+        include("frbus_var_e2e.jl")     # FRBUS_VAR longbase e2e
+        include("kalman.jl")            # Kalman filter / smoother
+        include("shock_decomp.jl")      # shock decomposition
+        include("perf_baseline.jl")     # performance parity guard (opt-in)
 
-        vals[2] = 6.0
-        @test StateSpaceEcon.SteadyStateSolver.newton1!(fdf, vals, 2; tol=eps(), maxiter=8)
-        @test vals ≈ [1.0, 3.0, -5.0, 6.0] atol = 1e3 * eps()
+        run_core_solver!()
+        run_simple_rbc_e2e!()
+        run_small_nk_e2e!()
+        run_legacy_reference_match!()
+        run_plansim_tests!()
+        run_sw07_e2e!()
+        run_sw07_legacy_match!()
+        run_timeseries_e2e!()
+        run_pardiso_dispatch_tests!()
+        run_diagnose_sstate_tests!()
+        run_steadystate_user_eqns_tests!()
+        run_firstorder_match_tests!()
+        run_dfm_match_tests!()
+        run_stoch_simulate_tests!()
+        run_frbus_var_e2e!()
+        run_kalman_tests!()
+        run_shock_decomp_tests!()
 
-        vals[2] = 0.0
-        @test StateSpaceEcon.SteadyStateSolver.bisect!(f, vals, 2, fdf(vals)[2][2]; tol=eps())
-        @test vals ≈ [1.0, 2.0, -5.0, 6.0] atol = 1e3 * eps()
-
-        vals[2] = 6.0
-        @test StateSpaceEcon.SteadyStateSolver.bisect!(f, vals, 2, fdf(vals)[2][2]; tol=eps())
-        @test vals ≈ [1.0, 3.0, -5.0, 6.0] atol = 1e3 * eps()
-    end
-end
-
-@testset "Plans" begin
-    m = getE1()
-    p = Plan(m, 1:3)
-    @test first(p.range) == 0U
-    @test last(p.range) == 4U
-    out = @capture_out print(p)
-    @test length(split(out, '\n')) == 2
-    @test p[1] == [:y_shk]
-    @test p[1U] == [:y_shk]
-    endogenize!(p, :y_shk, 1U)
-    @test isempty(p[1U])
-    endogenize!(p, :y_shk, 1U:3U)
-    exogenize!(p, :y, 2U)
-    exogenize!(p, :y, 4U)
-    # make sure indexing with integers works as well
-    @test p[0U] == p[1] == [:y_shk]
-    @test p[1U] == p[2] == []
-    @test p[2U] == p[3] == [:y]
-    @test p[3U] == p[4] == []
-    @test p[4U] == p[5] == [:y, :y_shk]
-    out = @capture_out print(p)
-    @test length(split(out, '\n')) == 6
-    out = @capture_out print(IOContext(stdout, :displaysize => (7, 80)), p)
-    @test length(split(out, '\n')) == 4
-    @test length(split(out, '⋮')) == 2
-    let p = Plan(m, 2000Q1:2020Q4)
-        endogenize!(p, shocks(m), 2000Q1:2002Q4)
-        @test isempty(p[2000Q1])
-        out = @capture_out print(p)
-        length(split(out, "\n")) == 4
-    end
-    let p = Plan(2000Q1:2010Q4, (a=1, b=2, c=3), falses(44, 3))
-        exogenize!(p, :a, p.range)
-        exogenize!(p, :b, 2001Q1:2006Q1)
-        exogenize!(p, :c, 2006Q1:2009Q4)
-
-        pio = IOBuffer()
-        exportplan(pio, p)
-        seekstart(pio)
-        q = importplan(pio)
-        @test p == q
-    end
-
-end
-
-@testset "compare_plans" begin
-    let m = Model()
-        m = Model()
-        @variables m a b c
-        @parameters m pa = 0.9 pb = -0.3 ass = 0.3 bss = 0.4
-        @shocks m as bs
-        @autoexogenize m begin
-            a = as
-            b = bs
-        end
-        @equations m begin
-            c[t] = sqrt(b[t]^2 + a[t]^2)
-            a[t] - ass = pa * (a[t-1] - ass) + as[t]
-            b[t] - bss = pb * (b[t-1] - bss) + bs[t]
-        end
-        @initialize m
-
-        p = Plan(m, 1U:10U)
-        autoexogenize!(p, m, 2U:3U)
-        q = copy(p)
-        exog_endo!(q, m.a, m.as, 2U:6U)
-        exog_endo!(p, m.b, m.bs, 5U:8U)
-
-        m1 = deepcopy(m)
-        deleteat!(m1.variables, 2)
-        push!(m1.variables, :beta)
-        r = Plan(m1, 8U:15U)
-        exogenize!(r, :beta, 10U:13U)
-
-        begin
-            io = IOBuffer()
-            compare_plans(io, p, q)
-            seek(io, 0)
-            @test read(io, String) == "\nSame range: 0U:10U\nSame variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n     a    ~ ~      X X      ~ X      ~ X      ~ ~      ~ ~  \n     b    ~ ~      X X      ~ ~      X ~      X ~      ~ ~  \n     c    ~ ~      ~ ~      ~ ~      ~ ~      ~ ~      ~ ~  \n    as    X X      ~ ~      X ~      X ~      X X      X X  \n    bs    X X      ~ ~      X X      ~ X      ~ X      X X  \n"
-        end
-        begin
-            io = IOBuffer()
-            compare_plans(io, p, q; pagelines=3)
-            seek(io, 0)
-            @test read(io, String) == "\nSame range: 0U:10U\nSame variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n     a    ~ ~      X X      ~ X      ~ X      ~ ~      ~ ~  \n     b    ~ ~      X X      ~ ~      X ~      X ~      ~ ~  \n     c    ~ ~      ~ ~      ~ ~      ~ ~      ~ ~      ~ ~  \n\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U   9U:10U \n\n    as    X X      ~ ~      X ~      X ~      X X      X X  \n    bs    X X      ~ ~      X X      ~ X      ~ X      X X  \n"
-        end
-        begin
-            # non-matching plan ranges/varshocks
-
-            # print to io buffer
-            io = IOBuffer()
-            compare_plans(io, p, r; alphabetical=true)
-            seek(io, 0)
-            @test read(io, String) == "\nRange  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U    9U:9U   10U:10U  11U:13U  14U:15U\n     a    ~ .      X .      ~ .      ~ .      ~ ~      ~ ~      ~ ~      . ~      . ~  \n    as    X .      ~ .      X .      X .      X X      X X      X X      . X      . X  \n     b    ~ .      X .      ~ .      X .      X .      ~ .      ~ .      . .      . .  \n  beta    . .      . .      . .      . .      . ~      . ~      . X      . X      . ~  \n    bs    X .      ~ .      X .      ~ .      ~ X      X X      X X      . X      . X  \n     c    ~ .      ~ .      ~ .      ~ .      ~ ~      ~ ~      ~ ~      . ~      . ~  \n"
-
-            # print only rows with differences
-            io = IOBuffer()
-            compare_plans(io, p, r; alphabetical=true, diff=true)
-            seek(io, 0)
-            @test read(io, String) == "\nRange  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\n(X) = Exogenous, (~) = Endogenous, (.) = Missing:\n  NAME   0U:1U    2U:3U    4U:4U    5U:6U    7U:8U    9U:9U   10U:10U  11U:13U  14U:15U\n     b    ~ .      X .      ~ .      X .      X .      ~ .      ~ .      . .      . .  \n  beta    . .      . .      . .      . .      . ~      . ~      . X      . X      . ~  \n    bs    X .      ~ .      X .      ~ .      ~ X      X X      X X      . X      . X  \n"
-
-            # print summary in REPL
-            out = @capture_out compare_plans(p, r; summary=true)
-            @test out == "Range  left: 0U:10U\nRange right: 7U:15U\nVariables only in left plan: [:b]\nVariables only in right plan: [:beta]\n4 common variables.\n:bs differs between the plans for the range(s) 7U:8U.\n"
-
-            # return MVTSeries
-            out_mvts = compare_plans(p, r)
-            @test out_mvts == MVTSeries(7U, (:a, :c, :as, :bs), [0 0 0 0; 0 0 0 0; 3 3 3 3; 2 2 3 3]')
-
-            # return MVTSeries
-            out_mvts2 = compare_plans(r, p)
-            @test out_mvts2 == MVTSeries(7U, (:a, :c, :as, :bs), [0 0 0 0; 0 0 0 0; 3 3 3 3; 1 1 3 3]')
-
-        end
-        # copyto!
-        begin
-            # When the plans are similar the copy becomes a copy of the source plan
-            p_copy = deepcopy(p)
-            copyto!(p_copy, q)
-            @test p_copy == q
-
-            # When the plans partially overlap, change the overlapping varshks/ranges
-            p_copy = deepcopy(p)
-            copyto!(p_copy, r)
-            @test p_copy.range == p.range
-            @test p_copy.varshks == p.varshks
-            @test p_copy.exogenous == BitArray([
-                0 0 0 1 1
-                0 0 0 1 1
-                1 1 0 0 0
-                1 1 0 0 0
-                0 0 0 1 1
-                0 1 0 1 0
-                0 1 0 1 0
-                0 1 0 1 1
-                0 1 0 1 1
-                0 0 0 1 1
-                0 0 0 1 1
-            ])
-
-            # When plans don't overlap, no changes are made
-            r2 = Plan(m1, 12U:15U)
-            p_copy = deepcopy(p)
-            copyto!(p_copy, r2)
-            @test p_copy == p
-
-            # Error is thrown if explicit range is provided and the plans do not overlap
-            r2 = Plan(m1, 12U:15U)
-            p_copy = deepcopy(p)
-            @test_throws BoundsError copyto!(p_copy, 7U:14U, r2)
-
-            # Error is thrown if provided range is outside the plans
-            p_copy = deepcopy(p)
-            @test_throws BoundsError copyto!(p_copy, 22U:30U, r; verbose=false)
-
-            # Test warnings
-            p_copy = deepcopy(p)
-            @test_logs(
-                (:warn, "Ranges not updated in destination plan: 0U:6U"),
-                (:warn, "Ignored source plan variables (missing in destination plan): beta"),
-                (:warn, "Variables not updated in destination plan (missing in source plan): b"),
-                copyto!(p_copy, r; verbose=true)
-            )
+        # Performance parity guard. Opt-in: the BenchmarkTools sweep adds
+        # ~30-40s to the suite, too slow to pay on every run. Run it with
+        # SSE_PERF=1 (or SSE_PERF_RECAPTURE=1, which implies it). Skipped
+        # by default so the everyday suite stays fast; the guard still
+        # runs in CI by setting the env var.
+        if haskey(ENV, "SSE_PERF") || haskey(ENV, "SSE_PERF_RECAPTURE")
+            run_perf_baseline!()
+        else
+            @info "perf guard skipped (set SSE_PERF=1 to run the benchmarks)"
         end
     end
-end
 
-@testset "copyto! plans" begin
-    ma = Model()
-    @variables ma x a b c
-    md = Model()
-    @variables md b c d z
-
-    p1 = Plan(ma, 2020Q1:2021Q4)
-    copyto!(p1.exogenous, rand(Bool, size(p1.exogenous)))
-    n1, n2 = size(p1.exogenous)
-
-
-    # same everythig
-    p2 = Plan(ma, 2020Q1:2021Q4)
-    @test @test_nowarn (copyto!(p2, p1); true)
-    @test p1 == p2
-
-    # update sub-range
-    p2 = Plan(ma, 2019Q1:2023Q4)
-    @test @test_logs (:warn, "Ranges not updated in destination plan: 2019Q1:2019Q4, 2022Q1:2023Q4") (copyto!(p2, p1; verbose=true); true)
-    @test p1 == p2[rangeof(p1)]
-    for rng in (2019Q1:2019Q4, 2022Q1:2023Q4)
-        @test p2[rng].exogenous == falses(length(rng), length(p2.varshks))
+    @testset "legacy compatibility" begin
+        include("legacy_compat.jl")
+        run_legacy_compat_tests!()
     end
 
-    # plans with different ranges
-    # rng not given, default to common range
-    p2 = Plan(ma, 2019Q1:2020Q4)
-    @test @test_nowarn (copyto!(p2, p1); true)
-    @test p1[2020Q1:2020Q4] == p2[2020Q1:2020Q4]
-    @test p2[2019Q1:2019Q4].exogenous == falses(4, n2)
-
-    # rng given
-    p2 = Plan(ma, 2019Q1:2020Q4)
-    @test @test_nowarn (copyto!(p2, 2020Q3, p1); true)
-    @test p1[2020Q3:2020Q3] == p2[2020Q3:2020Q3]
-    @test p2[2019Q1:2020Q2].exogenous == falses(6, n2)
-    @test p2[2020Q4:2020Q4].exogenous == falses(1, n2)
-
-    @test @test_nowarn (copyto!(p2, 2020Q1:2020Q3, p1); true)
-    @test p1[2020Q1:2020Q3] == p2[2020Q1:2020Q3]
-    @test p2[2019Q1:2019Q4].exogenous == falses(4, n2)
-    @test p2[2020Q4:2020Q4].exogenous == falses(1, n2)
-
-    # given bad
-    p2 = Plan(ma, 2019Q1:2020Q4)
-    @test_throws BoundsError copyto!(p2, 2019Q2:2020Q3, p1)
-    @test p2.exogenous == falses(8, n2)
-
-    # Empty range intersection 
-    p2 = Plan(ma, 2018Q1:2019Q4)
-    @test @test_nowarn (copyto!(p2, p1); true)
-    p2 = Plan(ma, 2018Q1:2019Q4)
-    @test @test_logs (:warn, r".*empty range.*") (copyto!(p2, p1; verbose=true); true)
-
-    # different plans
-    p3 = Plan(md, rangeof(p1))
-    @test @test_nowarn (copyto!(p3, p1); true)
-    @test p3.exogenous[:, 1:2] == p1.exogenous[:, 3:4]
-    @test p3.exogenous[:, 3:4] == falses(8, 2)
-    @test @test_logs(
-        (:warn, r"Ignored source plan variables \(missing in destination plan\): (a, x|x, a)"),
-        (:warn, r"Variables not updated in destination plan \(missing in source plan\): (d, z|z, d)"),
-        (copyto!(p3, p1; verbose=true); true)
-    )
-
-end
-
-include("simdatatests.jl")
-include("sstests.jl")
-
-@testset "misc" begin
-    m = getE3()
-    sim = m.maxlag .+ (1:10)
-    p = Plan(m, sim)
-
-    # random data
-    d1 = zeroworkspace(m, p)
-    d = zeroworkspace(m, p)
-    for v in keys(d1)
-        @test d[v] == d1[v]
-    end
-    for v in values(d)
-        v .= rand(Float64, size(v))
+    # The rate (growth) final conditions and the dynamic steady-state
+    # references depend on the steady-state slope axis, which is not yet
+    # implemented. They are carried as `@test_broken` so they are visibly
+    # pending rather than silently skipped; this group flips green when
+    # the slope axis lands.
+    @testset "@slope (red)" begin
+        @test_broken isdefined(StateSpaceEcon, :FCMatchSSRate)
+        @test_broken isdefined(StateSpaceEcon, :FCConstRate)
+        @test_broken isdefined(StateSpaceEcon, :fcslope)
+        @test_broken isdefined(StateSpaceEcon, :fcrate)
+        @test_broken isdefined(StateSpaceEcon, :fcnatural)
     end
 
-    @test workspace2array(d1, m.allvars) == zeroarray(m, p)
-    @test workspace2array(d1, m.allvars) == rawdata(zerodata(m, p))
-
-    @test size(workspace2array(d, [:pinf, :ygap])) == (length(p.range), 2)
-    @test size(workspace2array(d, ["pinf", "ygap"])) == (length(p.range), 2)
-    @test size(workspace2array(d, m.variables)) == (length(p.range), 3)
-    a = workspace2array(d, m.allvars)
-    @test size(a) == (length(p.range), 6)
-    @test a == hcat((d[v] for v in m.allvars)...)
-
-    # error variable missing from dictionary
-    @test_throws KeyError workspace2array(d, [:pinf, :ygap, :nosuchvar])
-    # error out of range
-    @test_throws BoundsError workspace2array(d, [:pinf, :ygap], 10U:20U)
-
-    # warning variables with different ranges
-    d.wrong_var = TSeries(3U, rand(10))
-    b = workspace2array(d, [:pinf, :wrong_var])
-    @test size(b) == (10, 2)
-    @test b[:, 1] == d.pinf[3U:12U].values
-    @test b[:, 2] == d.wrong_var[3U:12U].values
-
-    s = workspace2data(d, m.allvars)
-    @test all(s .== a)
-
-    sa = data2array(s)  # copy=false, so s and sa point to the same matrix
-    @test all(sa .== s)
-    s.pinf[3U:5U] = 3:5
-    @test all(sa .== s)
-
-    sd = data2workspace(s)
-    @test Set(keys(sd)) == Set(colnames(s))
-
-    as = array2data(a, m.allvars, p.range)
-    @test all(as .== a)
-    a[1, 2] = 2.5
-    @test all(as .== a)
-    as = array2data(a, m.allvars, first(p.range), copy=true)
-    @test all(as .== a)
-    a[1, 2] = 3.0
-    @test !all(as .== a)
-    as[1, 2] = 3.0
-    @test all(as .== a)
-
-    ad = array2workspace(a, m.allvars, first(p.range))
-    @test length(ad) == size(a, 2)
-    @test all(ad[v].values == a[:, i] for (i, v) in enumerate(m.allvars))
 end
-
-@testset "overlay" begin
-    t1 = overlay(TSeries(3U, 3ones(2)), TSeries(1U, ones(6)))
-    @test t1 == TSeries(1U, [1, 1, 3, 3, 1, 1])
-    t1 = overlay(TSeries(4U, 5ones(5)), t1)
-    @test t1 == TSeries(1U, [1, 1, 3, 5, 5, 5, 5, 5])
-end
-
-include("misc.jl")
-
-@testset "sparse" begin
-    @test (use_pardiso(); StateSpaceEcon.StackedTimeSolver.sf_default == :pardiso)
-    @test (use_umfpack(); StateSpaceEcon.StackedTimeSolver.sf_default == :umfpack)
-    let m = Model()
-        @test (use_pardiso!(m); m.factorization == :pardiso)
-        @test (use_umfpack!(m); m.factorization == :umfpack)
-    end
-end
-
-for sfdef = Iterators.map(QuoteNode, StateSpaceEcon.StackedTimeSolver.sf_libs)
-
-    sfdef.value == :default && continue
-    sfdef.value == :none && continue
-
-    if sfdef.value == :pardiso
-        # Pardiso in macos doesn't work.  Disable for now
-        if Sys.isapple()
-            @info "Skip :pardiso on apple"
-            continue
-        end
-        # make sure Pardiso runs deterministic (single thread) for the tests
-        Pardiso.set_nprocs_mkl!(1)
-    end
-
-    @info "Using $(sfdef)"
-
-    Core.eval(StateSpaceEcon.StackedTimeSolver, :(sf_default = $(sfdef)))
-
-    include("simtests.jl")
-    include("logsimtests.jl")
-    include("sim_fo.jl")
-    include("shockdecomp.jl")
-    include("dynss.jl")
-
-    include("stochsims.jl")
-
-end
-
-include("sim_solver.jl")
-
-
-include("kalman.jl")
-include("dfmtests.jl")
-
-
-# keep this one last because it overwrites getE?()
-include("modelchanges.jl")
-
