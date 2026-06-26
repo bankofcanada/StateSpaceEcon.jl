@@ -18,10 +18,10 @@ Constraint is of the form
 ```latex
     W * vec(A) = q
 ```
-The matrix being constrained A has size n×m. Then vec(A) is a column vector of
+The matrix being constrained A has size nxm. Then vec(A) is a column vector of
 length nm, in which the columns of A are stacked vertically.
 
-The constraint matrix W is of size p×r, where r=nm and p is the number of 
+The constraint matrix W is of size pxr, where r=nm and p is the number of 
 constraint equations. 
 
 The constraint vector q has length p.
@@ -51,8 +51,8 @@ struct EM_MatrixConstraint{T<:Real, NCONS, NELS, NROWS, NCOLS,
 
     # inner constructor allocates work arrays in the correct dimensions
     function EM_MatrixConstraint(ncols::Integer, W::AbstractMatrix{T}, q::AbstractVector{T}) where {T}
-        # NOTE: the matrix being constrained has dimensions nrows × ncols, for a total of nels=nrows*ncols elements
-        #   Matrix W has dimension ncons × nels - one row for each constraint and a column for each element of the constrained matrix
+        # NOTE: the matrix being constrained has dimensions nrows x ncols, for a total of nels=nrows*ncols elements
+        #   Matrix W has dimension ncons x nels - one row for each constraint and a column for each element of the constrained matrix
         #   We deduce nrows from ncons (given directly) and nels (from second dimension of W)
         ncols == 0 && return nothing
         ncons, nels = size(W)

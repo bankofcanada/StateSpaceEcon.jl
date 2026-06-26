@@ -5,214 +5,130 @@
 # All rights reserved.
 ##################################################################################
 
+# ----------------------------------------------------------------------
+# Pluggable sparse linear solve.
+#
+# `_solve_jacobian(::Val{linsolve}, J, R, state)` solves `J Δ = R` and
+# returns `(Δ, state)`. The default `:umfpack` path delegates to Julia's
+# `\` and uses no state. The `:pardiso` path is provided by the
+# PardisoExt extension; it threads a factorization state across Newton
+# iterations so the symbolic factorization is reused.
+#
+# `_init_linsolve(::Val{linsolve})` returns the initial state value
+# (`nothing` by default); `_finalize_linsolve!(::Val{linsolve}, state)`
+# releases solver resources at the end of the Newton loop.
+# ----------------------------------------------------------------------
 
-# selected sparse linear algebra library is a Symbol
-const sf_libs = (
-    :none,      # do not pre-factorize the Jacobian matrix
-    :default,   # use the current default, which can be changed via use_umfpack() and use_pardiso()
-    :umfpack,   # use Julia's standard library (UMFPACK)
-    :pardiso,   # use Pardiso - the one included with MKL
-)
+function _solve_jacobian end
+function _init_linsolve end
+function _finalize_linsolve! end
 
-global sf_default = :umfpack
+@inline _init_linsolve(::Val) = nothing
+@inline _finalize_linsolve!(::Val, _) = nothing
 
-"""
-    use_umfpack()
-
-Set the default sparse factorization library to UMFPACK (the one used in Julia's
-standard library). See also [`use_pardiso`](@ref).
-
-"""
-@inline use_umfpack() = (global sf_default = :umfpack; nothing)
-
-"""
-    use_umfpack!(model)
-
-Instruct the stacked-time solver to use Pardiso with this model. See also
-[`use_pardiso!`](@ref).
-"""
-@inline use_umfpack!(m::Model) = (m.options.factorization = :umfpack; m.options)
-export use_umfpack, use_umfpack!
-
-"""
-    use_pardiso()
-
-Set the default sparse factorization library to Pardiso. See also
-[`use_umfpack`](@ref).
-"""
-@inline use_pardiso() = (global sf_default = :pardiso; nothing)
-
-"""
-    use_pardiso!(model)
-
-Instruct the stacked-time solver to use Pardiso with this model. 
-"""
-@inline use_pardiso!(m::Model) = (m.options.factorization = :pardiso; m.options)
-export use_pardiso, use_pardiso!
-
-### API
-
-# a function to initialize a Factorization instance
-# this is also a good place to do the symbolic analysis
-# sf_prepare(A::SparseMatrixCSC, sparse_lib::Symbol=:default) = sf_prepare(Val(sparse_lib), A)
-# sf_prepare(::Val{S}, args...) where {S} = throw(ArgumentError("Unknown sparse library $S. Try one of $(sf_libs)."))
-
-# a function to calculate the numerical factors
-# sf_factor!(f::Factorization, A::SparseMatrixCSC) = throw(ArgumentError("Unknown factorization type $(typeof(f))."))
-
-# a function to solve the linear system
-# sf_solve!(f::Factorization, x::AbstractArray) = throw(ArgumentError("Unknown factorization type $(typeof(f))."))
-
-
-###########################################################################
-### :none 
-
-abstract type SF_Factorization{Tv} <: Factorization{Tv} end
-
-mutable struct NoFactorization{Tv} <: SF_Factorization{Tv}
-    A::SparseMatrixCSC{Tv,Int}
-end
-# don't factorize, just store the matrix
-sf_prepare(::Val{:none}, A::SparseMatrixCSC) = NoFactorization{Float64}(A)
-# don't factorize, just store the matrix
-sf_factor!(f::NoFactorization, A::SparseMatrixCSC) = (f.A = A; f)
-# we could do ldiv(f.A, x), but we insist on throwing an error -- if you want to solve, don't use model.factorization = :none
-sf_solve!(f::NoFactorization, x::AbstractArray) = error("Cannot solve without valid factorization.")
-
-###########################################################################
-###  Default (UMFPACK)
-sf_prepare(::Val{:default}, A::SparseMatrixCSC) = sf_prepare(Val(sf_default), A)
-
-function _sf_same_sparse_pattern(A::SparseMatrixCSC, B::SparseMatrixCSC)
-    return (A.m == B.m) && (A.n == B.n) && (A.colptr == B.colptr) && (A.rowval == B.rowval)
+@inline function _solve_jacobian(::Val{:umfpack}, J::SparseMatrixCSC,
+                                  R::AbstractVector, state)
+    return J \ R, state
 end
 
-macro _sf_check_factorize(exception, expression)
-    error = gensym("error")
-    return esc(quote
-        try
-            $expression
-        catch $error
-            if $error isa $exception
-                @error("The system is underdetermined with the given set of equations and final conditions.")
+function _solve_jacobian(::Val{ls}, J::SparseMatrixCSC,
+                         R::AbstractVector, state) where {ls}
+    if ls === :pardiso
+        error("simulate!: linsolve=:pardiso requested but the Pardiso " *
+              "extension is not loaded. Run `using Pardiso` before " *
+              "calling simulate!/plan_simulate! with linsolve=:pardiso.")
+    else
+        error("simulate!: unknown linsolve=$(repr(ls)). " *
+              "Supported: :umfpack (default), :pardiso (requires `using Pardiso`).")
+    end
+end
+
+# ----------------------------------------------------------------------
+# Sparsity construction
+# ----------------------------------------------------------------------
+
+# Build the sparse Jacobian and BI scatter map.
+#
+# Rows: `(t-1)*n_eq + i` for equation i at simulation period t (t in 1..T).
+# Cols: `_xidx(t', v)` for unknown (t', v) where t' is in 1..T.
+#
+# References to t' < 1 (initial conditions) or t' > T (terminal) are
+# *not* unknowns - their derivatives don't appear in J. We still
+# include the residual contribution (initial/terminal x values are
+# clamped on each evaluation).
+function _build_sparsity(T::Int, n_var::Int, n_eq::Int,
+                          slot_maps::Vector{StackedSlotMap})
+    # First pass: collect (row, col) pairs and remember, per (t, eq, slot_k),
+    # the position in the COO list - so after building J via sparse(), we
+    # can map slot_k -> nzval index.
+    Is = Int[]
+    Js = Int[]
+    # For each (t, eq) block: vector of (slot_k, coo_index_or_zero). zero
+    # means "boundary slot, no Jacobian contribution".
+    block_slots = Vector{Vector{Tuple{Int, Int}}}()
+    sizehint!(block_slots, T * n_eq)
+
+    for t in 1:T
+        for i in 1:n_eq
+            sm = slot_maps[i]
+            slots = Vector{Tuple{Int, Int}}()
+            for (k, entry) in pairs(sm)
+                kind, idx, off = entry
+                if kind === :var
+                    tprime = t + off
+                    if 1 <= tprime <= T
+                        push!(Is, (t - 1) * n_eq + i)
+                        push!(Js, _xidx(tprime, idx, T))
+                        push!(slots, (k, length(Is)))
+                    else
+                        push!(slots, (k, 0))   # boundary
+                    end
+                else
+                    # Shock: never an unknown.
+                    push!(slots, (k, 0))
+                end
             end
-            rethrow()
+            push!(block_slots, slots)
         end
-    end)
-end
+    end
 
-mutable struct LUFactorization{Tv<:Real} <: SF_Factorization{Tv}
-    F::SuiteSparse.UMFPACK.UmfpackLU{Tv,Int}
-    A::SparseMatrixCSC{Tv,Int}
-end
+    # Build sparse matrix; sparse() sums duplicates and orders by (col, row).
+    n_rows = T * n_eq
+    n_cols = T * n_var
+    Vs = ones(Float64, length(Is))           # placeholder values
+    J = sparse(Is, Js, Vs, n_rows, n_cols)
 
-@timeit_debug timer "sf_prepare_lu" function sf_prepare(::Val{:umfpack}, A::SparseMatrixCSC)
-    Tv = eltype(A)
-    F = @_sf_check_factorize(SingularException, @timeit_debug timer "_lu_full" lu(A))
-    return LUFactorization{Tv}(F, A)
-end
-
-@timeit_debug timer "sf_factor!_lu" function sf_factor!(f::LUFactorization, A::SparseMatrixCSC)
-    _A = f.A
-    if _sf_same_sparse_pattern(A, _A)
-        if A.nzval ≈ _A.nzval
-            # matrix hasn't changed significantly
-            nothing
-        else
-            # sparse pattern is the same, different numbers
-            f.A = A
-            @_sf_check_factorize(SingularException, @timeit_debug timer "_lu_num" lu!(f.F, A))
+    # Now invert: for each COO index, find its position in J.nzval.
+    # Build a dict (row, col) -> nzval index.
+    nz_index = Dict{Tuple{Int, Int}, Int}()
+    sizehint!(nz_index, length(Is))
+    rows = rowvals(J)
+    @inbounds for col in 1:n_cols
+        for p in nzrange(J, col)
+            nz_index[(rows[p], col)] = p
         end
-    else
-        # totally new matrix, start over
-        f.A = A
-        f.F = @_sf_check_factorize(SingularException, @timeit_debug timer "_lu_full" lu(A))
     end
-    return f
-end
 
-@timeit_debug timer "sf_solve!_lu" sf_solve!(f::LUFactorization, x::AbstractArray) = (ldiv!(f.F, x); x)
-
-###########################################################################
-###  Pardiso (thanks to @KristofferC)
-
-# See https://github.com/JuliaSparse/Pardiso.jl/blob/master/examples/exampleunsym.jl
-# See https://www.intel.com/content/www/us/en/develop/documentation/onemkl-developer-reference-c/top/sparse-solver-routines/onemkl-pardiso-parallel-direct-sparse-solver-iface/pardiso-iparm-parameter.html
-
-mutable struct PardisoFactorization{Tv<:Real} <: SF_Factorization{Tv}
-    ps::MKLPardisoSolver
-    A::SparseMatrixCSC{Tv,Int}
-end
-
-@timeit_debug timer "sf_prepare_par" function sf_prepare(::Val{:pardiso}, A::SparseMatrixCSC)
-    Tv = eltype(A)
-    ps = MKLPardisoSolver()
-    set_matrixtype!(ps, Pardiso.REAL_NONSYM)
-    pardisoinit(ps)
-    # set_msglvl!(ps, 1) # make pardiso verbose
-    fix_iparm!(ps, :N)
-    set_iparm!(ps, 2, 3) # Select algorithm
-    # set_iparm!(ps, 8, 5) # Maximum number of iterative refinement steps
-    set_iparm!(ps, 10, 15) # Pivot perturbation (if pivot is less than 10^(-iparam[10]))
-    pf = PardisoFactorization{Tv}(ps, get_matrix(ps, A, :N))
-    finalizer(pf) do x
-        set_phase!(x.ps, Pardiso.RELEASE_ALL)
-        pardiso(x.ps)
-    end
-    _pardiso_full!(pf)
-    return pf
-end
-
-@timeit_debug timer "_pardso_full" function _pardiso_full!(pf::PardisoFactorization)
-    # run the analysis phase
-    ps = pf.ps
-    @_sf_check_factorize Union{Pardiso.PardisoException,Pardiso.PardisoPosDefException} begin
-        set_phase!(ps, Pardiso.ANALYSIS_NUM_FACT)
-        pardiso(ps, pf.A, Float64[])
-        # Fail if Pardiso perturbed any pivots
-        get_iparm(ps, 14) == 0 || throw(Pardiso.PardisoException("Zero or near-zero pivot."))
-    end
-    return pf
-end
-
-@timeit_debug timer "_pardso_num" function _pardiso_numeric!(pf::PardisoFactorization)
-    # run the analysis phase
-    ps = pf.ps
-    @_sf_check_factorize Union{Pardiso.PardisoException,Pardiso.PardisoPosDefException} begin
-        set_phase!(ps, Pardiso.NUM_FACT)
-        pardiso(ps, pf.A, Float64[])
-        # Fail if Pardiso perturbed any pivots
-        get_iparm(ps, 14) == 0 || throw(Pardiso.PardisoException("Zero or near-zero pivot."))
-    end
-    return pf
-end
-
-@timeit_debug timer "sf_factor!_par" function sf_factor!(pf::PardisoFactorization, A::SparseMatrixCSC)
-    A = get_matrix(pf.ps, A, :N)::typeof(A)
-    _A = pf.A
-    if _sf_same_sparse_pattern(A, _A)
-        if A.nzval ≈ _A.nzval
-            # same matrix, factorization hasn't changed
-            nothing
-        else
-            # same sparsity pattern, but different numbers
-            pf.A = A
-            _pardiso_numeric!(pf)
+    # For each block, build BI[b] = vector of nzval-indices in tsref order
+    # (length = length(slot_maps[i]); 0 marks boundary slots - we skip
+    # those when scattering).
+    BI = Vector{Vector{Int}}(undef, T * n_eq)
+    for (b, slots) in pairs(block_slots)
+        n_slots = isempty(slots) ? 0 : maximum(s -> s[1], slots)
+        bi = zeros(Int, n_slots)
+        for (k, coo_idx) in slots
+            if coo_idx == 0
+                bi[k] = 0
+            else
+                # Recover (row, col) from Is/Js at coo_idx.
+                bi[k] = nz_index[(Is[coo_idx], Js[coo_idx])]
+            end
         end
-    else
-        # totally new matrix, start over
-        pf.A = A
-        _pardiso_full!(pf)
+        BI[b] = bi
     end
-    return pf
-end
 
-@timeit_debug timer "sf_solve!_par" function sf_solve!(pf::PardisoFactorization, x::AbstractArray)
-    ps = pf.ps
-    @_sf_check_factorize Union{Pardiso.PardisoException,Pardiso.PardisoPosDefException} begin
-        set_phase!(ps, Pardiso.SOLVE_ITERATIVE_REFINE)
-        pardiso(ps, x, pf.A, copy(x))
-    end
-    return x
-end
+    # Reset nzval - sparse() set them to 1.0 from our placeholder.
+    fill!(nonzeros(J), 0.0)
 
+    return J, BI
+end

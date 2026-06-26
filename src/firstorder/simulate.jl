@@ -5,297 +5,123 @@
 # All rights reserved.
 ##################################################################################
 
-# specialization of simulate() for first-order solution
+# ----------------------------------------------------------------------
+# First-order simulation.
+#
+# The recursion works in deviation from the steady state. Per period t:
+#   RHS   = RbyZbb * bck_{t-1}                       (contribution of the state)
+#   sol_t = MAT_n \ (RHS - MAT_x * e_t)              (solve for the unknowns)
+# and the `(var, 0)` entries of sol_t are written back to the output.
+#
+# The simulation array `values` is in solver space and the unified
+# `[vars; shocks]` column layout (identical to SimData.values), with
+# `maxlag` initial-condition rows, then T simulation rows, then `maxlead`
+# terminal rows. `@log` columns are already log(level) in solver space, and
+# `x_ss` is likewise in solver space, so the deviation is a plain subtraction
+# - no transform is needed inside the recursion. Callers convert to/from
+# levels at the boundary (e.g. via SimData's `level_value` / `set_level!`).
+#
+# This is the "empty plan" path (all variables endogenous, all shocks
+# exogenous data) - the headline first-order simulation. Shock back-out
+# (the swapped plan) is handled by the autoexogenize variant below.
+# ----------------------------------------------------------------------
 
 """
-Find the last period in which the plan is non-empty.
+    first_order_simulate(fom::FirstOrderModel, values::AbstractMatrix) -> Matrix
 
-Reminder: an empty plan is one in which all variables are endogenous and all
-shocks are exogenous, i.e., no swapping has been done.
+Simulate the first-order model forward. `values` is a `(maxlag + T + maxlead)
+x n_col` matrix in solver space and `[vars; shocks]` column order: rows
+`1:maxlag` are initial conditions, rows `maxlag+1 : maxlag+T` carry the
+exogenous shock data for the simulation periods, and (when `maxlead > 0`)
+the trailing rows hold the terminal exogenous data. Returns a new matrix of
+the same shape with the variable columns filled in for the simulation rows.
+
+The recursion is deterministic / unanticipated (`anticipate=false`).
 """
-function _last_swapped_period(plan::Plan, model::Model)
-    shks = Bool[isshock(v) || isexog(v) for v in model.varshks]
-    vars = .!shks
-    simrng = model.maxlag+1:length(plan.range)-model.maxlead
-    for per in reverse(simrng)
-        is_empty = all(plan.exogenous[per, shks]) && !any(plan.exogenous[per, vars])
-        if !is_empty
-            return per
-        end
+function first_order_simulate(fom::FirstOrderModel, values::AbstractMatrix{Float64})
+    vm = fom.vm
+    maxlag = fom.maxlag
+    n_rows = size(values, 1)
+
+    # work in deviation from the steady state
+    dev = Matrix{Float64}(undef, size(values))
+    @inbounds for c in 1:size(values, 2), r in 1:n_rows
+        dev[r, c] = values[r, c] - fom.x_ss[c]
     end
-    return -1
-end
-
-mutable struct FOSimulatorData{A}
-    t_last_swap::Int
-    empty_plan::Bool
-    nbck::Int
-    nfwd::Int
-    nex::Int
-    oex::Int
-    ibck::UnitRange{Int}
-    ifwd::UnitRange{Int}
-    ien::UnitRange{Int}
-    iex::UnitRange{Int}
-    sol_t::Vector{Float64}
-    α_t::Vector{Float64}
-    RHS::Vector{Float64}
-    xflags_t::Vector{Bool}
-    varmaxlead::Vector{Int}
-    uniq_inds_map::Vector{Int}
-end
-function FOSimulatorData(plan::Plan, model::Model, anticipate::Bool)
-    t_last_swap = _last_swapped_period(plan, model)
-
-    sd = getsolverdata(model, :firstorder)::FirstOrderSD
-    vm = sd.vm
+    sim = copy(dev)
 
     nbck = vm.nbck
-    nfwd = vm.nfwd
-    nex = vm.nex
-    oex = vm.oex
+    ibck = 1:nbck
+    ien  = 1:vm.oex
+    iex  = vm.oex .+ (1:vm.nex)
 
-    varmaxlead = zeros(Int, model.nvarshks)
-    for (vind, tt) in vm.inds_map[nbck.+(1:nfwd)]
-        if tt > varmaxlead[vind]
-            varmaxlead[vind] = tt
-        end
+    sol_t = zeros(vm.nbck + vm.nfwd + vm.nex)
+    RHS   = zeros(vm.nbck + vm.nfwd)
+
+    # initial conditions: only the bck entries are used (sol_t[ibck]).
+    # tnow is the row index of the current period; period-1 row is maxlag+1.
+    tnow0 = maxlag
+    for ind in ibck
+        (gi, tt) = vm.inds_map[ind]
+        sol_t[ind] = dev[tnow0 + tt, gi]
     end
 
-    return FOSimulatorData{anticipate}(t_last_swap, t_last_swap <= model.maxlag,
-        nbck, nfwd, nex, oex,
-        1:nbck, nbck .+ (1:nfwd), 1:oex, oex .+ (1:nex), # ibck, ifwd, ien, iex
-        Vector{Float64}(undef, nbck + nfwd + nex), # sol_t
-        Vector{Float64}(undef, nbck), # α_t
-        Vector{Float64}(undef, nbck + nfwd), # RHS
-        Vector{Bool}(undef, nbck + nfwd + nex), # xflags_t
-        varmaxlead,
-        indexin(unique(vm.inds_map), vm.inds_map),
-    )
+    sol_bck = view(sol_t, ibck)
+
+    for tnow in (maxlag + 1):n_rows
+        if nbck > 0
+            LinearAlgebra.mul!(RHS, fom.RbyZbb, sol_bck)
+        else
+            fill!(RHS, 0.0)
+        end
+
+        # fill exogenous data for this period
+        for (ind, (gi, tt)) in zip(iex, view(vm.inds_map, iex))
+            sol_t[ind] = dev[tnow + tt, gi]
+        end
+
+        # solve for the endogenous unknowns
+        if nbck > 0
+            sol_t[ien] = fom.MAT_n \ (RHS - fom.MAT_x * sol_t[iex])
+        else
+            sol_t[ien] = fom.MAT_n \ (-(fom.MAT_x * sol_t[iex]))
+        end
+
+        # write the (var, 0) entries back to the output (bck preferred for
+        # mixed variables, then fwd, then ex - same priority as legacy).
+        _scatter_period!(sim, tnow, sol_t, vm)
+    end
+
+    # add the steady state back
+    out = sim
+    @inbounds for c in 1:size(out, 2), r in 1:n_rows
+        out[r, c] += fom.x_ss[c]
+    end
+    return out
 end
 
-function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
-    deviation::Bool=false,
-    anticipate::Bool=false,
-    baseline::AbstractMatrix{Float64}=zeros(0, 0),
-    verbose::Bool=model.options.verbose,
-    #= nlcorrect::Bool=false, =#
-    kwargs...
-)
-
-    if !isempty(model.auxvars)
-        error("Found auxiliary variables. First-order solver not yet implemented for models with auxiliary variables.")
-    end
-
-    # make sure we have first order solution
-    sd = getsolverdata(model, :firstorder)::FirstOrderSD
-    vm = sd.vm
-    S = FOSimulatorData(plan, model, anticipate)
-
-    if anticipate && !S.empty_plan
-        @warn "Running linearized stacked-time solver."
-        return simulate(model, plan, exog;
-            deviation, anticipate, verbose, baseline, kwargs...)
-    end
-
-    # transform exogenous data 
-    logvars = [islog(var) | isneglog(var) for var in model.varshks]
-    need_trans = any(logvars)
-    need_baseline = !deviation || (deviation && need_trans)
-    if isempty(baseline) && need_baseline
-        baseline = steadystatearray(model, plan)
-    end
-
-    if need_trans && deviation
-        exog = copy(exog)
-        exog[:, logvars] .*= baseline[:, logvars]
-        exog[:, .!logvars] .+= baseline[:, .!logvars]
-    end
-    if need_trans
-        exog = transform(exog, model)
-        baseline_tr = transform(baseline, model)
-    else
-        exog = copy(exog)
-        baseline_tr = baseline
-    end
-
-    # we work in deviation from steady state
-    if !deviation
-        # already transformed, so just subtract
-        exog .-= baseline_tr
-    end
-
-    # the result will be saved in sim
-    sim = copy(exog)
-
-    ##################
-    # First period
-    # Let’s start at the very beginning, a very good place to start.
-    ##################
-
-    # tnow is the row-index in exog corresponding to the current period 
-    tnow = model.maxlag
-
-    # prepare initial conditions (only bck_t are used)
-    for ind in S.ibck
-        vind, tt = vm.inds_map[ind]
-        S.sol_t[ind] = exog[tnow+tt, vind]
-    end
-
-    ##################
-    # The loop
-    ##################
-
-    sol_bck_t = view(S.sol_t, S.ibck)
-
-    for tnow in model.maxlag+1:size(sim, 1)
-
-        if S.nbck > 0
-            # prepare the right-hand-side of the system (that's the αₜ₋₁ part of the equation)
-            # α_t .= sd.Zbb \ bck_t
-            # RHS .= sd.R * α_t
-            BLAS.gemv!('N', 1.0, sd.RbyZbb, sol_bck_t, 0.0, S.RHS)
+# write sol_t's contemporaneous entries into row `tnow` of `sim`.
+function _scatter_period!(sim::AbstractMatrix{Float64}, tnow::Int,
+                          sol_t::AbstractVector{Float64}, vm::VarMaps)
+    @inbounds for (name, gi) in vm.vi
+        solind = get(vm.bck_inds, (name, 0), -1)
+        if solind > 0
+            sim[tnow, gi] = sol_t[solind]
+            continue
         end
-
-        # fill exogenous data
-        for (ind, (varind, tt)) in zip(S.iex, vm.inds_map[S.iex])
-            S.sol_t[ind] = exog[tnow+tt, varind]
+        solind = get(vm.fwd_inds, (name, 0), -1)
+        if solind > 0
+            sim[tnow, gi] = sol_t[solind]
+            continue
         end
-
-        dispatch = tnow > S.t_last_swap ? Val(:empty_plan) : Val(:swapped_plan)
-
-        fo_sim_step!(tnow, S, sd,
-            model, plan, exog,
-            dispatch)
-
-        #= if nlcorrect && tnow + model.maxlead <= size(sim, 1)
-            fo_nl_correct!(tnow, S, sd, ed,
-                model, plan, exog,
-                baseline_tr[tnow-model.maxlag:tnow+model.maxlead, :],
-                dispatch)
-        end =#
-
-        # TODO: This mapping can be precomputed!  
-        # Populate the sim
-        for (simind, var) in enumerate(model.varshks)
-            vname = var.name
-            solind = get(vm.bck_inds, (vname, 0), -1)
-            if solind > -1
-                sim[tnow, simind] = S.sol_t[solind]
-                continue
-            end
-            solind = get(vm.fwd_inds, (vname, 0), -1)
-            if solind > -1
-                sim[tnow, simind] = S.sol_t[solind]
-                continue
-            end
-            solind = get(vm.ex_inds, (vname, 0), -1)
-            if solind > -1
-                sim[tnow, simind] = S.sol_t[S.oex+solind]
-                continue
-            end
-            error("Variable $(vname)[t] not found in solution vector!?!?!")
+        solind = get(vm.ex_inds, (name, 0), -1)
+        if solind > 0
+            sim[tnow, gi] = sol_t[vm.oex + solind]
+            continue
         end
-
-    end
-
-    # inverse transform data to give back to the user
-
-    # sim is in deviation
-    if !deviation
-        sim .+= baseline_tr
-    end
-    if need_trans
-        sim = inverse_transform(sim, model)
-    end
-
-    return sim
-end
-
-#############################
-#  fo_sim_step!
-#############################
-
-function fo_sim_step!(
-    tnow::Int,
-    S::FOSimulatorData,
-    sd::FirstOrderSD,
-    model::Model,
-    plan::Plan,
-    exog::AbstractMatrix{Float64},
-    ::Val{:empty_plan}
-)
-    fill!(S.xflags_t, false)
-    S.xflags_t[S.iex] .= true
-    if S.nbck > 0
-        S.sol_t[S.ien] = sd.MAT_n \ (S.RHS - sd.MAT_x * S.sol_t[S.iex])
-    else
-        S.sol_t[S.ien] = -(sd.MAT_n \ (sd.MAT_x * S.sol_t[S.iex]))
+        # name not in any contemporaneous class at offset 0 - leave as-is
+        # (e.g. a shock that only appears at a nonzero offset). Such a column
+        # keeps its exogenous input value, already in `sim` from the copy.
     end
     return nothing
 end
-
-function fo_sim_step!(
-    tnow::Int,
-    S::FOSimulatorData,
-    sd::FirstOrderSD,
-    model::Model,
-    plan::Plan,
-    exog::AbstractMatrix{Float64},
-    ::Val{:swapped_plan}
-)
-    vm = sd.vm
-    # prepare exogenous flags and data according to plan
-    fill!(S.xflags_t, false)
-    S.xflags_t[S.iex] .= true
-    empty_plan = true  # check if the plan is really empty
-    for (var, xflag) in zip(model.varshks, plan.exogenous[tnow, :])
-        vname = var.name
-        ind = -1
-        for (inds, def_xflag, offset) in ((vm.bck_inds, false, 0),
-            (vm.fwd_inds, false, 0),
-            (vm.ex_inds, true, S.oex))
-            # def_xflag : default xflag in empty plan, i.e. `false` for variables, `true` for shocks 
-            # Note: bck_inds listed first for a good reason
-            # it's possible for (var,0) to be both in bck and fwd (mixed variable)
-            # if exogenous, we set only one of them, not both
-            # we flipped a coin and bck won the honour of being preferred
-            ind = get(inds, (vname, 0), -1)
-            if ind > -1
-                oind = offset + ind
-                S.xflags_t[oind] = xflag
-                if xflag
-                    S.sol_t[oind] = exog[tnow, vm.vi[vname]]
-                end
-                if xflag != def_xflag
-                    empty_plan = false
-                end
-                break
-            end
-        end
-        if ind < 0
-            error("Variable not found in plan: $vname")
-        end
-    end
-    # solve for the endogenous unknowns
-    if empty_plan
-        # MAT_n is already LU-factorized, so this branch should be faster
-        if S.nbck > 0
-            S.sol_t[S.ien] = sd.MAT_n \ (S.RHS - sd.MAT_x * S.sol_t[S.iex])
-        else
-            S.sol_t[S.ien] = sd.MAT_n \ (-sd.MAT_x * S.sol_t[S.iex])
-        end
-    else
-        # check plan
-        if sum(S.xflags_t) != S.nex
-            error("Incorrect number of endogenous unknowns in plan at $(plan.range[tnow]).")
-        end
-        if S.nbck > 0
-            S.sol_t[.!S.xflags_t] = sd.MAT[:, .!S.xflags_t] \ (S.RHS - sd.MAT[:, S.xflags_t] * S.sol_t[S.xflags_t])
-        else
-            S.sol_t[.!S.xflags_t] = sd.MAT[:, .!S.xflags_t] \ (-sd.MAT[:, S.xflags_t] * S.sol_t[S.xflags_t])
-        end
-    end
-    return nothing
-end
-

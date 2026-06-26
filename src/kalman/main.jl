@@ -5,6 +5,9 @@
 # All rights reserved.
 ##################################################################################
 
+# ----------------------------------------------------------------------
+# Kalman driver entry points.
+# ----------------------------------------------------------------------
 
 """
     kf = kf_filter(Y, x0, Px0, model, user_data...; options)
@@ -14,11 +17,11 @@ Main function call to run the Kalman Filter. It dispatches to a specific
 
 # Arguments
 
-`Y` is the observed data. Rows (fist index) correspond to time, columns
+`Y` is the observed data. Rows (first index) correspond to time, columns
     (second index) correspond to observed variables.
 
 `x0` and `Px0` are the initial states and state covariance. Option
-    `fwdstate` controls whether these are given at t = 0 (`fwdstate=true`,
+    `fwdstate` controls whether these are given at t = 1 (`fwdstate=true`,
     default) or at t = 0 (`fwdstate=false`)
 
 `model, user_data...`
@@ -112,4 +115,3 @@ function kf_smoother!(kf::KFilter, model, user_data...; kwargs...)
         error("Not implemented for non-linear models yet.")
     end
 end
-

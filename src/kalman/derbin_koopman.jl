@@ -5,21 +5,23 @@
 # All rights reserved.
 ##################################################################################
 
-# This file contains a Kalman filter and smoother 
-# implementation that is optimized 
-# for stationary linear state space model 
-
-# Implementation in this file follows 
+# ----------------------------------------------------------------------
+# Durbin-Koopman Kalman filter + smoother.
+#
+# This file contains a Kalman filter and smoother implementation that is
+# optimized for stationary linear state space models.
+#
+# Implementation follows
 # Time Series Analysis by State Space Methods, second edition,
 # by J.Durbin and S.J.Koopman, 2012
-
-# Notation in (Durbin & Koopman, 2012) is: 
 #
-#  yₜ   = Z αₜ + εₜ       εₜ ~ N(0, H)    
-#      yₜ - vector varying length pₜ, 
+# Notation in (Durbin & Koopman, 2012) is:
+#
+#  yₜ   = Z αₜ + εₜ       εₜ ~ N(0, H)
+#      yₜ - vector varying length pₜ,
 #          set p = maximum(pₜ for t = 1:n)
 #  αₜ₊₁ = T αₜ + R ηₜ     ηₜ ~ N(0, Q)
-#      αₜ - vector fixed length m 
+#      αₜ - vector fixed length m
 #   α₁ ~ N(a₁, P₁)
 #
 #   Yₙ - data for y -- matrix (n, p), NaN indicate missing observations
@@ -28,6 +30,7 @@
 #   Puₜ = Var(αₜ | Yₜ)
 #   aₜ₊₁ = E(αₜ₊₁ | Yₜ)
 #   Pₜ₊₁ = Var(αₜ₊₁ | Yₜ)
+# ----------------------------------------------------------------------
 
 function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a_init, P_init,
     fwdstate::Bool, anymissing::Bool=any(isnan, Y))
@@ -114,7 +117,7 @@ function dk_filter!(kf::KFilter, Y, mu, Z, T, H, Q, R, a_init, P_init,
             fill!(ZᵀiFₜ, 0.0)
             if ny == 0
                 # if observations are missing, we cannot update the prediction
-                # we set the Kalman gain, K, to zero, effectively 
+                # we set the Kalman gain, K, to zero, effectively
                 # giving auₜ = aₜ and Puₜ = Pₜ
                 cFₜ = Cholesky(zeros(0, 0), :U, 0)
                 nothing
@@ -187,7 +190,7 @@ function dk_smoother!(kf::KFilter, mu, Z, T, H, Q, R, fwdstate::Bool)
     #  note - in the book we have
     #     Kₜ = T Pₜ Zᵀ Fₜ⁻¹
     #     Lₜ = T - Kₜ Z
-    #  However, in dk_filter! we calculate 
+    #  However, in dk_filter! we calculate
     #     Kₜ = Pₜ Zᵀ Fₜ⁻¹
     #  therefore for us
     #     Lₜ = T ( I - Kₜ Z )
@@ -197,12 +200,12 @@ function dk_smoother!(kf::KFilter, mu, Z, T, H, Q, R, fwdstate::Bool)
     #    Nₜ₋₁ = Zᵀ Fₜ⁻¹ Z + Lₜᵀ Nₜ Lₜ
     #    aˢₜ = aₜ + Pₜ rₜ₋₁
     #    Vₜ = Pₜ - Pₜ Nₜ₋₁ Pₜ
-    # with initialization 
+    # with initialization
     #    rₙ = 0,  Nₙ = 0
 
     # From Table 4.4 on p. 104
-    # Cov(aˢₜ, aˢⱼ) = Pₜ Lₜᵀ Lₜ₊₁ᵀ … Lⱼ₋₁ᵀ ( I - Nⱼ₋₁ Pⱼ) for j = t+1, ..., n
-    # for j = t + 1, we have 
+    # Cov(aˢₜ, aˢⱼ) = Pₜ Lₜᵀ Lₜ₊₁ᵀ ... Lⱼ₋₁ᵀ ( I - Nⱼ₋₁ Pⱼ) for j = t+1, ..., n
+    # for j = t + 1, we have
     #        Cov(aˢₜ, aˢₜ₊₁) = Pₜ Lₜᵀ ( I - Nₜ Pₜ₊₁ )
 
     have_mu = dot(mu, mu) > 0
@@ -219,7 +222,7 @@ function dk_smoother!(kf::KFilter, mu, Z, T, H, Q, R, fwdstate::Bool)
     TMPx = kf.A_x
     TMPxx = kf.A_xx
     TMPxy = kf.A_xy
-    
+
     tstop = kf_time_periods(kf)
     tstart = 1
 
@@ -303,7 +306,6 @@ function dk_smoother!(kf::KFilter, mu, Z, T, H, Q, R, fwdstate::Bool)
         kfd[0, :x0_smooth] = x0 + J_1 * (x_smooth - T * x0)
         kfd[0, :Px0_smooth] = Px0 + J_1 * (Px_smooth - Pₜ) * transpose(J_1)
         if hasproperty(kfd, :Pxx0_smooth)
-            # Pxx0_smooth = kfd.Pxx0_smooth
             local Pₜ = @kfd_get kfd tstart + 1 Px_pred
             local Ps1ₜ = @kfd_get kfd tstart Pxx_smooth
             if hasproperty(kfd, :Px)
@@ -316,11 +318,6 @@ function dk_smoother!(kf::KFilter, mu, Z, T, H, Q, R, fwdstate::Bool)
             J_2 = J_1
             J_1 = Puₜ * transpose(T) / Pₜ
             kfd[0, :Pxx0_smooth] = J_2 * (Puₜ + (Ps1ₜ - Puₜ * transpose(T)) * transpose(J_1))
-            # copyto!(Pxx0_smooth, @kfd_get kfd tstart Pxx_smooth)
-            # mul!(Pxx0_smooth, Puₜ, transpose(T), 1.0, -1.0)
-            # mul!(TMPxx, Pxx0_smooth, transpose(J_1))
-            # TMPxx .+= Puₜ
-            # mul!(Pxx0_smooth, J_2, TMPxx)            
         end
     end
 
