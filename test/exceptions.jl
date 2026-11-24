@@ -74,6 +74,16 @@ function exc_dynmodel()
 end
 struct ExcUnprintable end
 Base.show(::IO, ::ExcUnprintable) = error("cannot show")
+# its display is that of an object which refers back to it (the limit stops a runaway recursion)
+mutable struct ExcBackref
+    parent
+    visits::Int
+end
+function Base.show(io::IO, x::ExcBackref)
+    x.visits += 1
+    x.visits > 8 && error("recursion")
+    show(io, x.parent)
+end
 exc_shock(v) =(s = MVTSeries(1U:1U, (:e,), zeros); s[1U, :e] = v; s)
 
 @testset "exceptions, steady state" begin
@@ -235,6 +245,13 @@ end
     @test occursin("SimFailed(1U, DomainError(-1.0", sprint(show, MIME("text/plain"), [SimFailed(1U, DomainError(-1.0))]))
     @test sprint(show, SimFailed(1U, DomainError(ExcUnprintable()))) == "SimFailed(1U, DomainError (cannot be displayed))"
     @test occursin("(cannot be displayed)", sprint(show, MIME("text/plain"), [SimFailed(1U, DomainError(ExcUnprintable()))]))
+    # as the default display does, reset the type information and detect a circular reference
+    @test sprint(show, SimFailed(true, nothing); context=:typeinfo => Bool) == "SimFailed(true, nothing)"
+    let cause = ExcBackref(nothing, 0)
+        ex = cause.parent = SimFailed(1U, cause)
+        @test occursin("circular reference", sprint(show, ex))
+        @test cause.visits == 1
+    end
 
     # a bug or an interrupt stops the simulation
     for err in (ArgumentError("damping bug"), InterruptException())

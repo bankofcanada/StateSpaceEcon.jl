@@ -177,9 +177,9 @@ struct SimFailed <: Exception
 end
 SimFailed(info) = SimFailed(info, nothing)
 # the cause's own display (e.g. of a `DomainError` value) must not hide the failure
-function _render_cause(f, cause, context=nothing)
+function _render_cause(cause)
     try
-        sprint(f, cause; context)
+        sprint(showerror, cause)
     catch err
         err isa InterruptException && rethrow()
         "$(typeof(cause)) (cannot be displayed)"
@@ -190,16 +190,20 @@ function Base.showerror(io::IO, ex::SimFailed)
     ex.info isa MIT ? print(io, "Simulation failed in period $(ex.info).") :
     ex.info isa AbstractUnitRange{<:MIT} ? print(io, "Simulation over $(ex.info) failed.") :
     print(io, "Simulation failed: $(ex.info)")
-    isnothing(ex.cause) || print(io, "\nCaused by: ", _render_cause(showerror, ex.cause))
+    isnothing(ex.cause) || print(io, "\nCaused by: ", _render_cause(ex.cause))
 end
 # `stoch_simulate` returns a `SimFailed` instead of throwing it, so it is mostly displayed
 Base.show(io::IO, ::MIME"text/plain", ex::SimFailed) = showerror(io, ex)
-# the compact form (e.g. in a printed vector of results), as the default `show`
+# the compact form (e.g. in a printed vector of results) is the default display,
+# unless the cause cannot be displayed
 function Base.show(io::IO, ex::SimFailed)
-    show(io, typeof(ex))
-    print(io, "(")
-    show(io, ex.info)
-    print(io, ", ", _render_cause(show, ex.cause, io), ")")
+    str = try
+        sprint((io, ex) -> invoke(show, Tuple{IO,Any}, io, ex), ex; context=io)
+    catch err
+        err isa InterruptException && rethrow()
+        string(typeof(ex), "(", repr(ex.info), ", ", typeof(ex.cause), " (cannot be displayed))")
+    end
+    print(io, str)
 end
 isfailed(f::SimFailed)::Bool = !isnothing(f.info)
 isfailed(f::SimData)::Bool = false
