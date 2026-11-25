@@ -94,7 +94,11 @@ function sim_nr!(x::AbstractArray{Float64}, sd::StackedTimeSolverData,
             nFtmp = try
                 stackedtime_R!(Fx, xtmp, xtmp, sd)
                 norm(Fx, Inf)
-            catch
+            catch err
+                # only a domain error means an inadmissible trial point; anything else is not an inadmissible point and propagates
+                err isa DomainError || rethrow()
+                # the damping functions look at the residual itself, which is now partly updated
+                fill!(Fx, NaN)
                 NaN
             end
             accepted, λ = damping(it, λ, nFtmp, Fx, Jx, Δx)::Tuple{Bool,Float64}
@@ -195,8 +199,8 @@ function damping_br81(; delta::Real=0.1, rateK::Real=10.0, lambda_min::Real=1e-5
             nF2_it = it
             return false, calc_λ()
         end
-        if (1 - δ * λ) * nF2 < norm(F, 2)
-            # test failed => reject and try smaller λ
+        if !(norm(F, 2) <= (1 - δ * λ) * nF2)
+            # test failed (or the residual is not finite) => reject and try smaller λ
             if bigK == 0.0
                 bigK = 1.0
             else

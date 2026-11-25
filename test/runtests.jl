@@ -413,11 +413,15 @@ for sfdef = Iterators.map(QuoteNode, StateSpaceEcon.StackedTimeSolver.sf_libs)
 end
 
 include("sim_solver.jl")
+include("worldage.jl")
+include("exceptions.jl")
 
 
 include("kalman.jl")
 include("dfmtests.jl")
 
+include("aqua.jl")
+include("explicit_imports.jl")
 
 # keep this one last because it overwrites getE?()
 include("modelchanges.jl")

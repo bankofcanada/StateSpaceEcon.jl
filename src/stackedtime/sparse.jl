@@ -87,6 +87,20 @@ function _sf_same_sparse_pattern(A::SparseMatrixCSC, B::SparseMatrixCSC)
     return (A.m == B.m) && (A.n == B.n) && (A.colptr == B.colptr) && (A.rowval == B.rowval)
 end
 
+# SSE's own message when Pardiso perturbed pivots (see `_pardiso_full!`)
+const _PARDISO_PIVOT_MESSAGE = "Zero or near-zero pivot."
+
+# Whether an exception thrown while solving means that the system cannot be
+# solved at this point (`stoch_simulate` then marks the realization as failed),
+# as opposed to any other exception (an error in the model or the code, an
+# interrupt, a problem with the solver library itself
+# such as memory or invalid input), which must propagate. Pardiso uses `PardisoException`
+# for both kinds, so its numerical failures are recognized by their message;
+# if that message ever changes, the error propagates instead of being hidden.
+_is_numerical_failure(::Any) = false
+_is_numerical_failure(::Union{DomainError,SingularException,LAPACKException,Pardiso.PardisoPosDefException}) = true
+_is_numerical_failure(err::Pardiso.PardisoException) = err.info in (_PARDISO_PIVOT_MESSAGE, "Diagonal matrix is singular")
+
 macro _sf_check_factorize(exception, expression)
     error = gensym("error")
     return esc(quote
@@ -102,7 +116,7 @@ macro _sf_check_factorize(exception, expression)
 end
 
 mutable struct LUFactorization{Tv<:Real} <: SF_Factorization{Tv}
-    F::SuiteSparse.UMFPACK.UmfpackLU{Tv,Int}
+    F::UMFPACK.UmfpackLU{Tv,Int}
     A::SparseMatrixCSC{Tv,Int}
 end
 
@@ -170,7 +184,7 @@ end
         set_phase!(ps, Pardiso.ANALYSIS_NUM_FACT)
         pardiso(ps, pf.A, Float64[])
         # Fail if Pardiso perturbed any pivots
-        get_iparm(ps, 14) == 0 || throw(Pardiso.PardisoException("Zero or near-zero pivot."))
+        get_iparm(ps, 14) == 0 || throw(Pardiso.PardisoException(_PARDISO_PIVOT_MESSAGE))
     end
     return pf
 end
@@ -182,7 +196,7 @@ end
         set_phase!(ps, Pardiso.NUM_FACT)
         pardiso(ps, pf.A, Float64[])
         # Fail if Pardiso perturbed any pivots
-        get_iparm(ps, 14) == 0 || throw(Pardiso.PardisoException("Zero or near-zero pivot."))
+        get_iparm(ps, 14) == 0 || throw(Pardiso.PardisoException(_PARDISO_PIVOT_MESSAGE))
     end
     return pf
 end

@@ -125,3 +125,34 @@ using TimeSeriesEcon.DataEcon
 
 end
 
+@testset "shockdecomp, aux vars" begin
+    # not supported yet: a clear error instead of an AssertionError deep inside
+    m = Model()
+    m.options.substitutions = true
+    @variables m x y
+    @shocks m e
+    @equations m begin
+        x[t] = 0.5 * x[t-1] + e[t]
+        y[t] = log(exp(x[t]) + 1)
+    end
+    @initialize m
+    @test m.nauxs > 0
+    sssolve!(m)
+    p = Plan(m, 1U:10U)
+    data = steadystatedata(m, p)
+    data[1U, :e] = 0.1
+    @test_throws r"Not implemented: `shockdecomp`.*auxiliary variables" shockdecomp(m, p, data)
+    # it works with columns for the auxiliary variables
+    a = ModelBaseEcon.update_auxvars(data2array(steadystatedata(m, p)), m)
+    control = MVTSeries(first(p.range), Symbol.(m.allvars), a)
+    data = copy(control)
+    data[1U, :e] = 0.1
+    sd = shockdecomp(m, p, data; control)
+    @test sd.s[1U, :x] ≈ 0.1
+    @test sd.s[1U, :y] ≈ log(exp(0.1) + 1)
+    # the columns must be those of `m.allvars`, in that order
+    swapped = control[Tuple(reverse(Symbol.(m.allvars)))]
+    @test_throws r"exactly the columns of `model.allvars`" shockdecomp(m, p, copy(swapped); control=swapped)
+    # data as deviations are not supported with auxiliary variables
+    @test_throws r"Not implemented: `shockdecomp`.*`deviation=true`.*auxiliary variables" shockdecomp(m, p, data - control; control, deviation=true)
+end

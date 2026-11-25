@@ -22,8 +22,39 @@ Specific options
     for Newton-Raphson, `:lm` for Levenberg-Marquardt, and `:auto`. The `:auto`
     method starts with the LM algorithm and automatically switches to NR when it
     starts to converge. Default is `:nr`.
+
+### Exceptions from the model's equations
+Only a `DomainError` thrown while evaluating the equations (for example `log`
+or `sqrt` of a negative number) marks a point as inadmissible. Any other
+exception from the equations propagates unchanged.
+
+`sssolve!` needs a starting point (the values in `model.sstate`) at which every
+equation can be evaluated; otherwise it stops with an "Inadmissible point"
+`ErrorException`. After that it backs off from an inadmissible point only at
+trial points: the Newton line search (enabled with `nropts = Options(linesearch
+= true)`) and the first Levenberg-Marquardt step reject it and try a shorter
+step, and an update of the auxiliary variables that hits one is skipped.
+Anywhere else it stops with an "Inadmissible point" `ErrorException` (or
+"Singular gradient" when only a derivative is not finite). Two limits: when the
+line search rejects every step, the full Newton step is taken, and the point
+reached by the last iteration is returned without being evaluated, so check the
+result with [`check_sstate`](@ref).
+
+The presolve, run by [`clear_sstate!`](@ref) and [`initial_sstate!`](@ref),
+leaves an equation unsolved when it cannot be evaluated at the starting point.
+With `model.options.substitutions = true`, `log(expr)` in an equation is
+replaced by an auxiliary variable, so a negative `expr` does not throw a
+`DomainError`.
+
+If a function used in your equations cannot handle some arguments and you want
+the solver to back off, throw a `DomainError` for them, for example
+`f(x::Real) = x > 0 ? log(x) : throw(DomainError(x))`. Accept `Real`, not only
+`Float64`: derivatives are computed with ForwardDiff dual numbers. Do not return
+`NaN` instead, and do not turn every exception into a `DomainError`: that would
+hide errors in the model.
 """
-function sssolve!(model::Model;
+sssolve!(model::Model; kwargs...) = Base.invokelatest(_sssolve!, model; kwargs...)::Vector{Float64}
+function _sssolve!(model::Model;
     verbose::Bool = model.options.verbose,
     tol::Float64 = model.options.tol,
     maxiter::Int64 = model.options.maxiter,
@@ -107,21 +138,24 @@ function sssolve!(model::Model;
         xx .-= dx
 
         # try updating the auxiliary variables
-        if any(sd.solve_var[length(model.variables)*2+1:end])
-            try
-                global_SS_R!(r0, xx, sd)
-                n1 = sum(abs2, r0)
-                ssvals[sd.solve_var] .= xx
-                ssvals .= update_auxvars_ss(ssvals, model)
-                global_SS_R!(r0, ssvals[sd.solve_var], sd)
-                n2 = sum(abs2, r0)
-                if n2 < n1
+        # (skipped if the residual is not finite before or after the update)
+        if any(sd.solve_var[length(model.variables)*2+1:end]) && _active_SS_R!(r0, xx, sd) == 0
+            n1 = sum(abs2, r0)
+            ssvals[sd.solve_var] .= xx
+            auxvals = try
+                update_auxvars_ss(ssvals, model)
+            catch err
+                err isa DomainError || rethrow()
+                nothing
+            end
+            if !isnothing(auxvals)
+                ssvals .= auxvals
+                if _active_SS_R!(r0, ssvals[sd.solve_var], sd) == 0 && sum(abs2, r0) < n1
                     xx .= ssvals[sd.solve_var]
                     if verbose
                         @info "    -- updated auxiliary variables"
                     end
                 end
-            catch
             end
         end
 
@@ -165,4 +199,4 @@ function sssolve!(model::Model;
     end
     return ss.values
 end
-@assert precompile(sssolve!, (Model,))
+precompile(_sssolve!, (Model,))

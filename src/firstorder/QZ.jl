@@ -63,7 +63,7 @@ function _dgges!(qz::QZData, selctg=C_NULL)
         resize!(qz.bwork, max(length(qz.bwork), qz.N))
         qz.lbwork[] = length(qz.bwork)
     end
-    ccall((LAPACK.@blasfunc(dgges_), LAPACK.libblastrampoline), Cvoid, (
+    ccall((BLAS.@blasfunc(dgges_), LAPACK.libblastrampoline), Cvoid, (
             Ref{UInt8}, Ref{UInt8}, Ref{UInt8}, Ptr{Cvoid},   # JOBVSL, JOBVSR, SORT, SELCTG
             Ref{BlasInt}, Ptr{Float64}, Ref{BlasInt}, # N, in A out S, LDA, 
             Ptr{Float64}, Ref{BlasInt}, # in B out T, LDB, 
@@ -107,7 +107,7 @@ function _dtgsen!(qz::QZData, select::Vector{BlasInt})
     # https://netlib.org/lapack/explore-html/da/dba/group__double_o_t_h_e_rcomputational_gaba8441d4f7374bbcf6c093dbec0b517e.html#gaba8441d4f7374bbcf6c093dbec0b517e
     _zero = BlasInt(0)
     _one = BlasInt(1)
-    ccall((LAPACK.@blasfunc(dtgsen_), LAPACK.libblastrampoline), Cvoid, (
+    ccall((BLAS.@blasfunc(dtgsen_), LAPACK.libblastrampoline), Cvoid, (
             Ref{BlasInt}, Ref{BlasInt}, Ref{BlasInt}, # IJOB, WANTQ, WANTZ,
             Ptr{BlasInt}, # SELECT
             Ref{BlasInt}, Ptr{Float64}, Ref{BlasInt}, # N, in/out A (a.k.a. S), LDA, 

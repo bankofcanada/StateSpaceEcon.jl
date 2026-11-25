@@ -14,16 +14,17 @@ for the model and running simulations.
 """
 module StackedTimeSolver
 
-using SparseArrays
-using LinearAlgebra
-using ForwardDiff
-using DiffResults
-using Printf
+using SparseArrays: SparseArrays, SparseMatrixCSC, nnz, nzrange, rowvals, sparse
+using LinearAlgebra: LinearAlgebra, Factorization, LAPACKException, SingularException, ldiv!, lu, lu!, norm
+using ForwardDiff: ForwardDiff
+using DiffResults: DiffResults
+using Printf: Printf
 
-using ModelBaseEcon
-using TimeSeriesEcon
+using ModelBaseEcon: ModelBaseEcon, Model, ModelVariable, Options, eval_R!, eval_RJ, getoption, inverse_transform,
+    isexog, islin, islog, isneglog, isshock, issssolved, refresh_med!, shocks, transform
+using TimeSeriesEcon: TimeSeriesEcon, MVTSeries, TSeries, U, Workspace, colnames, firstdate, lastdate, overlay, rangeof, rawdata
 
-using TimerOutputs
+using TimerOutputs: TimerOutputs, @timeit_debug, TimerOutput
 const timer = TimerOutput()
 
 using ..Plans
@@ -43,11 +44,11 @@ import ModelBaseEcon.hassolverdata
 import ModelBaseEcon.getsolverdata
 import ModelBaseEcon.setsolverdata!
 
-using Pardiso
+using Pardiso: Pardiso, MKLPardisoSolver, fix_iparm!, get_iparm, get_matrix, pardiso, pardisoinit, set_iparm!,
+    set_matrixtype!, set_phase!
 
 
-using SuiteSparse
-using SuiteSparse.UMFPACK
+using SparseArrays.UMFPACK: UMFPACK
 
 include("stackedtime/sparse.jl")
 
@@ -66,8 +67,6 @@ end # module
 using .StackedTimeSolver
 
 export FinalCondition
-export NoFinalCondition
-export HasFinalCondition
 export FCNone, fcnone
 export FCGiven, fcgiven
 export FCMatchSSLevel, fclevel

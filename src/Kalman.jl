@@ -8,15 +8,15 @@
 
 module Kalman
 
-using LinearAlgebra
-using SparseArrays
+using LinearAlgebra: LinearAlgebra, BLAS, Cholesky, I, Symmetric, UniformScaling, cholesky!, dot, ldiv!, mul!, rdiv!
+using SparseArrays: SparseArrays, SparseMatrixCSC
 
-using TimeSeriesEcon
-using ModelBaseEcon
+using TimeSeriesEcon: TimeSeriesEcon, compare
+using ModelBaseEcon: ModelBaseEcon
 using ..StateSpaceEcon
 
-using UnPack
-using MacroTools
+using UnPack: UnPack
+using MacroTools: MacroTools, @capture
 
 include("kalman/api.jl")
 include("kalman/data.jl")

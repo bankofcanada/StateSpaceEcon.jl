@@ -90,7 +90,9 @@ function _sim_lm_first_step(
             n2AR = sum(abs2, R)
             # quality of step
             qual = (n2AR - n2R) / (n2PR - n2R)
-        catch
+        catch err
+            # only a domain error means an inadmissible trial point; anything else is not an inadmissible point and propagates
+            err isa DomainError || rethrow()
         end
         if qual > 0.75 # very good quality, extend the trust region
             lambda = lambda / nu

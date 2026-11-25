@@ -26,7 +26,7 @@ SimData(args...) = MVTSeries(args...)
 
 _getname(v::ModelVariable) = (@nospecialize(v); v.name)
 
-const _MVCollection = Union{Vector{ModelVariable},NTuple{N,ModelVariable}} where {N}
+const _MVCollection = Union{Vector{ModelVariable},Tuple{ModelVariable,Vararg{ModelVariable}}}
 # we should allow indexing with model variables
 Base.getindex(sd::MVTSeries, vars::_MVCollection) = getindex(sd, _getname.(vars))
 Base.getindex(sd::MVTSeries, vars::ModelVariable) = (@nospecialize(vars); getindex(sd, _getname(vars)))
@@ -160,14 +160,51 @@ export dict2array, array2dict, dict2data, data2dict
 @deprecate data2dict(args...; kwargs...) data2workspace(args...; kwargs...)
 
 
+"""
+    SimFailed(info, cause = nothing)
+
+The result of a simulation that failed, for example a realization in
+[`stoch_simulate`](@ref). `info` is where it failed (usually the period, an
+`MIT`) and `cause` is the exception that made it fail, or `nothing`. Displayed
+on its own (and by `showerror`) it reads "Simulation failed in period ...",
+followed by the cause; inside a printed collection it keeps the compact form
+`SimFailed(info, cause)`. `isfailed` returns `true` for a `SimFailed` whose
+`info` is not `nothing`.
+"""
 struct SimFailed <: Exception
     info
+    cause   # the exception that made the simulation fail, or `nothing`
 end
-Base.showerror(io::IO, ex::SimFailed) =
+SimFailed(info) = SimFailed(info, nothing)
+# the cause's own display (e.g. of a `DomainError` value) must not hide the failure
+function _render_cause(cause)
+    try
+        sprint(showerror, cause)
+    catch err
+        err isa InterruptException && rethrow()
+        "$(typeof(cause)) (cannot be displayed)"
+    end
+end
+function Base.showerror(io::IO, ex::SimFailed)
     isnothing(ex.info) ? print(io, "Simulation failed.") :
     ex.info isa MIT ? print(io, "Simulation failed in period $(ex.info).") :
     ex.info isa AbstractUnitRange{<:MIT} ? print(io, "Simulation over $(ex.info) failed.") :
     print(io, "Simulation failed: $(ex.info)")
+    isnothing(ex.cause) || print(io, "\nCaused by: ", _render_cause(ex.cause))
+end
+# `stoch_simulate` returns a `SimFailed` instead of throwing it, so it is mostly displayed
+Base.show(io::IO, ::MIME"text/plain", ex::SimFailed) = showerror(io, ex)
+# the compact form (e.g. in a printed vector of results) is the default display,
+# unless the cause cannot be displayed
+function Base.show(io::IO, ex::SimFailed)
+    str = try
+        sprint((io, ex) -> invoke(show, Tuple{IO,Any}, io, ex), ex; context=io)
+    catch err
+        err isa InterruptException && rethrow()
+        string(typeof(ex), "(", repr(ex.info), ", ", typeof(ex.cause), " (cannot be displayed))")
+    end
+    print(io, str)
+end
 isfailed(f::SimFailed)::Bool = !isnothing(f.info)
 isfailed(f::SimData)::Bool = false
 isfailed(f::Workspace)::Bool = false

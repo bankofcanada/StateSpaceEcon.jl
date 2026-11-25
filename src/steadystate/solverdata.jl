@@ -178,7 +178,7 @@ function SolverData(model::Model; presolve::Bool=true,
     sd.eqns_index[sd.solve_eqn] .= 1:sum(sd.solve_eqn)
     return sd
 end
-@assert precompile(SolverData, (Model,))
+precompile(SolverData, (Model,))
 
 
 """
@@ -202,7 +202,9 @@ function global_SS_RJ(point::AbstractVector{Float64}, sd::SolverData)
         solve || continue
         rr, jj = try
             eqn.eval_RJ(sd.point[eqn.vinds]) 
-        catch
+        catch err
+            # only a domain error means an inadmissible point; anything else is not an inadmissible point and propagates
+            err isa DomainError || rethrow()
             (NaN64, fill(NaN64, size(eqn.vinds)))
         end
         (isnan(rr) || isinf(rr)) && inadmissible_error(i, eqn, sd.point, rr)
@@ -216,7 +218,7 @@ function global_SS_RJ(point::AbstractVector{Float64}, sd::SolverData)
     end
     return R, J
 end
-@assert precompile(global_SS_RJ, (Vector{Float64}, SolverData))
+precompile(global_SS_RJ, (Vector{Float64}, SolverData))
 
 """
     R, J = global_SS_RJ(point, sd::SolverData)
@@ -225,18 +227,31 @@ When a solver data is given, we compute the residual of the active equations
 only.
 """
 function global_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64},  sd::SolverData)
+    i = _active_SS_R!(resid, point, sd)
+    i == 0 || inadmissible_error(i, sd.alleqns[i], sd.point, resid[sd.eqns_index[i]])
+    return nothing
+end
+
+# Compute the residual of the active equations, like `global_SS_R!`, but without
+# the inadmissible point error, for trial points that the solver may reject.
+# Returns 0 if all residuals are finite, otherwise the index of the first
+# equation whose residual is not (evaluation stops there, so `resid` is then
+# incomplete). Only a `DomainError` counts as a non-finite residual; any other
+# exception propagates.
+function _active_SS_R!(resid::AbstractVector{Float64}, point::AbstractVector{Float64}, sd::SolverData)
     sd.point[sd.solve_var] .= point
     for (i, (solve, ind, eqn)) in enumerate(zip(sd.solve_eqn, sd.eqns_index, sd.alleqns))
         solve || continue
         rr = try
             eqn.eval_resid(sd.point[eqn.vinds]) 
-        catch
+        catch err
+            err isa DomainError || rethrow()
             NaN64
         end
-        (isnan(rr) || isinf(rr)) && inadmissible_error(i, eqn, sd.point, rr)
         resid[ind] = rr
+        isfinite(rr) || return i
     end
-    return nothing
+    return 0
 end
-@assert precompile(global_SS_R!, (Vector{Float64}, Vector{Float64}, SolverData))
+precompile(global_SS_R!, (Vector{Float64}, Vector{Float64}, SolverData))
 

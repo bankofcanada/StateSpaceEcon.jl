@@ -106,11 +106,12 @@ function bisect!(F::Function, vals::AbstractVector{T}, ind::Int64, deriv::T; max
     # This code is a mess. Someone please clean it up!
 
     # Convenience wrapper - evaluate F as if it were a univariate function
-    # and trap any errors (e.g. inadmissible arguments) returning NaN.
+    # and trap domain errors (inadmissible arguments) returning NaN.
     # With each call, the current value of vals[i] is updated in place.
     f(x) = (vals[ind] = x; try
         F(vals)
-    catch
+    catch err
+        err isa DomainError || rethrow()
         NaN
     end)
 

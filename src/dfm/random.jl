@@ -64,9 +64,9 @@ function Distributions._rand!(rng::AbstractRNG, s::ShocksSampler, x::AbstractVec
     return x
 end
 
-Distributions.rand!(rng::AbstractRNG, s::ShocksSampler, data::SimData) = Distributions.rand!(rng, s, :, data)
-function Distributions.rand!(rng::AbstractRNG, s::ShocksSampler, range::Union{Colon,AbstractUnitRange{<:MIT}}, data::SimData)
-    Distributions.rand!(rng, s, transpose(view(data, range, s.names).values))
+Random.rand!(rng::AbstractRNG, s::ShocksSampler, data::SimData) = Random.rand!(rng, s, :, data)
+function Random.rand!(rng::AbstractRNG, s::ShocksSampler, range::Union{Colon,AbstractUnitRange{<:MIT}}, data::SimData)
+    Random.rand!(rng, s, transpose(view(data, range, s.names).values))
     return data
 end
 
@@ -97,6 +97,6 @@ rand_shocks!(s::ShocksSampler, args...) = rand_shocks!(Random.default_rng(), s, 
 rand_shocks!(rng::AbstractRNG, dfm::DFM, args...) = rand_shocks!(rng, ShocksSampler(dfm), args...)
 rand_shocks!(rng::AbstractRNG, dfm::DFM, plan::Plan, data::MVTSeries) = rand_shocks!(rng, ShocksSampler(dfm), firstdate(plan)+lags(dfm):lastdate(plan)-leads(dfm), data)
 function rand_shocks!(rng::AbstractRNG, s::ShocksSampler, range::AbstractUnitRange, data::MVTSeries)
-    Distributions.rand!(rng, s, range, data)
+    Random.rand!(rng, s, range, data)
 end
 

@@ -9,12 +9,13 @@
     return model
 end
 
+const _MAXITER_MESSAGE = "Non-linear solver reached maximum number of iterations (`maxiter`)."
 function check_converged(converged, warn_maxiter)
     if !converged
         if warn_maxiter == :error
-            error("Non-linear solver reached maximum number of iterations (`maxiter`).")
+            error(_MAXITER_MESSAGE)
         elseif warn_maxiter != false
-            @warn("Non-linear solver reached maximum number of iterations (`maxiter`).")
+            @warn(_MAXITER_MESSAGE)
         end
     end
 end
@@ -99,14 +100,18 @@ function simulate(m::Model,
         error("Incorrect dimensions of initial_guess. Expected $((NT, nvarshks)), got $(size(initial_guess)).")
     end
 
+    data_axes = axes(exog_ant)
+
+    # the baseline is needed when either data is given as deviations from it
+    # (and for the result when `deviation` is set)
+    if (deviation || deviation_ant || deviation_unant) && isempty(baseline)
+        baseline = steadystatearray(m, p_ant)
+    end
     if deviation_ant
-        exog_ant = copy(exog_ant)
-        if isempty(baseline)
-            baseline = steadystatearray(m, p_ant)
-        end
         if size(baseline) != (NT, nvarshks)
             error("Incorrect dimensions of baseline. Expected $((NT, nvarshks)), got $(size(baseline)).")
         end
+        exog_ant = copy(exog_ant)
         @views exog_ant[:, logvars] .*= baseline[:, logvars]
         @views exog_ant[:, .!logvars] .+= baseline[:, .!logvars]
     end
@@ -156,6 +161,7 @@ function simulate(m::Model,
                 error("Anticipated and unanticipated ranges don't match.")
             end
             if deviation_unant
+                exog_unant = copy(exog_unant)   # do not modify the caller's data
                 @views exog_unant[:, logvars] .*= baseline[:, logvars]
                 @views exog_unant[:, .!logvars] .+= baseline[:, .!logvars]
             end
@@ -314,7 +320,7 @@ function simulate(m::Model,
         end
     end
 
-    x = x[axes(exog_ant)...]
+    x = x[data_axes...]
     x .= inverse_transform(x, m)
     if deviation
         @views x[:, logvars] ./= baseline[:, logvars]

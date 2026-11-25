@@ -93,9 +93,20 @@ function simulate(model::Model, plan::Plan, exog::AbstractMatrix;
     S = FOSimulatorData(plan, model, anticipate)
 
     if anticipate && !S.empty_plan
+        # not implemented here: use the stacked-time solver on the same linearized model,
+        # which takes data in levels (the linearization may expect deviations; it is restored)
         @warn "Running linearized stacked-time solver."
-        return simulate(model, plan, exog;
-            deviation, anticipate, verbose, baseline, kwargs...)
+        lmed = getevaldata(model, :linearize)
+        variant = model.options.variant
+        setevaldata!(model, linearize=LinearizedModelEvaluationData(false, lmed.sspt, lmed.med))
+        try
+            # `variant` last, so that one passed by the caller cannot select the nonlinear model
+            return StackedTimeSolver.simulate(model, plan, exog;
+                deviation, anticipate, verbose, baseline, kwargs..., variant=:linearize)
+        finally
+            setevaldata!(model, linearize=lmed)
+            model.options.variant = variant
+        end
     end
 
     # transform exogenous data 

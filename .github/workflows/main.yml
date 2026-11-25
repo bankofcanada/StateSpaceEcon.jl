@@ -1,74 +1,112 @@
-# This is a basic workflow to help you get started with Actions
-
 name: build
 
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the master branch
   push:
-    branches: [ "master" ]
-    paths: [ "**.jl" ]
+    branches: [master]
   pull_request:
-    branches: [ "*", "!dev_with_mbe" ]
-    paths: [ "**.jl" ]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+# A new push to a pull request cancels the run for the previous push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  actions: write  # lets julia-actions/cache delete old caches
+
 jobs:
-  # This workflow contains a single job called "build"
   build:
-
-    strategy: 
-      matrix:
-        julia-version: ["1.9", "lts", "1"]
-        julia-arch: [x64]
-        os: [ubuntu-latest, windows-latest, macOS-latest]
-
-    # The type of runner that the job will run on
+    name: Julia ${{ matrix.julia-version }} - ${{ matrix.os }}${{ matrix.experimental && ' (allowed to fail)' || '' }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    # The prerelease job is an early warning only; it does not fail the run.
+    continue-on-error: ${{ matrix.experimental }}
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    strategy:
+      fail-fast: false
+      matrix:
+        julia-version: ["lts", "1.12", "1"]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        experimental: [false]
+        include:
+          - julia-version: "pre"
+            os: ubuntu-latest
+            experimental: true
+
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
 
-      - name: Setup Julia environment
-        # You may pin to the exact commit or the version.
-        # uses: julia-actions/setup-julia@ee66464cb7897ffcc5322800f4b18d449794af30
-        uses: julia-actions/setup-julia@v2
+      - uses: julia-actions/setup-julia@v3
         with:
-          # The Julia version to download (if necessary) and use. Example: 1.0.4
-          version: ${{ matrix.julia-version }}  # optional, default is 1
-          # Architecture of the Julia binaries. Defaults to x64.
-          arch: ${{ matrix.julia-arch }} # optional, default is x64
-          # Display InteractiveUtils.versioninfo() after installing
-          show-versioninfo: true # optional, default is false
+          version: ${{ matrix.julia-version }}
+          show-versioninfo: true
 
-      - name: Run Julia package tests
-        # You may pin to the exact commit or the version.
-        # uses: julia-actions/julia-runtest@eda4346d69c0d1653e483c397a83c7f32f4ef2ac
-        uses: julia-actions/julia-runtest@v1
+      - uses: julia-actions/cache@v3
+
+      # Fixes to StateSpaceEcon often need unreleased fixes in TimeSeriesEcon or
+      # ModelBaseEcon. On a pull request from a branch other than master, if the
+      # GitHub account that owns the PR branch also has a branch with exactly the
+      # same name in TimeSeriesEcon.jl or ModelBaseEcon.jl, test against that
+      # branch's current commit. Otherwise use the registered versions. The job
+      # summary and a notice on the run page say which was used. Before merging
+      # StateSpaceEcon, release the siblings, delete their branches and re-run
+      # CI, so it passes with the registered versions.
+      - name: Use sibling branches with the same name
+        if: github.event_name == 'pull_request' && github.head_ref != github.event.repository.default_branch
+        shell: bash
+        env:
+          OWNER: ${{ github.event.pull_request.head.repo.owner.login }}
+          BRANCH: ${{ github.head_ref }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          # the source repository of the PR can have been deleted since
+          if [ -z "$OWNER" ]; then
+            echo "- registered versions (the source repository of this PR no longer exists)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          siblings=""
+          for pkg in TimeSeriesEcon ModelBaseEcon; do
+            url="https://github.com/$OWNER/$pkg.jl"
+            # git ls-remote --exit-code returns 2 when the branch does not exist;
+            # a missing repository is reported as not found. Retry anything else.
+            for attempt in 1 2 3; do
+              out=$(git ls-remote --exit-code "$url" "refs/heads/$BRANCH" 2>&1) && status=0 || status=$?
+              case "$out" in
+                *"Repository not found"*|*"could not read Username"*) status=missing ;;
+              esac
+              if [ "$status" = 0 ] || [ "$status" = 2 ] || [ "$status" = missing ]; then break; fi
+              echo "git ls-remote $url failed (attempt $attempt): $out"
+              sleep 10
+            done
+            sha=$(printf '%s\n' "$out" | awk -v ref="refs/heads/$BRANCH" '$2 == ref { print $1 }')
+            if [ "$status" = 0 ] && [ -n "$sha" ]; then
+              echo "- $pkg: branch \`$BRANCH\` of $url at \`$sha\`" >> "$GITHUB_STEP_SUMMARY"
+              echo "::notice title=$pkg from a branch::Testing against $url branch $BRANCH ($sha), not the registered version"
+              siblings="$siblings $url@$sha"
+            elif [ "$status" = 0 ] || [ "$status" = 2 ] || [ "$status" = missing ]; then
+              echo "- $pkg: registered version (no branch \`$BRANCH\` in $url)" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error title=Sibling lookup failed::git ls-remote $url failed: $out"
+              exit 1
+            fi
+          done
+          if [ -n "$siblings" ]; then
+            SIBLINGS="$siblings" julia --color=yes --project=. -e '
+              using Pkg
+              Pkg.add([PackageSpec(url=String(u), rev=String(r)) for (u, r) in split.(split(ENV["SIBLINGS"]), "@")])'
+          fi
+
+      - uses: julia-actions/julia-runtest@v1
         with:
-          # Value determining whether to test with coverage or not. Options: true | false. Default value: true.
-          coverage: true # optional, default is true
-          # Value passed to the --depwarn flag. Options: yes | no | error. Default value: yes.
-          depwarn: yes # optional, default is yes
-          # If true, then, for each [compat] entry in the active project, only allow the latest compatible version. If the value is auto and the pull request has been opened by Dependabot or CompatHelper, then force_latest_compatible_version will be set to true, otherwise it will be set to false. Options: true | false | auto. Default value: auto.
-          force_latest_compatible_version: auto # optional, default is auto
-          # Value passed to the --inline flag. Options: yes | no. Default value: yes.
-          inline: yes # optional, default is yes
-          # Value inserted in front of the julia command, e.g. for running xvfb-run julia [...]
-          # prefix: # optional, default is
-          # Value passed to the --project flag. The default value is the repository root: "@."
-          # project: # optional, default is @.
+          depwarn: error
 
-      # process and submit the code coverage information
       - uses: julia-actions/julia-processcoverage@v1
-      - uses: codecov/codecov-action@v4
+
+      # Coverage is advisory: an upload problem never fails the job.
+      - uses: codecov/codecov-action@v7
+        continue-on-error: true
         with:
-          file: lcov.info
-          token: e9844f2a-a8b6-4c59-9f20-1c5a33ad9dbf
-          verbose: true # optional (default = false)
-          
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

@@ -91,7 +91,7 @@ function step_lm!(xx::AbstractArray{Float64,1}, dx::AbstractArray{Float64,1},
     lm.params[:] = [lambda, nu]
     return nothing
 end
-@assert precompile(step_lm!, (Array{Float64,1}, Array{Float64,1}, Array{Float64,1}, Array{Float64,2}, LMData))
+precompile(step_lm!, (Array{Float64,1}, Array{Float64,1}, Array{Float64,1}, Array{Float64,2}, LMData))
 
 """
     first_step_nr!(x, dx, resid, J, lm::LMData; verbose=false)
@@ -131,12 +131,10 @@ function first_step_lm!(xx::AbstractArray{Float64,1}, dx::AbstractArray{Float64,
         # actual residual and its norm
         lm.v_buffer .= xx .- dx
         qual = 0.0
-        try
-            global_SS_R!(lm.r_buffer, lm.v_buffer, lm.sd)
+        if _active_SS_R!(lm.r_buffer, lm.v_buffer, lm.sd) == 0
             n2AR = sum(abs2, lm.r_buffer)
             # quality of step
             qual = (n2AR - n2R) / (n2PR - n2R)
-        catch
         end
         if qual > 0.75 # very good quality, extend the trust region
             lambda = lambda / nu
@@ -153,5 +151,5 @@ function first_step_lm!(xx::AbstractArray{Float64,1}, dx::AbstractArray{Float64,
     lm.params[:] = [lambda, nu]
     nothing
 end
-@assert precompile(first_step_lm!, (Array{Float64,1}, Array{Float64,1}, Array{Float64,1}, Array{Float64,2}, LMData))
+precompile(first_step_lm!, (Array{Float64,1}, Array{Float64,1}, Array{Float64,1}, Array{Float64,2}, LMData))
 

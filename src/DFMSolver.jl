@@ -8,25 +8,27 @@
 module DFMSolver
 
 # Julia Standard Library
-using LinearAlgebra
-using Printf
-using Random
-using SparseArrays
-using Statistics
+using LinearAlgebra: LinearAlgebra, BLAS, Cholesky, ColumnNorm, Diagonal, I, LAPACK, PosDefException, Symmetric, UpperTriangular,
+    cholesky, cholesky!, diag, dot, eigen, isdiag, issymmetric, ldiv!, lmul!, lu, mul!, qr!, rdiv!, rmul!, svd
+using Printf: Printf, @sprintf
+using Random: Random, AbstractRNG, randn!
+using SparseArrays: SparseArrays, blockdiag, nnz, nonzeros, nzrange, rowvals, spzeros
+using Statistics: Statistics, mean, mean!
 
 # juliastats.org
-using ComponentArrays
-using Distributions
+using ComponentArrays: ComponentArrays
+using Distributions: Distributions, Continuous, Multivariate, cov, params, var
 
 # misc 
-using UnPack
-using Interpolations
-using NaNStatistics
+using UnPack: UnPack, @unpack
+using Interpolations: Interpolations, FritschCarlsonMonotonicInterpolation, interpolate
+using NaNStatistics: NaNStatistics, nanmean, nanmedian, nanstd
 
 # github.com/bankofcanada
-using TimeSeriesEcon
-using ModelBaseEcon
-using ModelBaseEcon.DFMModels
+using TimeSeriesEcon: TimeSeriesEcon, MIT, MVTSeries, Unit, Workspace, Y, firstdate, lastdate
+using ModelBaseEcon: ModelBaseEcon, eval_RJ, isshock, shocks
+using ModelBaseEcon.DFMModels: DFMModels, DFM, DFMBlock, DFMModel, DFMParams, IdiosyncraticComponents,
+    get_covariance, lags, leads, nendog, nobserved, nstates, nstates_with_lags, observed, states_with_lags, varshks
 
 using ..StateSpaceEcon
 using ..Plans

@@ -20,7 +20,7 @@ residual and issue a warning, but do not enforce this. See
 [`steadystatedata`](@ref).
 
 As part of the algorithm we run a simulation with the given `plan`,
-`exog_data` and `fctype`.  See [`simulate`](@ref) for other options.
+`exog_data` and `fctype`.  See [`simulate`](@ref StateSpaceEcon.simulate) for other options.
 
 !!! note
 
@@ -54,9 +54,13 @@ function shockdecomp(m::Model, p::Plan, exog_data::SimData;
         error("Not implemented: `shockdecomp` with `solver=:stackedtime` and `anticipate=false`. If the model is linear, use `solver=:firstorder`.")
     end
 
-    # if m.nauxs > 0
-    #     error("Not yet implemented with auxiliary variables.")
-    # end
+    # the solver needs columns for the auxiliary variables, which the data usually does not have
+    if m.nauxs > 0 && !(collect(colnames(exog_data)) == collect(colnames(control)) == Symbol.(m.allvars))
+        error("Not implemented: `shockdecomp` with `solver=:stackedtime` for a model with auxiliary variables (`substitutions=true`), unless `exog_data` and `control` have exactly the columns of `model.allvars`, in that order.")
+    end
+    if m.nauxs > 0 && deviation
+        error("Not implemented: `shockdecomp` with `solver=:stackedtime` and `deviation=true` for a model with auxiliary variables (`substitutions=true`).")
+    end
 
     # we will return result at the end
     result = Workspace()

@@ -49,7 +49,7 @@ returns [`SimData`](@ref). See also [`zeroworkspace`](@ref)
 function steadystatearray end
 
 @deprecate zeroarray(m::Model, rng::AbstractUnitRange) zeroarray(m, Plan(m, rng))
-@deprecate steadystatearray(m::Model, rng::AbstractUnitRange; ref = first(rng)) steadystatearray(m, Plan(m, rng), ref = ref)
+@deprecate steadystatearray(m::Model, rng::AbstractUnitRange; kwargs...) steadystatearray(m, Plan(m, rng); kwargs...)
 
 zeroarray(m::Model, p::Plan) = inverse_transform(zeros(Float64, size(p.exogenous)), m)
 function steadystatearray(m::Model, p::Plan; ref = firstdate(p) + m.maxlag)
@@ -146,7 +146,7 @@ See also [`zeroarray`](@ref) and [`zeroworkspace`](@ref)
 function steadystatedata end
 @deprecate zerodata(m::Model, rng::AbstractUnitRange) zerodata(m, Plan(m, rng))
 @inline zerodata(m::Model, p::Plan) = SimData(p.range, m.varshks, zeroarray(m, p))
-@deprecate steadystatedata(m::Model, rng::AbstractUnitRange; ref = firstdate(p) + m.maxlag) steadystatedata(m, Plan(m, rng); ref = ref)
+@deprecate steadystatedata(m::Model, rng::AbstractUnitRange; kwargs...) steadystatedata(m, Plan(m, rng); kwargs...)
 @inline steadystatedata(m::Model, p::Plan; ref = firstdate(p) + m.maxlag) = SimData(p.range, m.varshks, steadystatearray(m, p; ref = ref))
 
 ##################

@@ -80,7 +80,7 @@ function test_simulation(m_in, path; atol=1.0e-9)
     data01_dev = deepcopy(data01)
     data_chk_dev = deepcopy(data_chk)
     sssolve!(m)
-    for (i, var) in enumerate(m.allvars)
+    for (i, var) in enumerate(m.varshks)
         data01_dev[:, i] .-= m.sstate[var].level
         data_chk_dev[:, i] .-= m.sstate[var].level
         if m.sstate[var].slope != 0
@@ -111,6 +111,27 @@ end
 
 @testset "E6.sim" begin
     test_simulation(getE6(), joinpath(@__DIR__, "data", "M6_TestData.csv"))
+end
+
+@testset "E7.sim" begin
+    test_simulation(getE7(), joinpath(@__DIR__, "data", "M7_TestData.csv"))
+end
+
+@testset "E7A.sim" begin
+    test_simulation(getE7A(), joinpath(@__DIR__, "data", "M7_TestData.csv"))
+end
+
+@testset "aux variables, SimData" begin
+    # simulating a model with auxiliary variables (substitutions) on SimData
+    # must return data with the input's columns only (failed with DimensionMismatch)
+    m = getE7()
+    @test m.nauxs > 0
+    sssolve!(m)
+    p = Plan(m, 2001Q1:2004Q4)
+    data = steadystatedata(m, p)
+    res = simulate(m, p, data)
+    @test size(res) == size(data)
+    @test isapprox(res, data; atol=1e-9)
 end
 
 #############################################################
@@ -365,8 +386,10 @@ end
         sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
         @test_throws ErrorException StateSpaceEcon.StackedTimeSolver.update_plan!(sd, m, Plan(m, 3:8))
         x = rand(Float64, size(ed))
-        R1, _ = StateSpaceEcon.StackedTimeSolver.stackedtime_RJ(x, ed, sd)
-        R2 = StateSpaceEcon.StackedTimeSolver.stackedtime_R!(similar(R1), x, ed, sd)
+        # invokelatest: internal functions, called right after building the model in this
+        # same block (the public entry points cross into the latest world themselves)
+        R1, _ = Base.invokelatest(StateSpaceEcon.StackedTimeSolver.stackedtime_RJ, x, ed, sd)
+        R2 = Base.invokelatest(StateSpaceEcon.StackedTimeSolver.stackedtime_R!, similar(R1), x, ed, sd)
         @test R1 ≈ R2
     end
     let m = getE3()
@@ -391,8 +414,10 @@ end
 
         sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
         x = rand(Float64, size(ed))
-        R1, _ = StateSpaceEcon.StackedTimeSolver.stackedtime_RJ(x, ed, sd)
-        R2 = StateSpaceEcon.StackedTimeSolver.stackedtime_R!(similar(R1), x, ed, sd)
+        # invokelatest: internal functions, called right after building the model in this
+        # same block (the public entry points cross into the latest world themselves)
+        R1, _ = Base.invokelatest(StateSpaceEcon.StackedTimeSolver.stackedtime_RJ, x, ed, sd)
+        R2 = Base.invokelatest(StateSpaceEcon.StackedTimeSolver.stackedtime_R!, similar(R1), x, ed, sd)
         @test R1 ≈ R2
     end
     let m = getE6()
@@ -412,8 +437,10 @@ end
 
         sd = StateSpaceEcon.StackedTimeSolver.StackedTimeSolverData(m, p, fcgiven)
         x = rand(Float64, size(ed))
-        R1, _ = StateSpaceEcon.StackedTimeSolver.stackedtime_RJ(x, ed, sd)
-        R2 = StateSpaceEcon.StackedTimeSolver.stackedtime_R!(similar(R1), x, ed, sd)
+        # invokelatest: internal functions, called right after building the model in this
+        # same block (the public entry points cross into the latest world themselves)
+        R1, _ = Base.invokelatest(StateSpaceEcon.StackedTimeSolver.stackedtime_RJ, x, ed, sd)
+        R2 = Base.invokelatest(StateSpaceEcon.StackedTimeSolver.stackedtime_R!, similar(R1), x, ed, sd)
     end
 end
 
@@ -575,3 +602,31 @@ end
     end
 end
 
+@testset "deviation_unant only" begin
+    # anticipated data in levels, unanticipated data as deviations from the steady state
+    m = Model()
+    @variables m y
+    @shocks m e
+    @parameters m a = 2.0
+    @equations m begin
+        y[t] = 0.5 * y[t-1] + 0.5 * a + e[t]
+    end
+    @initialize m
+    sssolve!(m)
+    p = Plan(m, 1U:10U)
+    ss = steadystatedata(m, p)
+    dev = copy(ss)
+    dev .= 0
+    dev[2U, :e] = 0.1
+    r = simulate(m, p, ss, p, dev; deviation_ant=false, deviation_unant=true)
+    @test r ≈ simulate(m, p, ss, p, ss .+ dev)
+    @test r[2U, :y] ≈ 2.1
+    # data in levels, result as deviations from the default baseline
+    @test simulate(m, p, ss, p, ss .+ dev; deviation=true, deviation_ant=false, deviation_unant=false) ≈ r .- ss
+    # a baseline that broadcasts over the rows is accepted
+    @test simulate(m, p, ss, p, dev; deviation_ant=false, deviation_unant=true, baseline=[2.0 0.0]) ≈ r
+    # the given data are not modified
+    dev0 = copy(dev)
+    simulate(m, p, dev, p, dev; deviation=true)
+    @test dev == dev0
+end

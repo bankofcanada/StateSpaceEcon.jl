@@ -13,11 +13,11 @@ A package for Macroeconomic modelling.
 """
 module StateSpaceEcon
 
-using ComponentArrays
+using ComponentArrays: ComponentArrays, ComponentArray, ComponentVector
 
-using TimeSeriesEcon
-using ModelBaseEcon
-using ModelBaseEcon.OrderedCollections
+using TimeSeriesEcon: TimeSeriesEcon, Frequency, MIT, MVTSeries, TSeries, Workspace, firstdate, rangeof, rawdata
+using ModelBaseEcon: ModelBaseEcon, Model, ModelVariable, inverse_transform, need_transform, transform
+using ModelBaseEcon.OrderedCollections: OrderedCollections, LittleDict
 
 include("Kalman.jl")
 include("misc.jl")

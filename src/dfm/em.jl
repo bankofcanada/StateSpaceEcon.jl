@@ -9,11 +9,18 @@ _my_cholesky!(X, ::Val{:brave}) = cholesky!(Symmetric(X))
 _my_cholesky!(X, ::Val{:verbose}) = begin
     try
         cholesky!(Symmetric(X))
-    catch
-        ev = eigen(X).values
-        @error "Cholesky failed at "
-        println("X=", X)
-        println("ev=", ev)
+    catch err
+        if err isa PosDefException
+            # best-effort diagnostics, which must not replace the original exception
+            try
+                ev = eigen(X).values
+                @error "Cholesky failed at "
+                println("X=", X)
+                println("ev=", ev)
+            catch diag_err
+                diag_err isa InterruptException && rethrow()
+            end
+        end
         rethrow()
     end
 end

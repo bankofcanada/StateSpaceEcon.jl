@@ -5,7 +5,7 @@
 # All rights reserved.
 ##################################################################################
 
-using Printf
+using Printf: Printf
 
 """
     printmatrix(mat [, Val(F), colnames])

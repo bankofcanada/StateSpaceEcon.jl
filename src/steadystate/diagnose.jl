@@ -25,7 +25,8 @@ Standard options (default values from `model.options`)
     value, is smaller than this number.
 
 """
-function check_sstate(model::Model; verbose::Bool = model.options.verbose, tol::Float64 = model.options.tol)
+check_sstate(model::Model; kwargs...) = Base.invokelatest(_check_sstate, model; kwargs...)::Int
+function _check_sstate(model::Model; verbose::Bool = model.options.verbose, tol::Float64 = model.options.tol)
     # if parameters changed, see that constraints use the latest
     for eqn in values(model.sstate.constraints)
         ModelBaseEcon._update_eqn_params!(eqn.eval_resid, model.parameters)
@@ -53,7 +54,7 @@ function check_sstate(model::Model; verbose::Bool = model.options.verbose, tol::
     end
     return bad_eqn
 end
-@assert precompile(check_sstate, (Model,))
+precompile(_check_sstate, (Model,))
 
 
 
@@ -79,11 +80,13 @@ steady state constraints until you get a unique solution. See
     Call [`check_sstate`](@ref) instead.
 """
 diagnose_sstate(model::Model) = diagnose_sstate(model.sstate.values, model)
-function diagnose_sstate(point::AbstractVector{Float64}, model::Model)
+diagnose_sstate(point::AbstractVector{Float64}, model::Model) =
+    Base.invokelatest(_diagnose_sstate, point, model)::Tuple{Tuple{Vararg{String}},Vector{Symbol}}
+function _diagnose_sstate(point::AbstractVector{Float64}, model::Model)
     tol = model.options.tol 
     rr, jj = global_SS_RJ(point, model)
     neqns, nvars = size(jj)
-    ff = qr([jj Matrix(I, neqns, neqns); zeros(neqns, nvars) Matrix(I, neqns, neqns)], Val(true))
+    ff = qr([jj Matrix(I, neqns, neqns); zeros(neqns, nvars) Matrix(I, neqns, neqns)], ColumnNorm())
     sol = Vector{Float64}(undef, neqns + nvars)
     rj = rank(ff.R)
     rhs = ff.Q' * vcat(rr, zeros(neqns))
@@ -112,4 +115,4 @@ function diagnose_sstate(point::AbstractVector{Float64}, model::Model)
     bad_var = vsyms[bad_var_mask]
     return bad_eqn, bad_var
 end
-@assert precompile(diagnose_sstate, (Vector{Float64}, Model))
+precompile(_diagnose_sstate, (Vector{Float64}, Model))

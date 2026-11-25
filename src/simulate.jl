@@ -14,6 +14,12 @@
 
 const defaultsolver = :stackedtime
 
+# World age: a model's evaluation functions are created by `eval` when the model
+# is built. A caller that builds and then simulates in the same call (a function,
+# a `let` or a `@testset` block) runs in a world where those functions do not
+# exist yet. So the dispatchers below call the solver through `Base.invokelatest`,
+# once; the solvers themselves don't.
+
 #####  solve!() #####
 
 """
@@ -26,7 +32,7 @@ function solve! end
 export solve!
 
 function solve!(model::Model; solver::Symbol=defaultsolver, kwargs...)
-    return getsolvermodule(solver).solve!(model; kwargs...)
+    return Base.invokelatest(getsolvermodule(solver).solve!, model; kwargs...)
 end
 
 #####  shockdecomp() #####
@@ -61,7 +67,7 @@ export shockdecomp
 function shockdecomp(model::Model, plan::Plan, exogdata::MVTSeries;
     solver::Symbol=defaultsolver, initdecomp::Workspace=Workspace(),
     control::MVTSeries=steadystatedata(model, plan), kwargs...)
-    return getsolvermodule(solver).shockdecomp(model, plan, exogdata; control, initdecomp, kwargs...)
+    return Base.invokelatest(getsolvermodule(solver).shockdecomp, model, plan, exogdata; control, initdecomp, kwargs...)
 end
 
 #####  simulate() #####
@@ -130,6 +136,24 @@ The following options are specific to the `:stackedtime` solver
       - `(:br81, :rateK => 10, :delta => 0.1)` : override the default parameters
         of the Bank & Rose (1981) algorithm.
 
+### Exceptions from the model's equations
+With the `:stackedtime` solver, a `DomainError` thrown while evaluating the
+equations (for example `log` of a negative number) at a trial point of the line
+search (`linesearch=true`, `damping=:armijo` or `:br81`) or at the first step of
+`:sim_lm` rejects that point, and the solver tries a shorter step. Anywhere
+else it propagates, as does any other exception from the equations. Two limits:
+when the line search or the first `:sim_lm` step reaches its smallest step it
+accepts the step anyway, and a residual that evaluates to `NaN` (instead of
+throwing) is not detected as a failure. With `model.options.substitutions =
+true`, `log(expr)` in an equation is replaced by an auxiliary variable, so a
+negative `expr` does not throw a `DomainError`.
+
+In a function used in your equations, throw a `DomainError` for arguments it
+cannot handle rather than returning `NaN`, for example
+`f(x::Real) = x > 0 ? log(x) : throw(DomainError(x))`. Accept `Real`, not only
+`Float64`: derivatives are computed with ForwardDiff dual numbers. See also
+[`stoch_simulate`](@ref).
+
 """
 function simulate end
 export simulate
@@ -162,7 +186,7 @@ end
 
 # this is the dispatcher -> call the appropriate solver
 simulate(m::Model, p::Plan, exog::AbstractMatrix; solver::Symbol=defaultsolver, kwargs...) =
-    getsolvermodule(solver).simulate(m, p, exog; kwargs...)
+    Base.invokelatest(getsolvermodule(solver).simulate, m, p, exog; kwargs...)
 
 # Handle the case with 2 sets of plan-data for mixture of ant and unant shocks
 function simulate(m::Model, p_ant::Plan, data_ant::SimData, p_unant::Plan, data_unant::SimData; kwargs...)
@@ -178,7 +202,7 @@ end
 simulate(m::Model, p_ant::Plan, data_ant::AbstractMatrix,
     p_unant::Plan, data_unant::AbstractMatrix;
     solver::Symbol=defaultsolver, kwargs...) =
-    getsolvermodule(solver).simulate(m, p_ant, data_ant, p_unant, data_unant; kwargs...)
+    Base.invokelatest(getsolvermodule(solver).simulate, m, p_ant, data_ant, p_unant, data_unant; kwargs...)
 
 
 #####  stoch_simulate() #####
@@ -201,6 +225,17 @@ realizations are taken as unanticipated and the same plan is used for both
 components.
 
 Currently only the case of `solver=stackedtime` is implemented.
+
+A realization whose simulation fails numerically is stored as a
+[`SimFailed`](@ref) holding the period and the exception, and the other
+realizations continue. Numerical failures are: a `DomainError` from the
+equations, a failed factorization of the Jacobian (`SingularException`,
+`LAPACKException`, `PardisoPosDefException`, or Pardiso's zero pivot or singular
+diagonal), and, with `warn_maxiter=:error`, reaching `maxiter`. Any other
+exception stops `stoch_simulate`, and the results computed so far are not
+returned; so does a failure while preparing the baseline, before the
+realizations are simulated. `isfailed(result)` tells whether a realization
+failed.
 
 """
 function stoch_simulate end
@@ -237,7 +272,7 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
         throw(ArgumentError("Expected the shocks argument to be Vector or Workspace of SimData, not $(typeof(shocks))."))
     end
     ##### dispatch
-    getsolvermodule(solver).stoch_simulate(m, p, baseline[p.range], shocks; kwargs...)
+    Base.invokelatest(getsolvermodule(solver).stoch_simulate, m, p, baseline[p.range], shocks; kwargs...)
 end
 export stoch_simulate
 

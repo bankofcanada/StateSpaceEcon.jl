@@ -416,3 +416,74 @@ end
 
 end
 
+@testset "fo.ant.swap" begin
+    # anticipated first-order simulation with a swapped plan runs the
+    # stacked-time solver on the linearized model (it used to call itself)
+    m = getE3()
+    clear_sstate!(m)
+    sssolve!(m)
+    solve!(m, solver=:firstorder)
+    p = Plan(m, 1U:20U)
+    exogenize!(p, :pinf, 3U)
+    endogenize!(p, :pinf_shk, 3U)
+    data = steadystatedata(m, p)
+    data[3U, :pinf] += 0.1
+    fo = @test_logs (:warn, r"linearized stacked-time") simulate(m, p, data; solver=:firstorder, anticipate=true)
+    @test fo[3U, :pinf] ≈ data[3U, :pinf]
+    @test fo ≈ simulate(m, p, data; solver=:stackedtime, anticipate=true, variant=:linearize)
+    @test !(fo ≈ data)
+    # non-zero steady state, linearized for data in deviations: the result is in levels
+    m = Model()
+    @variables m y
+    @shocks m e
+    @equations m begin
+        y[t] = 0.5 * y[t-1] + 1 + e[t]
+    end
+    @initialize m
+    sssolve!(m)
+    linearize!(m; deviation=true)
+    solve!(m, solver=:firstorder)
+    p = Plan(m, 1U:5U)
+    exogenize!(p, :y, 2U)
+    endogenize!(p, :e, 2U)
+    data = steadystatedata(m, p)
+    data[2U, :y] += 0.1
+    fo = @test_logs (:warn, r"linearized stacked-time") simulate(m, p, data; solver=:firstorder, anticipate=true)
+    @test fo[1U, :y] ≈ 2
+    @test fo[2U, :y] ≈ 2.1
+    @test fo[2U, :e] ≈ 0.1
+    # the model's linearization is unchanged
+    @test ModelBaseEcon.getevaldata(m, :linearize).deviation
+    # linearized about a point other than the steady state: the fallback uses that linearization
+    m = Model()
+    @variables m y
+    @shocks m e
+    @equations m begin
+        y[t] = 0.1 * y[t-1]^2 + 1 + e[t]
+    end
+    @initialize m
+    sssolve!(m)
+    y0 = m.sstate.y.level
+    custom = deepcopy(m.sstate)
+    custom.y.level = 2.0
+    linearize!(m; sstate=custom)
+    solve!(m, solver=:firstorder)
+    lmed = ModelBaseEcon.getevaldata(m, :linearize)
+    variant = m.options.variant
+    p = Plan(m, 1U:5U)
+    exogenize!(p, :y, 2U)
+    endogenize!(p, :e, 2U)
+    data = steadystatedata(m, p)
+    data[2U, :y] = 2.2
+    fo = @test_logs (:warn, r"linearized stacked-time") simulate(m, p, data; solver=:firstorder, anticipate=true)
+    # about y = 2 the model is y[t] = 0.4 * y[t-1] + 0.6 + e[t]
+    @test fo[2U, :e] ≈ 2.2 - 0.4 * (0.4 * y0 + 0.6) - 0.6
+    @test fo[3U, :y] ≈ 0.4 * 2.2 + 0.6
+    @test ModelBaseEcon.getevaldata(m, :linearize) === lmed
+    @test m.options.variant == variant
+    # a `variant` passed by the caller does not make the fallback run the nonlinear model
+    fo2 = @test_logs (:warn, r"linearized stacked-time") simulate(m, p, data; solver=:firstorder,
+        anticipate=true, variant=:default)
+    @test fo2 ≈ fo
+    @test m.options.variant == variant
+end

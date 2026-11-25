@@ -5,7 +5,7 @@
 # All rights reserved.
 ##################################################################################
 
-using ModelBaseEcon.OrderedCollections
+using ModelBaseEcon.OrderedCollections: OrderedCollections, OrderedDict
 
 """
     presolve_sstate!(model; <options>)
@@ -39,7 +39,9 @@ function presolve_sstate! end
 function solve1d(sseqn, vals, ind, ::Val{:bisect}, tol = 1e-12, maxiter = 1000)
     R, J = try
         sseqn.eval_RJ(vals)
-    catch
+    catch err
+        # an inadmissible starting point leaves the equation unsolved; anything else propagates
+        err isa DomainError || rethrow()
         return false
     end
     if abs(R) < tol && abs(J[ind]) > tol
@@ -107,11 +109,12 @@ presolve_sstate!(model::Model; kwargs...) =
     presolve_sstate!(model, model.sstate.mask, model.sstate.values; kwargs...)
 presolve_sstate!(model::Model, mask::AbstractVector{Bool}, values::AbstractVector{Float64};
     verbose = model.verbose, tol = model.tol, _1dsolver = :bisect, method = _1dsolver) =
-    _presolve_equations!(ModelBaseEcon.alleqns(model.sstate), mask, values, method, verbose, tol)
+    Base.invokelatest(_presolve_equations!, ModelBaseEcon.alleqns(model.sstate), mask, values, method, verbose, tol)::Bool
 presolve_sstate!(eqns::OrderedDict{Symbol,SteadyStateEquation}, mask::AbstractVector{Bool}, values::AbstractVector{Float64};
     verbose = false, tol = 1e-12, _1dsolver = :bisect, method = _1dsolver) =
-    _presolve_equations!(eqns, mask, values, method, verbose, tol)
+    Base.invokelatest(_presolve_equations!, eqns, mask, values, method, verbose, tol)::Bool
 
-@assert precompile(presolve_sstate!, (Model, Vector{Bool}, Vector{Float64}))
-@assert precompile(presolve_sstate!, (OrderedDict{Symbol,SteadyStateEquation}, Vector{Bool}, Vector{Float64}))
+precompile(presolve_sstate!, (Model, Vector{Bool}, Vector{Float64}))
+precompile(presolve_sstate!, (OrderedDict{Symbol,SteadyStateEquation}, Vector{Bool}, Vector{Float64}))
+precompile(_presolve_equations!, (OrderedDict{Symbol,SteadyStateEquation}, BitVector, Vector{Float64}, Symbol, Bool, Float64))
 

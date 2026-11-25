@@ -128,15 +128,23 @@ function stoch_simulate(m::Model, p::Plan, baseline::SimData, shocks;
             # assign unanticipated shocks
             eₜ[t, axes(shock, 2)] .+= shock[t, :]   # 
 
-            # solve 
-            try
-                converged = sim_solve!(eₜ, dₜ, maxiter, tol, verbose, damping)
-                check_converged(converged, warn_maxiter)
-            catch
-                # marked as failed 
-                results[rkey] = SimFailed(t)
+            # solve; a numerical failure marks this realization as failed,
+            # anything else (an error in the model or the code, an interrupt) stops the simulation
+            converged = try
+                sim_solve!(eₜ, dₜ, maxiter, tol, verbose, damping)
+            catch err
+                _is_numerical_failure(err) || rethrow()
+                results[rkey] = SimFailed(t, err)
+                # a failed factorization may be left in the solver data, which the
+                # next realizations of this period would reuse
+                dₜ.J_factorized[] = nothing
                 continue
             end
+            if !converged && warn_maxiter == :error
+                results[rkey] = SimFailed(t, ErrorException(_MAXITER_MESSAGE))
+                continue
+            end
+            check_converged(converged, warn_maxiter)
 
         end # shocks loop 
 

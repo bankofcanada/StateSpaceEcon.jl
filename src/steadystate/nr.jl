@@ -67,13 +67,7 @@ function step_nr!(xx::AbstractArray{Float64,1}, dx::AbstractArray{Float64,1},
         σ = 0.5
         while λ > 0.00001
             nr.v_buffer .= xx - λ .* dx
-            nrb2 = 0.0
-            try
-                global_SS_R!(nr.r_buffer, nr.v_buffer, nr.sd)
-                nrb2 = norm(nr.r_buffer)
-            catch e
-                nrb2 = Inf
-            end
+            nrb2 = _active_SS_R!(nr.r_buffer, nr.v_buffer, nr.sd) == 0 ? norm(nr.r_buffer) : Inf
             if nrb2 < (1.0 - α * λ) * nf
                 if verbose && λ < 1.0
                     @info "Linesearch success with λ = $λ."
@@ -89,4 +83,4 @@ function step_nr!(xx::AbstractArray{Float64,1}, dx::AbstractArray{Float64,1},
     end
     return nothing
 end
-@assert precompile(step_nr!, (Array{Float64,1}, Array{Float64,1}, Array{Float64,1}, Array{Float64,2}, NRData))
+precompile(step_nr!, (Array{Float64,1}, Array{Float64,1}, Array{Float64,1}, Array{Float64,2}, NRData))

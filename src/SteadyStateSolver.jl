@@ -13,13 +13,20 @@ steady state solution of a model.
 """
 module SteadyStateSolver
 
-using SparseArrays
-using LinearAlgebra
-using ForwardDiff
-using DiffResults
-using Printf
+using SparseArrays: SparseArrays
+using LinearAlgebra: LinearAlgebra, ColumnNorm, I, norm, qr, rank
+using ForwardDiff: ForwardDiff
+using DiffResults: DiffResults
+using Printf: Printf, @sprintf
 
-using ModelBaseEcon
+using ModelBaseEcon: ModelBaseEcon, Model, Options, SteadyStateData, SteadyStateEquation, alleqns, geteqn,
+    isexog, isshock, issteady, neqns
+
+# World age: a model's evaluation functions are created by `eval` when the model
+# (or a steady state constraint) is built. A caller that builds and then solves in
+# the same call (a function, a `let` or a `@testset` block) runs in a world where
+# those functions do not exist yet. So each public entry point below calls its
+# implementation through `Base.invokelatest`, once; the solvers themselves don't.
 
 include("steadystate/1dsolvers.jl")
 include("steadystate/presolve.jl")
